@@ -558,12 +558,11 @@ extern void __suspend_report_result(const char *function, void *fn, int ret);
 		__suspend_report_result(__func__, fn, ret);		\
 	} while (0)
 
-extern void device_pm_wait_for_dev(struct device *sub, struct device *dev);
-
 /* drivers/base/power/wakeup.c */
 extern void pm_wakeup_event(struct device *dev, unsigned int msec);
 extern void pm_stay_awake(struct device *dev);
 extern void pm_relax(void);
+extern int device_pm_wait_for_dev(struct device *sub, struct device *dev);
 #else /* !CONFIG_PM_SLEEP */
 
 #define device_pm_lock() do {} while (0)
@@ -581,6 +580,10 @@ static inline void device_pm_wait_for_dev(struct device *a, struct device *b) {}
 static inline void pm_wakeup_event(struct device *dev, unsigned int msec) {}
 static inline void pm_stay_awake(struct device *dev) {}
 static inline void pm_relax(void) {}
+static inline int device_pm_wait_for_dev(struct device *a, struct device *b)
+{
+	return 0;
+}
 #endif /* !CONFIG_PM_SLEEP */
 
 /* How to reorder dpm_list after device_move() */
