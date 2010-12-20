@@ -269,6 +269,10 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 	case EXT_CSD_CARD_TYPE_26:
 		card->ext_csd.hs_max_dtr = 26000000;
 		break;
+	case EXT_CSD_CARD_TYPE_DDR_50 | EXT_CSD_CARD_TYPE_52 | EXT_CSD_CARD_TYPE_26:
+		card->ext_csd.hs_max_dtr = 52000000;
+		card->ext_csd.card_type = ext_csd[EXT_CSD_CARD_TYPE];
+		break;
 	default:
 		/* MMC v4 spec says this cannot happen */
 		printk(KERN_WARNING "%s: card is mmc v4 but doesn't "
@@ -513,13 +517,26 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	if ((card->csd.mmca_vsn >= CSD_SPEC_VER_4) &&
 	    (host->caps & (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA))) {
 		unsigned ext_csd_bit, bus_width;
+		u8 bus_speed_mode = 0;
 
-		if (host->caps & MMC_CAP_8_BIT_DATA) {
-			ext_csd_bit = EXT_CSD_BUS_WIDTH_8;
-			bus_width = MMC_BUS_WIDTH_8;
+		if ((host->caps & MMC_CAP_DDR50) &&
+			(card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_50)) {
+				if (host->caps & MMC_CAP_8_BIT_DATA) {
+					ext_csd_bit = EXT_CSD_DDR_BUS_WIDTH_8;
+					bus_width = MMC_BUS_WIDTH_8;
+				} else {
+					ext_csd_bit = EXT_CSD_DDR_BUS_WIDTH_4;
+					bus_width = MMC_BUS_WIDTH_4;
+				}
+			bus_speed_mode = MMC_BUS_SPEED_MODE_DDR50;
 		} else {
-			ext_csd_bit = EXT_CSD_BUS_WIDTH_4;
-			bus_width = MMC_BUS_WIDTH_4;
+			if (host->caps & MMC_CAP_8_BIT_DATA) {
+				ext_csd_bit = EXT_CSD_BUS_WIDTH_8;
+				bus_width = MMC_BUS_WIDTH_8;
+			} else {
+				ext_csd_bit = EXT_CSD_BUS_WIDTH_4;
+				bus_width = MMC_BUS_WIDTH_4;
+			}
 		}
 
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
@@ -534,6 +551,8 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			       1 << bus_width);
 			err = 0;
 		} else {
+			if (bus_speed_mode)
+				mmc_set_bus_speed(card->host, bus_speed_mode);
 			mmc_set_bus_width(card->host, bus_width);
 		}
 	}

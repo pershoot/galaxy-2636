@@ -647,6 +647,15 @@ void mmc_set_clock(struct mmc_host *host, unsigned int hz)
 }
 
 /*
+ * Set the bus speed of a host.
+ */
+void mmc_set_bus_speed(struct mmc_host *host, unsigned char bus_speed_mode)
+{
+	host->ios.bus_speed_mode = bus_speed_mode;
+	mmc_set_ios(host);
+}
+
+/*
  * Change the bus mode (open drain/push-pull) of a host.
  */
 void mmc_set_bus_mode(struct mmc_host *host, unsigned int mode)

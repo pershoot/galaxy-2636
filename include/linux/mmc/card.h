@@ -54,6 +54,7 @@ struct mmc_ext_csd {
 	unsigned int		sec_trim_mult;	/* Secure trim multiplier  */
 	unsigned int		sec_erase_mult;	/* Secure erase multiplier */
 	unsigned int		trim_timeout;		/* In milliseconds */
+	unsigned int		card_type;
 };
 
 struct sd_scr {
@@ -122,6 +123,7 @@ struct mmc_card {
 						/* (missing CIA registers) */
 #define MMC_QUIRK_INAND_CMD38	(1<<3)		/* iNAND devices have broken CMD38 */
 
+	unsigned char		bus_speed;	/* bus speed mode */
 	unsigned int		erase_size;	/* erase size in sectors */
  	unsigned int		erase_shift;	/* if erase unit is power 2 */
  	unsigned int		pref_erase;	/* in sectors */

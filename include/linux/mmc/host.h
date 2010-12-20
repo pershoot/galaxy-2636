@@ -50,6 +50,11 @@ struct mmc_ios {
 #define MMC_TIMING_LEGACY	0
 #define MMC_TIMING_MMC_HS	1
 #define MMC_TIMING_SD_HS	2
+
+	unsigned char	bus_speed_mode;		/* bus speed mode */
+
+#define MMC_BUS_SPEED_MODE_DDR50		4
+
 };
 
 struct mmc_host_ops {
@@ -158,6 +163,7 @@ struct mmc_host {
 #define MMC_CAP_WAIT_WHILE_BUSY	(1 << 9)	/* Waits while card is busy */
 #define MMC_CAP_ERASE		(1 << 10)	/* Allow erase/trim commands */
 #define MMC_CAP_FORCE_HS	(1 << 11)	/* Must enable highspeed mode */
+#define MMC_CAP_DDR50		(1 << 12)	/* Can support DDR mode at 50 MHz */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 

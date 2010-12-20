@@ -177,6 +177,7 @@ static void sdhci_reset(struct sdhci_host *host, u8 mask)
 
 	if (host->quirks & SDHCI_QUIRK_RESTORE_IRQS_AFTER_RESET)
 		sdhci_clear_set_irqs(host, SDHCI_INT_ALL_MASK, ier);
+
 }
 
 static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios);
@@ -1014,11 +1015,17 @@ static void sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 	if (clock == 0)
 		goto out;
 
-	for (div = 1;div < 256;div *= 2) {
-		if ((host->max_clk / div) <= clock)
-			break;
-	}
-	div >>= 1;
+	/* For DDR mode, the clock divisor is 1 as ios clock should be
+	 * half of controller clock.
+	 */
+	if (host->uhs_mode != SDHCI_UHS_MODE_SEL_DDR50) {
+		for (div = 1;div < 256;div *= 2) {
+			if ((host->max_clk / div) <= clock)
+				break;
+		}
+		div >>= 1;
+	} else
+		div = 1;
 
 	clk = div << SDHCI_DIVIDER_SHIFT;
 	clk |= SDHCI_CLOCK_INT_EN;
@@ -1162,6 +1169,7 @@ static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	struct sdhci_host *host;
 	unsigned long flags;
 	u8 ctrl;
+	u16 clk;
 
 	host = mmc_priv(mmc);
 
@@ -1213,6 +1221,41 @@ static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	 */
 	if(host->quirks & SDHCI_QUIRK_RESET_CMD_DATA_ON_IOS)
 		sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
+
+	/* Set the bus speed mode */
+	if (ios->bus_speed_mode && (host->uhs_mode != ios->bus_speed_mode)) {
+		ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL_2);
+		ctrl &= ~SDHCI_UHS_MODE_SEL_DDR50;
+
+		switch(ios->bus_speed_mode) {
+		case MMC_BUS_SPEED_MODE_DDR50:
+			ctrl |= SDHCI_UHS_MODE_SEL_DDR50;
+			host->uhs_mode = SDHCI_UHS_MODE_SEL_DDR50;
+			break;
+		default:
+			goto out;
+		}
+
+		/* Switch OFF sd clock to avoid generating a clock glitch */
+		clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+		clk &= (~SDHCI_CLOCK_CARD_EN);
+		sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+		/* Select UHS mode */
+		sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL_2);
+
+		/* Switch ON sd clock */
+		clk |= SDHCI_CLOCK_CARD_EN;
+		/* For ddr mode, the clock divisor is 1 as ios
+		 * clock should be half of controller clock.
+		 */
+		if(host->uhs_mode == SDHCI_UHS_MODE_SEL_DDR50) {
+			/* Clearing the field before setting the divider */
+			clk &= ~(0xFF << SDHCI_DIVIDER_SHIFT);
+			clk |= 1 << SDHCI_DIVIDER_SHIFT;
+		}
+		sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+	}
 
 out:
 	mmiowb();
@@ -2001,7 +2044,15 @@ int sdhci_add_host(struct sdhci_host *host)
 	 * Maximum block count.
 	 */
 	mmc->max_blk_count = (host->quirks & SDHCI_QUIRK_NO_MULTIBLOCK) ? 1 : 65535;
-	
+
+	/*
+	 * DDR mode support
+	 */
+	caps = sdhci_readb(host, SDHCI_HIGHER_CAPABILITIES);
+	if (caps & SDHCI_CAN_SUPPORT_DDR50)
+		mmc->caps |= MMC_CAP_DDR50;
+
+
 	/*
 	 * Init tasklets.
 	 */
