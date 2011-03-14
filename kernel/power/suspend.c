@@ -22,6 +22,7 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/suspend.h>
+#include <linux/syscore_ops.h>
 
 #include "power.h"
 
@@ -165,11 +166,14 @@ static int suspend_enter(suspend_state_t state)
 	BUG_ON(!irqs_disabled());
 
 	error = sysdev_suspend(PMSG_SUSPEND);
+	if (!error)
+		error = syscore_suspend();
 	if (!error) {
 		if (!suspend_test(TEST_CORE) && pm_check_wakeup_events()) {
 			error = suspend_ops->enter(state);
 			events_check_enabled = false;
 		}
+		syscore_resume();
 		sysdev_resume();
 	}
 

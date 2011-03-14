@@ -23,6 +23,7 @@
 #include <linux/cpu.h>
 #include <linux/freezer.h>
 #include <linux/gfp.h>
+#include <linux/syscore_ops.h>
 #include <scsi/scsi_scan.h>
 #include <asm/suspend.h>
 
@@ -271,6 +272,8 @@ static int create_image(int platform_mode)
 	local_irq_disable();
 
 	error = sysdev_suspend(PMSG_FREEZE);
+	if (!error)
+		error = syscore_suspend();
 	if (error) {
 		printk(KERN_ERR "PM: Some system devices failed to power down, "
 			"aborting hibernation\n");
@@ -294,6 +297,7 @@ static int create_image(int platform_mode)
 	}
 
  Power_up:
+	syscore_resume();
 	sysdev_resume();
 	/* NOTE:  dpm_resume_noirq() is just a resume() for devices
 	 * that suspended with irqs off ... no overall powerup.
@@ -402,6 +406,8 @@ static int resume_target_kernel(bool platform_mode)
 	local_irq_disable();
 
 	error = sysdev_suspend(PMSG_QUIESCE);
+	if (!error)
+		error = syscore_suspend();
 	if (error)
 		goto Enable_irqs;
 
@@ -428,6 +434,7 @@ static int resume_target_kernel(bool platform_mode)
 	restore_processor_state();
 	touch_softlockup_watchdog();
 
+	syscore_resume();
 	sysdev_resume();
 
  Enable_irqs:
@@ -515,6 +522,7 @@ int hibernation_platform_enter(void)
 
 	local_irq_disable();
 	sysdev_suspend(PMSG_HIBERNATE);
+	syscore_suspend();
 	if (!pm_check_wakeup_events()) {
 		error = -EAGAIN;
 		goto Power_up;
@@ -525,6 +533,7 @@ int hibernation_platform_enter(void)
 	while (1);
 
  Power_up:
+	syscore_resume();
 	sysdev_resume();
 	local_irq_enable();
 	enable_nonboot_cpus();
