@@ -990,6 +990,16 @@ static void sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 	u16 clk;
 	unsigned long timeout;
 
+	/*
+	 * Controller clock should be enabled before MMC_POWER_UP to do
+	 * register read/writes.
+	 */
+	if ((clock == 0) && (host->mmc->ios.power_mode == MMC_POWER_UP)) {
+		if (host->ops->set_clock)
+			host->ops->set_clock(host, host->mmc->f_min);
+		return;
+	}
+
 	if (clock && clock == host->clock)
 		return;
 
