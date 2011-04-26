@@ -295,7 +295,6 @@ void kernel_restart_prepare(char *cmd)
 	blocking_notifier_call_chain(&reboot_notifier_list, SYS_RESTART, cmd);
 	system_state = SYSTEM_RESTART;
 	device_shutdown();
-	sysdev_shutdown();
 	syscore_shutdown();
 }
 
@@ -333,7 +332,6 @@ static void kernel_shutdown_prepare(enum system_states state)
 void kernel_halt(void)
 {
 	kernel_shutdown_prepare(SYSTEM_HALT);
-	sysdev_shutdown();
 	syscore_shutdown();
 	printk(KERN_EMERG "System halted.\n");
 	machine_halt();
@@ -352,7 +350,6 @@ void kernel_power_off(void)
 	if (pm_power_off_prepare)
 		pm_power_off_prepare();
 	disable_nonboot_cpus();
-	sysdev_shutdown();
 	syscore_shutdown();
 	printk(KERN_EMERG "Power down.\n");
 	machine_power_off();
