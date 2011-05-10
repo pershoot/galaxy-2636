@@ -44,6 +44,9 @@
 
 #define MAX_SAME_LIMIT_SKU_IDS	16
 
+#define KHZ 1000
+#define MHZ 1000000
+
 struct clk;
 
 struct clk_mux_sel {

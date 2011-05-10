@@ -373,12 +373,24 @@ static int tegra2_super_clk_set_rate(struct clk *c, unsigned long rate)
 	return clk_set_rate(c->parent, rate);
 }
 
+static long tegra2_super_clk_round_rate(struct clk *c, unsigned long rate)
+{
+	if (rate < c->min_rate)
+		return c->min_rate;
+	else if (rate > c->max_rate)
+		return c->max_rate;
+	else
+		return rate;
+}
+
+
 static struct clk_ops tegra_super_ops = {
 	.init			= tegra2_super_clk_init,
 	.enable			= tegra2_super_clk_enable,
 	.disable		= tegra2_super_clk_disable,
 	.set_parent		= tegra2_super_clk_set_parent,
 	.set_rate		= tegra2_super_clk_set_rate,
+	.round_rate             = tegra2_super_clk_round_rate,
 };
 
 /* virtual cpu clock functions */
@@ -2347,6 +2359,7 @@ static struct tegra_sku_rate_limit sku_limits[] =
 	RATE_LIMIT("bsea.sclk",	240000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
 	RATE_LIMIT("vde",	240000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
 	RATE_LIMIT("3d",	300000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
+	RATE_LIMIT("mpe",       300000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
 
 	RATE_LIMIT("host1x",	108000000, 0x0F),
 
