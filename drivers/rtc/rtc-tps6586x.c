@@ -343,6 +343,7 @@ static int __devinit tps6586x_rtc_probe(struct platform_device *pdev)
 	rtc->epoch_start = mktime(epoch->year, epoch->month, epoch->day,
 				  epoch->hour, epoch->min, epoch->sec);
 
+	dev_set_drvdata(&pdev->dev, rtc);
 	rtc->rtc = rtc_device_register("tps6586x-rtc", &pdev->dev,
 				       &tps6586x_rtc_ops, THIS_MODULE);
 
@@ -377,7 +378,6 @@ static int __devinit tps6586x_rtc_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	dev_set_drvdata(&pdev->dev, rtc);
 	if (pdata && (pdata->irq >= 0)) {
 		rtc->irq = pdata->irq;
 		err = request_threaded_irq(pdata->irq, NULL, tps6586x_rtc_irq,
