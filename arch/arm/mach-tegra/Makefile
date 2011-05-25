@@ -21,6 +21,7 @@ endif
 obj-y                                   += tegra_spdif_audio.o
 obj-y                                   += tegra_das.o
 obj-y                                   += mc.o
+obj-$(CONFIG_TEGRA_STAT_MON)			+= tegra2_statmon.o
 obj-$(CONFIG_USB_SUPPORT)               += usb_phy.o
 obj-$(CONFIG_FIQ)                       += fiq.o
 obj-$(CONFIG_TEGRA_FIQ_DEBUGGER)        += tegra_fiq_debugger.o

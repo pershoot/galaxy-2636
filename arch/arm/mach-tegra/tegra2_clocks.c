@@ -35,6 +35,7 @@
 #include "clock.h"
 #include "fuse.h"
 #include "tegra2_emc.h"
+#include "tegra2_statmon.h"
 
 #define RST_DEVICES			0x004
 #define RST_DEVICES_SET			0x300
@@ -1366,11 +1367,15 @@ static int tegra_clk_shared_bus_enable(struct clk *c)
 {
 	c->u.shared_bus_user.enabled = true;
 	tegra_clk_shared_bus_update(c->parent);
+	if (strcmp(c->name, "avp.sclk") == 0)
+		tegra2_statmon_start();
 	return 0;
 }
 
 static void tegra_clk_shared_bus_disable(struct clk *c)
 {
+	if (strcmp(c->name, "avp.sclk") == 0)
+		tegra2_statmon_stop();
 	c->u.shared_bus_user.enabled = false;
 	tegra_clk_shared_bus_update(c->parent);
 }

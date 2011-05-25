@@ -248,3 +248,10 @@ config DISABLE_3D_POWERGATING
           This is for silicon errata of 3D power gating. By setting this
           config, 3D power will never be gated.
 
+config TEGRA_STAT_MON
+        bool "Enable H/W statistics monitor"
+        depends on ARCH_TEGRA_2x_SOC
+        default n
+        help
+          Enables support for hardware statistics monitor for AVP.
+
