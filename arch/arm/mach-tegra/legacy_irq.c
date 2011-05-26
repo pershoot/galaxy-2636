@@ -174,6 +174,17 @@ void tegra_init_legacy_irq(void)
 	}
 }
 
+void tegra_init_legacy_irq_cop(void)
+{
+	int i;
+
+	for (i = 0; i < NUM_ICTLRS; i++) {
+		void __iomem *ictlr = ictlr_reg_base[i];
+		writel(~0, ictlr + ICTLR_COP_IER_CLR);
+		writel(0, ictlr + ICTLR_COP_IEP_CLASS);
+	}
+}
+
 #ifdef CONFIG_PM
 static u32 cop_ier[NUM_ICTLRS];
 static u32 cpu_ier[NUM_ICTLRS];
