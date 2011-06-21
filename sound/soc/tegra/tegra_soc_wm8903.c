@@ -504,7 +504,6 @@ static int tegra_codec_init(struct snd_soc_codec *codec)
 			err = -ENODEV;
 			return err;
 		}
-		clk_enable(audio_data->dap_mclk);
 
 		/* Add tegra specific widgets */
 		snd_soc_dapm_new_controls(codec, tegra_dapm_widgets,
