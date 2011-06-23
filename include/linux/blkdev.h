@@ -69,6 +69,50 @@ enum rq_cmd_type_bits {
 	REQ_TYPE_ATA_PC,
 };
 
+/*
+ * For request of type REQ_TYPE_LINUX_BLOCK, rq->cmd[0] is the opcode being
+ * sent down (similar to how REQ_TYPE_BLOCK_PC means that ->cmd[] holds a
+ * SCSI cdb.
+ *
+ * 0x00 -> 0x3f are driver private, to be used for whatever purpose they need,
+ * typically to differentiate REQ_TYPE_SPECIAL requests.
+ *
+ */
+enum {
+        REQ_LB_OP_EJECT = 0x40,         /* eject request */
+        REQ_LB_OP_FLUSH = 0x41,         /* flush request */
+};
+
+#define REQ_RW          (1 << __REQ_RW)
+#define REQ_FAILFAST_DEV        (1 << __REQ_FAILFAST_DEV)
+#define REQ_FAILFAST_TRANSPORT  (1 << __REQ_FAILFAST_TRANSPORT)
+#define REQ_FAILFAST_DRIVER     (1 << __REQ_FAILFAST_DRIVER)
+#define REQ_DISCARD     (1 << __REQ_DISCARD)
+#define REQ_SORTED      (1 << __REQ_SORTED)
+#define REQ_SOFTBARRIER (1 << __REQ_SOFTBARRIER)
+#define REQ_HARDBARRIER (1 << __REQ_HARDBARRIER)
+#define REQ_FUA         (1 << __REQ_FUA)
+#define REQ_NOMERGE     (1 << __REQ_NOMERGE)
+#define REQ_STARTED     (1 << __REQ_STARTED)
+#define REQ_DONTPREP    (1 << __REQ_DONTPREP)
+#define REQ_QUEUED      (1 << __REQ_QUEUED)
+#define REQ_ELVPRIV     (1 << __REQ_ELVPRIV)
+#define REQ_FAILED      (1 << __REQ_FAILED)
+#define REQ_QUIET       (1 << __REQ_QUIET)
+#define REQ_PREEMPT     (1 << __REQ_PREEMPT)
+#define REQ_ORDERED_COLOR       (1 << __REQ_ORDERED_COLOR)
+#define REQ_RW_SYNC     (1 << __REQ_RW_SYNC)
+#define REQ_ALLOCED     (1 << __REQ_ALLOCED)
+#define REQ_RW_META     (1 << __REQ_RW_META)
+#define REQ_COPY_USER   (1 << __REQ_COPY_USER)
+#define REQ_INTEGRITY   (1 << __REQ_INTEGRITY)
+#define REQ_NOIDLE      (1 << __REQ_NOIDLE)
+#define REQ_IO_STAT     (1 << __REQ_IO_STAT)
+#define REQ_MIXED_MERGE (1 << __REQ_MIXED_MERGE)
+
+#define REQ_FAILFAST_MASK       (REQ_FAILFAST_DEV | REQ_FAILFAST_TRANSPORT | \
+                                 REQ_FAILFAST_DRIVER)
+
 #define BLK_MAX_CDB	16
 
 /*

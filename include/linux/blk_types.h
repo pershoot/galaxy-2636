@@ -144,7 +144,9 @@ enum rq_flag_bits {
 	__REQ_QUIET,		/* don't worry about errors */
 	__REQ_PREEMPT,		/* set for "ide_preempt" requests */
 	__REQ_ORDERED_COLOR,	/* is before or after barrier */
+	__REQ_RW_SYNC,          /* request is sync (sync write or read) */
 	__REQ_ALLOCED,		/* request came from our alloc pool */
+	__REQ_RW_META,          /* metadata io request */
 	__REQ_COPY_USER,	/* contains copies of user pages */
 	__REQ_INTEGRITY,	/* integrity metadata has been remapped */
 	__REQ_FLUSH,		/* request for cache flush */
