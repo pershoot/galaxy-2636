@@ -44,6 +44,57 @@
 #define BIO_MAX_SECTORS		(BIO_MAX_SIZE >> 9)
 
 /*
+ * bio bi_rw flags
+ *
+ * bit 0 -- data direction
+ *      If not set, bio is a read from device. If set, it's a write to device.
+ * bit 1 -- fail fast device errors
+ * bit 2 -- fail fast transport errors
+ * bit 3 -- fail fast driver errors
+ * bit 4 -- rw-ahead when set
+ * bit 5 -- barrier
+ *      Insert a serialization point in the IO queue, forcing previously
+ *      submitted IO to be completed before this one is issued.
+ * bit 6 -- synchronous I/O hint.
+ * bit 7 -- Unplug the device immediately after submitting this bio.
+ * bit 8 -- metadata request
+ *      Used for tracing to differentiate metadata and data IO. May also
+ *      get some preferential treatment in the IO scheduler
+ * bit 9 -- discard sectors
+ *      Informs the lower level device that this range of sectors is no longer
+ *      used by the file system and may thus be freed by the device. Used
+ *      for flash based storage.
+ *      Don't want driver retries for any fast fail whatever the reason.
+ * bit 10 -- Tell the IO scheduler not to wait for more requests after this
+        one has been submitted, even if it is a SYNC request.
+ */
+enum bio_rw_flags {
+        BIO_RW,
+        BIO_RW_FAILFAST_DEV,
+        BIO_RW_FAILFAST_TRANSPORT,
+        BIO_RW_FAILFAST_DRIVER,
+        /* above flags must match REQ_* */
+        BIO_RW_AHEAD,
+        BIO_RW_BARRIER,
+        BIO_RW_SYNCIO,
+        BIO_RW_UNPLUG,
+        BIO_RW_META,
+        BIO_RW_DISCARD,
+        BIO_RW_NOIDLE,
+};
+
+/*
+ * First four bits must match between bio->bi_rw and rq->cmd_flags, make
+ * that explicit here.
+ */
+#define BIO_RW_RQ_MASK          0xf
+
+static inline bool bio_rw_flagged(struct bio *bio, enum bio_rw_flags flag)
+{
+        return (bio->bi_rw & (1 << flag)) != 0;
+}
+
+/*
  * upper 16 bits of bi_rw define the io priority of this bio
  */
 #define BIO_PRIO_SHIFT	(8 * sizeof(unsigned long) - IOPRIO_BITS)
