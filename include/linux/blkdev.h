@@ -566,6 +566,9 @@ static inline bool rq_is_sync(struct request *rq)
 	return rw_is_sync(rq->cmd_flags);
 }
 
+#define rq_is_meta(rq)          ((rq)->cmd_flags & REQ_RW_META)
+#define rq_noidle(rq)           ((rq)->cmd_flags & REQ_NOIDLE)
+
 static inline int blk_queue_full(struct request_queue *q, int sync)
 {
 	if (sync)
