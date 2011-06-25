@@ -114,6 +114,7 @@ static __initdata struct tegra_clk_init_table common_clk_init_table[] = {
 	{ "csite",	NULL,		0,		true },
 	{ "timer", 	NULL,		0,		true },
 	{ "kfuse",	NULL,		0,		true },
+	{ "fuse",	NULL,		0,		true },
 	{ "rtc",	NULL,		0,		true },
 
 	/* set frequencies of some device clocks */
@@ -136,7 +137,7 @@ void __init tegra_init_cache(void)
             When called form Normal we obtain an abort.
             Instructions that must be called in Secure :
                - Tag and Data RAM Latency Control Registers (0x108 & 0x10C) must be written in Secure.
-        
+
    The following section of code has been regrouped in the implementation of "l2x0_init".
    The "l2x0_init" will in fact call an SMC intruction to switch from Normal context to Secure context.
    The configuration and activation will be done in Secure.
