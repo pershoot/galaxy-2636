@@ -394,6 +394,8 @@ void file_sb_list_del(struct file *file)
 	}
 }
 
+EXPORT_SYMBOL(file_sb_list_del);
+
 #ifdef CONFIG_SMP
 
 /*
