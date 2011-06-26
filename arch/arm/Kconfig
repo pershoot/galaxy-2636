@@ -1710,6 +1710,13 @@ config CPU_FREQ_S3C24XX_DEBUGFS
 	help
 	  Export status information via debugfs.
 
+config TEGRA_OVERCLOCK
+	bool "TEGRA_OVERCLOCK - Overclocking"
+	depends on CPU_FREQ
+	default n
+	help
+	  This enables overclocking to 1.4GHZ.
+
 endif
 
 source "drivers/cpuidle/Kconfig"
