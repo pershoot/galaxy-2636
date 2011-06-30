@@ -626,7 +626,7 @@ extern bool   ap_fw_loaded;
 int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
 #ifndef CUSTOMER_HW_SAMSUNG
-	int power_mode = PM_FAST;
+	int power_mode = PM_MAX;
 #endif
 #ifndef DTIM_CNT1    // for DTIM 1
 	char iovbuf[32];
