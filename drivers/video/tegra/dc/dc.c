@@ -536,11 +536,6 @@ static unsigned int tegra_dc_find_max_bandwidth(struct tegra_dc_win *wins[],
 
 /* 8 bits per byte (1 << 3) */
 #define BIT_TO_BYTE_SHIFT 3
-/*
- * Assuming 50% (X >> 1) efficiency: i.e. if we calculate we need 70MBps, we
- * will request 140MBps from EMC.
- */
-#define MEM_EFFICIENCY_SHIFT 1
 static unsigned long tegra_dc_get_emc_rate(struct tegra_dc_win *wins[], int n)
 {
 	int i;
@@ -576,7 +571,9 @@ static unsigned long tegra_dc_get_emc_rate(struct tegra_dc_win *wins[], int n)
 			(WIN_IS_TILED(w) ? TILED_WINDOWS_BW_MULTIPLIER : 1);
 	}
 
-	max = tegra_dc_find_max_bandwidth(wins, bw, n) << MEM_EFFICIENCY_SHIFT;
+	max = tegra_dc_find_max_bandwidth(wins, bw, n);
+	/* multiply bandwidth by 2.5 assuming 40% memory efficiency */
+	max = (max << 1) + (max >> 1);
 
 	ret = EMC_BW_TO_FREQ(max);
 
@@ -590,7 +587,6 @@ static unsigned long tegra_dc_get_emc_rate(struct tegra_dc_win *wins[], int n)
 	return ret;
 }
 #undef BIT_TO_BYTE_SHIFT
-#undef MEM_EFFICIENCY_SHIFT
 
 static void tegra_dc_change_emc(struct tegra_dc *dc)
 {
