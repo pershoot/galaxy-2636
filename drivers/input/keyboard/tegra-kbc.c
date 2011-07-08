@@ -586,7 +586,7 @@ static int __devinit tegra_kbc_probe(struct platform_device *pdev)
 	}
 	kbc->ncols = nc;
 
-	for (i = 0; i < pdata->wake_key_cnt; i++)
+	for (i = 0; i < KBC_MAX_ROW; i++)
 		kbc->wake_enable_keys[i] = ~0u;
 
 	for (i = 0; i < pdata->wake_key_cnt; i++)
@@ -693,10 +693,21 @@ static int __devexit tegra_kbc_remove(struct platform_device *pdev)
 static int tegra_kbc_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct tegra_kbc *kbc = platform_get_drvdata(pdev);
+	int timeout = kbc->pdata->scan_timeout_cnt/32 + 200;
+	unsigned long int_st;
 
 	dev_dbg(&pdev->dev, "KBC: tegra_kbc_suspend\n");
 	if (device_may_wakeup(&pdev->dev) &&
 		(kbc->pdata->is_wake_on_any_key || kbc->pdata->wake_key_cnt)) {
+		timeout = timeout/10;
+		while (timeout--) {
+			int_st = readl(kbc->mmio + KBC_INT_0);
+			if (int_st & 0x8) {
+				msleep(10);
+				continue;
+			}
+			break;
+		}
 		tegra_kbc_setup_wakekeys(kbc, true);
 		enable_irq_wake(kbc->irq);
 		/* Forcefully clear the interrupt status */
