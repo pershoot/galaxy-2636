@@ -33,7 +33,7 @@
 
 #include "dev.h"
 
-#define ACM_TIMEOUT 1*HZ
+#define ACM_TIMEOUT_MSEC 25
 #if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 #define SUSPEND_TIMEOUT 6*HZ // As per __device_suspend timer.expires
 #endif
@@ -119,7 +119,8 @@ void nvhost_module_idle_mult(struct nvhost_module *mod, int refs)
 	mutex_lock(&mod->lock);
 	if (atomic_sub_return(refs, &mod->refcount) == 0) {
 		BUG_ON(!mod->powered);
-		schedule_delayed_work(&mod->powerdown, ACM_TIMEOUT);
+		schedule_delayed_work(
+			&mod->powerdown, msecs_to_jiffies(ACM_TIMEOUT_MSEC));
 		kick = true;
 	}
 	mutex_unlock(&mod->lock);
@@ -266,7 +267,7 @@ int nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 		dev = container_of(mod, struct nvhost_master, mod);
 	}
 	else {
-		idle_timeout = ACM_TIMEOUT;
+		idle_timeout = ACM_TIMEOUT_MSEC;
 		dev = container_of(mod, struct nvhost_channel, mod)->dev;
 	}
 
@@ -316,7 +317,7 @@ int nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 		debug_not_idle(mod);
 
 	ret = wait_event_timeout(mod->idle, is_module_idle(mod),
-			   ACM_TIMEOUT + msecs_to_jiffies(3000));
+			   msecs_to_jiffies(ACM_TIMEOUT_MSEC + 500));
 	if (ret == 0)
 		nvhost_debug_dump();
 
