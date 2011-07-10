@@ -41,7 +41,7 @@ static const int core_millivolts[MAX_DVFS_FREQS] =
 	{950, 1000, 1100, 1200, 1225, 1275, 1300};
 static const int cpu_millivolts[MAX_DVFS_FREQS] =
 #if defined(CONFIG_TEGRA_OVERCLOCK)
-	{750, 775, 800, 825, 850, 875, 950, 975, 975, 1025, 1075, 1125, 1175, 1200, 1225};
+	{900, 925, 950, 975, 1000, 1025, 1050, 1075, 1100, 1125, 1150, 1175, 1200, 1225, 1250};
 #else
 	{750, 775, 800, 825, 850, 875, 900, 925, 950, 975, 1000, 1025, 1050, 1100, 1125};
 #endif
@@ -49,7 +49,7 @@ static const int cpu_millivolts[MAX_DVFS_FREQS] =
 static const int cpu_speedo_nominal_millivolts[] =
 /* spedo_id  0,    1,    2 */
 #if defined(CONFIG_TEGRA_OVERCLOCK)
-	{ 1100, 1175, 1125 };
+	{ 1100, 1250, 1125 };
 #else
 	{ 1100, 1025, 1125 };
 #endif
@@ -57,7 +57,7 @@ static const int cpu_speedo_nominal_millivolts[] =
 static const int core_speedo_nominal_millivolts[] =
 /* spedo_id  0,    1,    2 */
 #if defined(CONFIG_TEGRA_OVERCLOCK)
-	{ 1225, 1275, 1300 };
+	{ 1225, 1300, 1300 };
 #else
 	{ 1225, 1225, 1300 };
 #endif
@@ -68,9 +68,9 @@ static const int core_speedo_nominal_millivolts[] =
 static struct dvfs_rail tegra2_dvfs_rail_vdd_cpu = {
 	.reg_id = "vdd_cpu",
 #if defined(CONFIG_TEGRA_OVERCLOCK)
-	.max_millivolts = 1225,
-	.min_millivolts = 750,
-	.nominal_millivolts = 1225,
+	.max_millivolts = 1250,
+	.min_millivolts = 900,
+	.nominal_millivolts = 1250,
 #else
 	.max_millivolts = 1125,
 	.min_millivolts = 750,
@@ -178,7 +178,7 @@ static struct dvfs dvfs_init[] = {
 	CPU_DVFS("cpu", 0, 3, MHZ, 730, 760, 845, 845, 940, 1000),
 
 #if defined(CONFIG_TEGRA_OVERCLOCK)
-	/* Cpu voltages (mV):	   750, 775, 800, 825, 850, 875,  950,  975,  975,  1025,  1075, 1125, 1175, 1200, 1225 */
+	/* Cpu voltages (mV):	   900, 925, 950, 975, 1000, 1025,  1050,  1075,  1100,  1125,  1150, 1175, 1200, 1225, 1250 */
 	CPU_DVFS("cpu", 1, 0, MHZ, 380, 380, 503, 503, 655, 655,  798,  798,  902,  902,  960,  1000, 1200, 1400),
 	CPU_DVFS("cpu", 1, 1, MHZ, 389, 389, 503, 503, 655, 760,  798,  798,  950,  950,  1000, 1200, 1400),
 	CPU_DVFS("cpu", 1, 2, MHZ, 598, 598, 750, 750, 893, 893,  1000, 1200, 1400),
