@@ -38,7 +38,6 @@
 #define SUSPEND_TIMEOUT 6*HZ // As per __device_suspend timer.expires
 #endif
 
-#define DISABLE_3D_POWERGATING
 #define DISABLE_MPE_POWERGATING
 
 void nvhost_module_busy(struct nvhost_module *mod)
@@ -186,7 +185,7 @@ int nvhost_module_init(struct nvhost_module *mod, const char *name,
 	mod->force_suspend = false;
 #endif
 
-#ifdef DISABLE_3D_POWERGATING
+#if CONFIG_DISABLE_3D_POWERGATING
 	/*
 	 * It is possible for the 3d block to generate an invalid memory
 	 * request during the power up sequence in some cases.  Workaround
