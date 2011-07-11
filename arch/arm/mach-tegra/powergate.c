@@ -180,8 +180,6 @@ err_power:
 	return ret;
 }
 
-#ifdef CONFIG_DEBUG_FS
-
 static const char *powergate_name[] = {
 	[TEGRA_POWERGATE_CPU]	= "cpu",
 	[TEGRA_POWERGATE_3D]	= "3d",
@@ -191,6 +189,16 @@ static const char *powergate_name[] = {
 	[TEGRA_POWERGATE_L2]	= "l2",
 	[TEGRA_POWERGATE_MPE]	= "mpe",
 };
+
+const char* tegra_powergate_get_name(int id)
+{
+	if (id < 0 || id >= TEGRA_NUM_POWERGATE)
+		return "invalid";
+
+	return powergate_name[id];
+}
+
+#ifdef CONFIG_DEBUG_FS
 
 static int powergate_show(struct seq_file *s, void *data)
 {

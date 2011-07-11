@@ -52,6 +52,7 @@
 #include <mach/iovmm.h>
 #include <mach/irqs.h>
 #include <mach/legacy_irq.h>
+#include <mach/powergate.h>
 #include <mach/suspend.h>
 
 #include "board.h"
@@ -486,10 +487,37 @@ static u8 *iram_save = NULL;
 static unsigned int iram_save_size = 0;
 static void __iomem *iram_code = IO_ADDRESS(TEGRA_IRAM_CODE_AREA);
 
+static void tegra_suspend_check_pwr_stats(void)
+{
+	/* cpus and l2 are powered off later */
+	unsigned long pwrgate_partid_mask =
+#if !defined(CONFIG_ARCH_TEGRA_2x_SOC)
+		(1 << TEGRA_POWERGATE_HEG)      |
+		(1 << TEGRA_POWERGATE_SATA)     |
+		(1 << TEGRA_POWERGATE_3D1)      |
+#endif
+		(1 << TEGRA_POWERGATE_3D)       |
+		(1 << TEGRA_POWERGATE_VENC)     |
+		(1 << TEGRA_POWERGATE_PCIE)     |
+		(1 << TEGRA_POWERGATE_VDEC)     |
+		(1 << TEGRA_POWERGATE_MPE);
+
+	int partid;
+
+	for (partid = 0; partid < TEGRA_NUM_POWERGATE; partid++)
+		if ((1 << partid) & pwrgate_partid_mask)
+			if (tegra_powergate_is_powered(partid))
+				pr_warning("partition %s is left on before suspend\n",
+							tegra_powergate_get_name(partid));
+	return;
+}
+
 static void tegra_suspend_dram(bool do_lp0)
 {
 	unsigned int mode = TEGRA_POWER_SDRAM_SELFREFRESH;
 	unsigned long orig, reg;
+
+	tegra_suspend_check_pwr_stats();
 
 	orig = readl(evp_reset);
 	/* copy the reset vector and SDRAM shutdown code into IRAM */
