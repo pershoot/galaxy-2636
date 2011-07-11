@@ -6,6 +6,8 @@
  * Author:
  *	Colin Cross <ccross@google.com>
  *
+ * Copyright (C) 2011 NVIDIA Corporation
+ *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
  * may be copied, distributed, and modified under those terms.
@@ -42,10 +44,12 @@ struct tegra_suspend_platform_data {
 	bool sysclkreq_high;       /* System clock request is active-high */
 	bool separate_req;         /* Core & CPU power request are separate */
 	enum tegra_suspend_mode suspend_mode;
+	unsigned long cpu_lp2_min_residency; /* Min LP2 state residency in us */
 };
 
 unsigned long tegra_cpu_power_good_time(void);
 unsigned long tegra_cpu_power_off_time(void);
+unsigned long tegra_cpu_lp2_min_residency(void);
 enum tegra_suspend_mode tegra_get_suspend_mode(void);
 
 void __tegra_lp1_reset(void);

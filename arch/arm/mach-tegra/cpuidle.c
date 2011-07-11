@@ -3,7 +3,7 @@
  *
  * CPU idle driver for Tegra CPUs
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -67,6 +67,7 @@ module_param(lp2_in_idle, bool, 0644);
 static s64 tegra_cpu1_idle_time = LLONG_MAX;;
 static int tegra_lp2_exit_latency;
 static int tegra_lp2_power_off_time;
+static unsigned int tegra_lp2_min_residency;
 
 static struct {
 	unsigned int cpu_ready_count[2];
@@ -482,6 +483,8 @@ static int tegra_idle_enter_lp2(struct cpuidle_device *dev,
 	state->exit_latency = tegra_lp2_exit_latency;
 	state->target_residency = tegra_lp2_exit_latency +
 		tegra_lp2_power_off_time;
+	if (state->target_residency < tegra_lp2_min_residency)
+		state->target_residency = tegra_lp2_min_residency;
 
 	idle_stats.cpu_wants_lp2_time[dev->cpu] += us;
 
@@ -501,6 +504,7 @@ static int tegra_cpuidle_register_device(unsigned int cpu)
 	dev->cpu = cpu;
 
 	tegra_lp2_power_off_time = tegra_cpu_power_off_time();
+	tegra_lp2_min_residency = tegra_cpu_lp2_min_residency();
 
 	state = &dev->states[0];
 	snprintf(state->name, CPUIDLE_NAME_LEN, "LP3");
@@ -520,6 +524,8 @@ static int tegra_cpuidle_register_device(unsigned int cpu)
 
 	state->target_residency = tegra_cpu_power_off_time() +
 		tegra_cpu_power_good_time();
+	if (state->target_residency < tegra_lp2_min_residency)
+		state->target_residency = tegra_lp2_min_residency;
 	state->power_usage = 0;
 	state->flags = CPUIDLE_FLAG_BALANCED | CPUIDLE_FLAG_TIME_VALID;
 	state->enter = tegra_idle_enter_lp2;
