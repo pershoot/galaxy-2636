@@ -350,7 +350,10 @@ static noinline void restore_cpu_complex(void)
 	 * by CPU boot-up code - wait for PLL stabilization if PLLX
 	 * was enabled, or if explicitly requested by caller */
 
-	BUG_ON(readl(clk_rst + CLK_RESET_PLLX_BASE) != tegra_sctx.pllx_base);
+	reg = readl(clk_rst + CLK_RESET_PLLX_BASE);
+	/* mask out bit 27 - not to check PLL lock bit */
+	BUG_ON((reg & (~(1 << 27))) !=
+			(tegra_sctx.pllx_base & (~(1 << 27))));
 
 	if (tegra_sctx.pllx_base & (1<<30)) {
 		while (readl(tmrus)-tegra_sctx.pll_timeout >= 0x80000000UL)
