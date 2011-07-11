@@ -204,10 +204,7 @@ static int tegra_set_wake(unsigned int irq, unsigned int enable)
 
 static int tegra_set_type(unsigned int irq, unsigned int flow_type)
 {
-	if (tegra_get_suspend_mode() == TEGRA_SUSPEND_LP0)
-		return tegra_set_lp0_wake_type(irq, flow_type);
-
-	return 0;
+	return tegra_set_lp0_wake_type(irq, flow_type);
 }
 
 static void tegra_ack(unsigned int irq)

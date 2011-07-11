@@ -212,8 +212,7 @@ static int tegra_gpio_irq_set_type(unsigned int irq, unsigned int type)
 	else if (type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING))
 		__set_irq_handler_unlocked(irq, handle_edge_irq);
 
-	if (tegra_get_suspend_mode() == TEGRA_SUSPEND_LP0)
-		tegra_set_lp0_wake_type(irq, type);
+	tegra_set_lp0_wake_type(irq, type);
 
 	return 0;
 }
@@ -396,11 +395,9 @@ static int tegra_gpio_wake_enable(unsigned int irq, unsigned int enable)
 	struct tegra_gpio_bank *bank = get_irq_chip_data(irq);
 
 	ret = tegra_set_lp1_wake(bank->irq, enable);
+	ret |= tegra_set_lp0_wake(irq, enable);
 	if (ret)
 		return ret;
-
-	if (tegra_get_suspend_mode() == TEGRA_SUSPEND_LP0)
-		return tegra_set_lp0_wake(irq, enable);
 
 	return 0;
 }
