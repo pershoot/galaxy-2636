@@ -6177,6 +6177,12 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			/* save country setting if was pre-setup with priv ioctl */
 			dhd_wl_ioctl_cmd(bus->dhd, WLC_GET_COUNTRY,
 				bus->dhd->country_code, sizeof(bus->dhd->country_code), FALSE, 0);
+
+#if !defined(OOB_INTR_ONLY)
+			/* to avoid supurious client interrupt during stop process */
+			bcmsdh_stop(bus->sdh);
+#endif /* !defined(OOB_INTR_ONLY) */
+
 			/* Expect app to have torn down any connection before calling */
 			/* Stop the bus, disable F2 */
 			dhd_os_sdlock(dhdp);
