@@ -300,6 +300,7 @@ static int tegra_sdhci_restore(struct sdhci_host *sdhost)
 {
 	unsigned long timeout;
 	u8 mask = SDHCI_RESET_ALL;
+	u8 pwr;
 
 	sdhci_writeb(sdhost, mask, SDHCI_SOFTWARE_RESET);
 
@@ -320,6 +321,11 @@ static int tegra_sdhci_restore(struct sdhci_host *sdhost)
 	}
 
 	tegra_sdhci_restore_interrupts(sdhost);
+
+	pwr = SDHCI_POWER_ON;
+	sdhci_writeb(sdhost, pwr, SDHCI_POWER_CONTROL);
+	sdhost->pwr = 0;
+
 	return 0;
 }
 
@@ -373,7 +379,6 @@ static int tegra_sdhci_resume(struct platform_device *pdev)
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA	
 	int i, present;
 #endif
-	u8 pwr;
 	if (host->card_always_on && is_card_sdio(host->sdhci->mmc->card)) {
 		int ret = 0;
 
@@ -404,10 +409,6 @@ static int tegra_sdhci_resume(struct platform_device *pdev)
 	}
 
 	tegra_sdhci_enable_clock(host, 1);
-
-	pwr = SDHCI_POWER_ON;
-	sdhci_writeb(host->sdhci, pwr, SDHCI_POWER_CONTROL);
-	host->sdhci->pwr = 0;
 
 	ret = sdhci_resume_host(host->sdhci);
 	if (ret)
