@@ -50,7 +50,7 @@
 
 #if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE)
 #include "p4_cmc623_tune.h"
-#elif (CONFIG_MACH_SAMSUNG_P5)
+#elif defined(CONFIG_MACH_SAMSUNG_P5)
 #include "p5_cmc623_tune.h"
 #else
 #error Undefined Tuning Value
@@ -2284,16 +2284,16 @@ static int alloc_cmc623_gpio(void)
     cmc623_state.gpio.mlcd_on1 = GPIO_MLCD_ON1;
     cmc623_state.gpio.ima_n_rst = GPIO_IMA_N_RST;
     
-#if defined (CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI)
+#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI)
     cmc623_state.gpio.bl_reset = GPIO_BL_RESET;
     cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON;
-#elif (CONFIG_MACH_SAMSUNG_P4LTE)
+#elif defined(CONFIG_MACH_SAMSUNG_P4LTE)
     cmc623_state.gpio.bl_reset = GPIO_BL_RESET;
     if(system_rev > 0x0A)
         cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON;
     else 
         cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON_REV05;
-#elif (CONFIG_MACH_SAMSUNG_P5)  
+#elif defined(CONFIG_MACH_SAMSUNG_P5)
     cmc623_state.gpio.bl_reset = GPIO_BL_RESET;
     cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON;
     if (system_rev < 6)

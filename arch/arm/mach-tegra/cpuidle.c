@@ -221,7 +221,7 @@ static void tegra_wake_cpu1(void)
 #endif
 
 	boot_vector = virt_to_phys(tegra_hotplug_startup);
-#if CONFIG_TRUSTED_FOUNDATIONS
+#ifdef CONFIG_TRUSTED_FOUNDATIONS
 	callGenericSMC(0xFFFFFFFC, 0xFFFFFFE5, boot_vector);
 #else
 	old_boot_vector = readl(vector_base);

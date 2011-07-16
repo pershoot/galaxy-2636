@@ -105,7 +105,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 	smp_wmb();
 
-#if CONFIG_TRUSTED_FOUNDATIONS
+#ifdef CONFIG_TRUSTED_FOUNDATIONS
 	callGenericSMC(0xFFFFFFFC, 0xFFFFFFE5, boot_vector);
 #else
 	old_boot_vector = readl(vector_base);
