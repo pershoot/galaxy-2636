@@ -323,8 +323,8 @@ static struct sysdev_class tegra2_statmon_sysclass = {
 	static SYSDEV_CLASS_ATTR(_attr, _mode, \
 		tegra2_statmon_##_attr##_show, tegra2_statmon_##_attr##_store)
 
-TEGRA2_STATMON_ATTRIBUTE_EXPAND(enable, 0666);
-TEGRA2_STATMON_ATTRIBUTE_EXPAND(sample_time, 0666);
+TEGRA2_STATMON_ATTRIBUTE_EXPAND(enable, 0644);
+TEGRA2_STATMON_ATTRIBUTE_EXPAND(sample_time, 0644);
 
 #define TEGRA2_STATMON_ATTRIBUTE(_name) (&attr_##_name)
 
