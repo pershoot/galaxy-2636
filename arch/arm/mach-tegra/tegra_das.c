@@ -250,31 +250,41 @@ static int das_set_dap_ms_mode(u32 dap_port_idx, bool is_master_mode)
 
 static int das_set_pin_state(bool normal)
 {
+	const struct tegra_dap_property *dap_info =
+		&das_drv_data->pdata->tegra_dap_port_info_table[0];
 	mutex_lock(&das_drv_data->mlock);
 	if (normal) {
 		if (das_drv_data->tristate_count == 0) {
 			/* Enable the DAP outputs */
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP1,
-						TEGRA_TRI_NORMAL);
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP2,
-						TEGRA_TRI_NORMAL);
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP3,
-						TEGRA_TRI_NORMAL);
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP4,
-						TEGRA_TRI_NORMAL);
+			if (dap_info[0].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP1,
+					TEGRA_TRI_NORMAL);
+			if (dap_info[1].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP2,
+					TEGRA_TRI_NORMAL);
+			if (dap_info[2].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP3,
+					TEGRA_TRI_NORMAL);
+			if (dap_info[3].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP4,
+					TEGRA_TRI_NORMAL);
 		}
 		das_drv_data->tristate_count++;
 	} else {
 		das_drv_data->tristate_count--;
 		/* Tristate the DAP pinmux */
 		if (das_drv_data->tristate_count == 0) {
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP1,
+			if (dap_info[0].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP1,
 					TEGRA_TRI_TRISTATE);
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP2,
+			if (dap_info[1].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP2,
 					TEGRA_TRI_TRISTATE);
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP3,
+			if (dap_info[2].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP3,
 					TEGRA_TRI_TRISTATE);
-			tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP4,
+			if (dap_info[3].dap_port != tegra_das_port_none)
+				tegra_pinmux_set_tristate(TEGRA_PINGROUP_DAP4,
 					TEGRA_TRI_TRISTATE);
 		}
 	}
