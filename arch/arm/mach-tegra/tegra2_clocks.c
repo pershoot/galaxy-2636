@@ -1123,7 +1123,7 @@ static long tegra2_emc_clk_round_rate(struct clk *c, unsigned long rate)
 	if (new_rate < 0)
 		return c->max_rate;
 
-	BUG_ON(new_rate != tegra2_periph_clk_round_rate(c, new_rate));
+	BUG_ON(abs(new_rate - tegra2_periph_clk_round_rate(c, new_rate)) > 2000);
 
 	return new_rate;
 }
