@@ -8727,9 +8727,12 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 				goto wl_iw_event_end;
 			}
 		} else {
-			memcpy(wrqu.addr.sa_data, &e->addr.octet, ETHER_ADDR_LEN);
-			wrqu.addr.sa_family = ARPHRD_ETHER;
-			cmd = SIOCGIWAP;
+			WL_ASSOC(("%s: WLC_E_ROAM: success\n", __FUNCTION__));
+#if defined(ROAM_NOT_USED)
+			roam_no_success_send = FALSE;
+			roam_no_success = 0;
+#endif
+			goto wl_iw_event_end;
 		}
 	break;
 	case WLC_E_DEAUTH_IND:
