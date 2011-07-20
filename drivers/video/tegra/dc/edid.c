@@ -15,7 +15,6 @@
  *
  */
 
-#define DEBUG
 
 #include <linux/debugfs.h>
 #include <linux/fb.h>
