@@ -154,6 +154,8 @@
 static void __iomem *reg_clk_base = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
 static void __iomem *reg_pmc_base = IO_ADDRESS(TEGRA_PMC_BASE);
 
+static void tegra2_clk_shared_bus_update(struct clk *bus);
+
 /*
  * Some peripheral clocks share an enable bit, so refcount the enable bits
  * in registers CLK_ENABLE_L, CLK_ENABLE_H, and CLK_ENABLE_U
@@ -506,6 +508,7 @@ static struct clk_ops tegra_virtual_sclk_ops = {
 	.init = tegra2_virtual_sclk_init,
 	.set_rate = tegra2_virtual_sclk_set_rate,
 	.round_rate = tegra2_virtual_sclk_round_rate,
+	.shared_bus_update = tegra2_clk_shared_bus_update,
 };
 
 /* virtual cop clock functions. Used to acquire the fake 'cop' clock to
@@ -1150,6 +1153,7 @@ static struct clk_ops tegra_emc_clk_ops = {
 	.set_rate		= &tegra2_emc_clk_set_rate,
 	.round_rate		= &tegra2_emc_clk_round_rate,
 	.reset			= &tegra2_periph_clk_reset,
+	.shared_bus_update	= &tegra2_clk_shared_bus_update,
 };
 
 /* Clock doubler ops */
@@ -1325,7 +1329,7 @@ static struct clk_ops tegra_cdev_clk_ops = {
  * enabled shared_bus_user clock, with a minimum value set by the
  * shared bus.
  */
-static void tegra_clk_shared_bus_update(struct clk *bus)
+static void tegra2_clk_shared_bus_update(struct clk *bus)
 {
 	struct clk *c;
 	unsigned long rate = bus->min_rate;
@@ -1336,8 +1340,8 @@ static void tegra_clk_shared_bus_update(struct clk *bus)
 			rate = max(c->u.shared_bus_user.rate, rate);
 	}
 
-	if (rate != clk_get_rate(bus))
-		clk_set_rate(bus, rate);
+	if (rate != clk_get_rate_locked(bus))
+		clk_set_rate_locked(bus, rate);
 };
 
 static void tegra_clk_shared_bus_init(struct clk *c)

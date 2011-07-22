@@ -347,14 +347,11 @@ struct clk *clk_get_parent(struct clk *c)
 }
 EXPORT_SYMBOL(clk_get_parent);
 
-int clk_set_rate(struct clk *c, unsigned long rate)
+int clk_set_rate_locked(struct clk *c, unsigned long rate)
 {
 	int ret = 0;
-	unsigned long flags;
 	unsigned long old_rate;
 	long new_rate;
-
-	clk_lock_save(c, flags);
 
 	if (!c->ops || !c->ops->set_rate) {
 		ret = -ENOSYS;
@@ -391,6 +388,16 @@ int clk_set_rate(struct clk *c, unsigned long rate)
 		ret = tegra_dvfs_set_rate(c, rate);
 
 out:
+	return ret;
+}
+
+int clk_set_rate(struct clk *c, unsigned long rate)
+{
+	int ret;
+	unsigned long flags;
+
+	clk_lock_save(c, flags);
+	ret = clk_set_rate_locked(c, rate);
 	clk_unlock_restore(c, flags);
 	return ret;
 }
@@ -515,6 +522,16 @@ void tegra_periph_reset_assert(struct clk *c)
 	tegra2_periph_reset_assert(c);
 }
 EXPORT_SYMBOL(tegra_periph_reset_assert);
+
+void tegra_clk_shared_bus_update(struct clk *c)
+{
+	unsigned long flags;
+
+	clk_lock_save(c, flags);
+	if (c->ops && c->ops->shared_bus_update)
+		c->ops->shared_bus_update(c);
+	clk_unlock_restore(c, flags);
+}
 
 void __init tegra_init_clock(void)
 {
