@@ -101,6 +101,8 @@ enum tegra_revision tegra_get_revision(void)
 			return TEGRA_REVISION_A03p;
 		else
 			return TEGRA_REVISION_A03;
+	case 4:
+		return TEGRA_REVISION_A04;
 	default:
 		return TEGRA_REVISION_UNKNOWN;
 	}
