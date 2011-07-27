@@ -33,6 +33,8 @@ static struct usb_device_id sec_whitelist_table1[] = {
 	/* PTP camera*/
 	{ USB_DEVICE_INFO(USB_CLASS_STILL_IMAGE, 1, 1) },
 	{ USB_INTERFACE_INFO(USB_CLASS_STILL_IMAGE, 1, 1) },
+	/* Game controller*/
+	{ USB_DEVICE_INFO(USB_CLASS_VENDOR_SPEC, 255, 255) },
 	{ }	/* Terminating entry */
 };
 static struct usb_device_id sec_whitelist_table2[] = {
