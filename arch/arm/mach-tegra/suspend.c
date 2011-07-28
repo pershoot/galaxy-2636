@@ -951,7 +951,8 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 	(void)reg;
 	(void)mode;
 
-	if (plat->suspend_mode == TEGRA_SUSPEND_LP0 && tegra_lp0_vec_size) {
+	if (plat->suspend_mode == TEGRA_SUSPEND_LP0 && tegra_lp0_vec_size &&
+		tegra_lp0_vec_relocate) {
 		unsigned char *reloc_lp0;
 		unsigned long tmp;
 		void __iomem *orig;
