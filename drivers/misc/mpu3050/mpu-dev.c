@@ -60,10 +60,12 @@
 
 #define MPU3050_EARLY_SUSPEND_IN_DRIVER 1
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define CALIBRATION_FILE_PATH	"/efs/calibration_data"
 #define CALIBRATION_DATA_AMOUNT	100
 
 struct acc_data cal_data;
+#endif
 
 /* Platform data for the MPU */
 struct mpu_private_data {
@@ -79,6 +81,7 @@ static int pid;
 
 static struct i2c_client *this_client;
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 int read_accel_raw_xyz(struct acc_data *acc)
 {
 	unsigned char acc_data[6];
@@ -229,6 +232,7 @@ static int accel_do_calibrate(void)
 
 	return err;
 }
+#endif
 
 static int mpu_open(struct inode *inode, struct file *file)
 {
@@ -1104,6 +1108,7 @@ static struct miscdevice i2c_mpu_device = {
 	.fops = &mpu_fops,
 };
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define FACTORY_TEST
 #ifdef FACTORY_TEST
 static ssize_t mpu3050_power_on(struct device *dev,
@@ -1298,6 +1303,7 @@ static struct device *accel_sensor_device;
 
 extern int sensors_register(struct device *dev, void * drvdata, struct device_attribute *attributes[], char *name);
 #endif
+#endif
 
 int mpu3050_probe(struct i2c_client *client,
 		  const struct i2c_device_id *devid)
@@ -1311,6 +1317,7 @@ int mpu3050_probe(struct i2c_client *client,
 	struct i2c_adapter *pressure_adapter = NULL;
 
 	dev_dbg(&client->adapter->dev, "%s\n", __func__);
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #ifdef FACTORY_TEST
 	res = sensors_register(accel_sensor_device, NULL, accel_sensor_attrs, "accelerometer_sensor");
 	if(res) {
@@ -1333,6 +1340,7 @@ int mpu3050_probe(struct i2c_client *client,
 		device_remove_file(sec_mpu3050_dev, &dev_attr_gyro_power_on);
 		return -1;
 	}
+#endif
 #endif
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {

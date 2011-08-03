@@ -24,7 +24,9 @@
 #include <linux/slab.h>
 #include <linux/bh1721fvc.h>
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define FACTORY_TEST
+#endif
 
 #define BH1721FVC_DRV_NAME	"bh1721fvc"
 #define DRIVER_VERSION		"1.0"
@@ -32,7 +34,10 @@
 #define LUX_MIN_VALUE		0
 #define LUX_MAX_VALUE		65528
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define ALS_BUFFER_NUM	10
+#endif
+
 #define bh1721fvc_dbmsg(str, args...) pr_debug("%s: " str, __func__, ##args)
 
 enum BH1721FVC_STATE {
@@ -58,7 +63,9 @@ struct bh1721fvc_data {
 	int (*output)(int);	
 #endif
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	struct bh1721fvc_platform_data *pdata;
+#endif
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	struct work_struct work_light;
@@ -68,6 +75,7 @@ struct bh1721fvc_data {
 	ktime_t light_poll_delay;
 	enum BH1721FVC_STATE state;
 	u8 measure_mode;
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	bool als_buf_initialized;
 	int als_value_buf[ALS_BUFFER_NUM];
 	int als_index_count;
@@ -76,12 +84,32 @@ struct bh1721fvc_data {
 	struct class *factory_class;
 	struct device *factory_dev;
 #endif
+#else
+	u16 previous_lux;
+#endif
 };
 
 static int bh1721fvc_enable(struct bh1721fvc_data *bh1721fvc);
 static int bh1721fvc_disable(struct bh1721fvc_data *bh1721fvc);
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 *value);
+#endif
 static int bh1721fvc_write_byte(struct i2c_client *client, u8 value);
+
+#if defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+static int bh1721fvc_get_luxvalue(struct i2c_client *client, u16 *value)
+{
+        int retry;
+
+        for (retry = 0; retry < 10; retry++)
+                if (i2c_master_recv(client, (u8 *)value, 2) == 2) {
+                        be16_to_cpus(value);
+                        return 0;
+                }
+
+        return -EIO;
+}
+#endif
 
 static bool bh1721fvc_is_measuring(struct bh1721fvc_data *bh1721fvc)
 {
@@ -141,10 +169,12 @@ static int bh1721fvc_write_byte(struct i2c_client *client, u8 value)
 	return -EIO;
 }
 
-
 static int bh1721fvc_enable(struct bh1721fvc_data *bh1721fvc)
 {
 	int err;
+#if defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+	u16 lux;
+#endif
 
 	bh1721fvc_dbmsg("starting poll timer, delay %lldns\n",
 		    ktime_to_ns(bh1721fvc->light_poll_delay));
@@ -168,6 +198,23 @@ static int bh1721fvc_enable(struct bh1721fvc_data *bh1721fvc)
 		mdelay(16);
 	else                                                 /* AUTO_MEASURE */
 		mdelay(120 + 16);
+
+#if defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+	/* If the measured value is same as the last one,          */
+	/* it can't reach to HAL layer because the event type is EV_ABS.      */
+	/* So, when the light sensor is enabled and the measured value is     */
+	/* same as the last one, report the value after adding 1.             */
+	err = bh1721fvc_get_luxvalue(bh1721fvc->client, &lux);
+	if (!err) {
+		if (bh1721fvc->previous_lux == lux) {
+			input_report_abs(bh1721fvc->input_dev, ABS_MISC, ++lux);
+			input_sync(bh1721fvc->input_dev);
+			bh1721fvc->previous_lux = lux;
+			bh1721fvc_dbmsg("same value before disabled,"
+				" send ++lux");
+		}
+	}
+#endif
 
 	hrtimer_start(&bh1721fvc->timer, bh1721fvc->light_poll_delay,
 		HRTIMER_MODE_REL);
@@ -243,8 +290,13 @@ static ssize_t bh1721fvc_light_enable_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t size)
 {
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	int err = 0;
 	bool new_value = false;
+#else
+	int err;
+	bool new_value;
+#endif
 	struct bh1721fvc_data *bh1721fvc = dev_get_drvdata(dev);
 
 	bh1721fvc_dbmsg("enable %s\n", buf);
@@ -264,6 +316,7 @@ static ssize_t bh1721fvc_light_enable_store(struct device *dev,
 	mutex_lock(&bh1721fvc->lock);
 	if (new_value && (!bh1721fvc_is_measuring(bh1721fvc))) {
 		err = bh1721fvc_enable(bh1721fvc);
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 		if (!err) {
 			bh1721fvc->state = bh1721fvc->measure_mode;
 		} else {
@@ -271,14 +324,26 @@ static ssize_t bh1721fvc_light_enable_store(struct device *dev,
 			bh1721fvc->state = POWER_DOWN;
 		}
 		bh1721fvc->als_buf_initialized = false;
+#else
+		if (!err)
+			bh1721fvc->state = bh1721fvc->measure_mode;
+		else
+			pr_err("%s: couldn't enable\n", __func__);
+#endif
 	} else if (!new_value && (bh1721fvc_is_measuring(bh1721fvc))) {
 		err = bh1721fvc_disable(bh1721fvc);
 		if (!err)
 			bh1721fvc->state = POWER_DOWN;
 		else
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 			pr_err("%s: couldn't enable", __func__);
 	} else {
 		bh1721fvc_dbmsg("no nothing\n");
+#else
+			pr_err("%s: couldn't disable\n", __func__);
+	} else {
+			bh1721fvc_dbmsg("do nothing\n");
+#endif
 	}
 
 	mutex_unlock(&bh1721fvc->lock);
@@ -415,6 +480,7 @@ static DEVICE_ATTR(lightsensor_file_illuminance, S_IRUGO,
 		factory_file_illuminance_show, NULL);
 #endif
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 *value)
 {
 	int retry;
@@ -469,6 +535,7 @@ static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 *value)
 	
 	return 0;
 }
+#endif
 
 
 static void bh1721fvc_work_func_light(struct work_struct *work)
@@ -481,6 +548,7 @@ static void bh1721fvc_work_func_light(struct work_struct *work)
 	struct bh1721fvc_data *bh1721fvc = container_of(work,
 					struct bh1721fvc_data, work_light);
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	err = bh1721fvc_get_luxvalue(bh1721fvc, &lux);
 	if (err ==0)
 	{
@@ -491,6 +559,14 @@ static void bh1721fvc_work_func_light(struct work_struct *work)
 		bh1721fvc_dbmsg("lux 0x%0X (%d)\n", result, result);
 		input_report_abs(bh1721fvc->input_dev, ABS_MISC, result);
 		input_sync(bh1721fvc->input_dev);
+#else
+	err = bh1721fvc_get_luxvalue(bh1721fvc->client, &lux);
+	if (!err) {
+		bh1721fvc_dbmsg("lux 0x%0X (%d)\n", lux, lux);
+		input_report_abs(bh1721fvc->input_dev, ABS_MISC, lux);
+		input_sync(bh1721fvc->input_dev);
+		bh1721fvc->previous_lux = lux;
+#endif
 	} else {
 		pr_err("%s: read word failed! (errno=%d)\n", __func__, err);
 	}
@@ -566,7 +642,11 @@ err_exit:
 static int __devinit bh1721fvc_probe(struct i2c_client *client,
 				    const struct i2c_device_id *id)
 {
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	int err = 0;
+#else
+	int err;
+#endif
 	struct bh1721fvc_data *bh1721fvc;
 	struct input_dev *input_dev;
 	struct bh1721fvc_platform_data *pdata = client->dev.platform_data;
@@ -607,8 +687,14 @@ static int __devinit bh1721fvc_probe(struct i2c_client *client,
 
 	bh1721fvc->light_poll_delay = ns_to_ktime(200 * NSEC_PER_MSEC);
 	bh1721fvc->state = POWER_DOWN;
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	bh1721fvc->measure_mode = AUTO_MEASURE;
 	bh1721fvc->timer.function = bh1721fvc_timer_func;
+#else
+	bh1721fvc->measure_mode = L_MEASURE;
+	bh1721fvc->timer.function = bh1721fvc_timer_func;
+	bh1721fvc->previous_lux = LUX_MAX_VALUE + 1; /* value out of range */
+#endif
 
 	err = bh1721fvc_test_luxvalue(bh1721fvc);
 	if (err < 0) {

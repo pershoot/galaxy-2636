@@ -27,7 +27,9 @@
  *
  */
 /*#define DEBUG*/
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define FACTORY_TEST
+#endif
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
@@ -271,7 +273,9 @@ static void ak8975c_selftest(struct ak8975c_data *ak_data)
 
 	/* wait for data ready */
 	while (1) {
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 		msleep(20);
+#endif
 		if (i2c_smbus_read_byte_data(ak_data->this_client,
 						AK8975_REG_ST1) == 1) {
 			break;
@@ -369,7 +373,7 @@ static void ak8975c_work_func(struct work_struct *data)
 	z = buf[5] | (buf[6] << 8);
 
 	pr_debug("%s: raw x = %d, y = %d, z = %d\n", __func__, x, y, z);
-#if 1
+#if 1 && !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	pr_debug("%s: buf[0], ST1 = 0x%x, buf[7], ST2 = 0x%x\n",
 		__func__, buf[0], buf[7]);
 	pr_debug("%s: buf[2,1], X = 0x%x,0x%x "
@@ -639,10 +643,12 @@ int ak8975c_probe(struct i2c_client *client,
 	/* this is the thread function we run on the work queue */
 	INIT_WORK(&ak_data->work, ak8975c_work_func);
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	err = sensors_register(magnetic_sensor_device, ak_data, magnetic_sensor_attrs, "magnetic_sensor");
 	if(err) {
 		printk(KERN_ERR "%s: cound not register magnetic sensor device(%d).\n", __func__, err);
 	}
+#endif
 	
 	input_dev = input_allocate_device();
 	if (!input_dev) {
@@ -694,7 +700,11 @@ int ak8975c_probe(struct i2c_client *client,
 				&dev_attr_poll_delay) < 0) {
 		pr_err("Failed to create device file(%s)!\n",
 				dev_attr_poll_delay.attr.name);
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 		goto exit_device_create_file2;
+#else
+		return err;
+#endif
 	}
 
 	/* put into fuse access mode to read asa data */
@@ -758,6 +768,9 @@ int ak8975c_probe(struct i2c_client *client,
 		device_remove_file(&input_dev->dev, &dev_attr_ak8975_chk_registers);
 		goto exit_device_create_file2;
 	}
+#ifdef DEBUG
+	ak8975c_selftest(ak_data);
+#endif
 #endif
 
 	return 0;

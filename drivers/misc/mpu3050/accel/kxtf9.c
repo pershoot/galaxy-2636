@@ -44,7 +44,9 @@ static int kxtf9_suspend(void *mlsl_handle,
 {
 	int result;
 	
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	printk("accelerometer sensor suspend : kxtf9_suspend\n");
+#endif
 	
 	result =
 	    MLSLSerialWriteSingle(mlsl_handle, pdata->address, 0x1b, 0);
@@ -63,7 +65,9 @@ static int kxtf9_resume(void *mlsl_handle,
 	int result = ML_SUCCESS;
 	unsigned char reg;
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	printk("accelerometer sensor resume : kxtf9_resume\n");
+#endif
 
 	/* RAM reset */
 	result =
