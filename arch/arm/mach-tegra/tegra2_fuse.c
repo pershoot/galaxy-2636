@@ -670,7 +670,9 @@ static ssize_t fuse_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return 0;
 	}
 
-	count--;
+	if (buf[count - 1] == '\n')
+		count--;
+
 	if (DIV_ROUND_UP(count, 2) > fuse_info_tbl[param].sz) {
 		pr_err("%s: fuse parameter too long, should be %d character(s)\n",
 			__func__, fuse_info_tbl[param].sz * 2);
