@@ -116,5 +116,11 @@ config TEGRA_DSI
 	default n
 	help
 	  Say Y here to enable the DSI panel.
+
+config TOUCHWIZ_UX
+        bool "Add support for Touchwiz UX."
+        default n
+        help
+          Say Y here to enable Touchwiz UX support.
 endif
 

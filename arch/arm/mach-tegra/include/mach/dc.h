@@ -296,9 +296,13 @@ struct tegra_dc_win {
 #define TEGRA_WIN_FLAG_ENABLED		(1 << 0)
 #define TEGRA_WIN_FLAG_BLEND_PREMULT	(1 << 1)
 #define TEGRA_WIN_FLAG_BLEND_COVERAGE	(1 << 2)
+#if defined(CONFIG_TOUCHWIZ_UX)
 #define TEGRA_WIN_FLAG_INVERT_H		(1 << 3)
 #define TEGRA_WIN_FLAG_INVERT_V		(1 << 4)
 #define TEGRA_WIN_FLAG_TILED		(1 << 5)
+#else
+#define TEGRA_WIN_FLAG_TILED            (1 << 3)
+#endif
 
 #define TEGRA_WIN_BLEND_FLAGS_MASK \
 	(TEGRA_WIN_FLAG_BLEND_PREMULT | TEGRA_WIN_FLAG_BLEND_COVERAGE)

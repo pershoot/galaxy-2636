@@ -49,15 +49,19 @@
 #define TEGRA_FB_WIN_BLEND_PREMULT	1
 #define TEGRA_FB_WIN_BLEND_COVERAGE	2
 
+#if defined(CONFIG_TOUCHWIZ_UX)
 #define TEGRA_FB_WIN_FLAG_INVERT_H	(1 << 0)
 #define TEGRA_FB_WIN_FLAG_INVERT_V	(1 << 1)
 #define TEGRA_FB_WIN_FLAG_TILED		(1 << 2)
+#endif
 
 /* set index to -1 to ignore window data */
 struct tegra_fb_windowattr {
 	__s32	index;
 	__u32	buff_id;
+#if defined(CONFIG_TOUCHWIZ_UX)
 	__u32	flags;
+#endif
 	__u32	blend;
 	__u32	offset;
 	__u32	offset_u;
