@@ -174,7 +174,7 @@ void kernel_sec_set_upload_magic_number(void)
 #else
 	to_io = ioremap(LOKE_BOOT_USB_DWNLD_P_ADDR, 4);
 #endif
-	writel(LOKE_BOOT_USB_DWNLDMAGIC_NO, to_io);
+	writel(0xFFFFFFFF, to_io);
 //	iounmap(to_io);
 }
 EXPORT_SYMBOL(kernel_sec_set_upload_magic_number);
@@ -259,7 +259,7 @@ void kernel_sec_set_upload_cause(kernel_sec_upload_cause_type upload_type)
 	upload = readl(to_io);
 	upload &= ~KERNEL_SEC_UPLOAD_CAUSE_MASK;
 	upload |= upload_type;
-	writel(upload, to_io);
+	writel(0xFFFFFFFF, to_io);
 
 	pr_emerg("(kernel_sec_set_upload_cause) : upload_cause set %x\n",
 			upload_type);
