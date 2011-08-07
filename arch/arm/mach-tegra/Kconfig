@@ -153,6 +153,13 @@ config TEGRA_FIQ_DEBUGGER
 	help
 	  Enables the FIQ serial debugger on Tegra"
 
+config MACH_SAMSUNG_P3_P7100
+       bool "Samsung P3 GT-P7100 board"
+       depends on MACH_SAMSUNG_VARIATION_TEGRA
+       default n
+       help    
+          Support Samsung P3 GT-P7100 board based on Tegra 2
+
 source "arch/arm/mach-tegra/nv/Kconfig"
 
 endif
