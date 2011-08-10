@@ -32,6 +32,9 @@ struct tegra_i2c_platform_data {
 	int retries;
 	int timeout;	/* in jiffies */
 	u16 slave_addr;
+	int scl_gpio[TEGRA_I2C_MAX_BUS];
+	int sda_gpio[TEGRA_I2C_MAX_BUS];
+	int (*arb_recovery)(void);
 };
 
 #endif /* _LINUX_I2C_TEGRA_H */
