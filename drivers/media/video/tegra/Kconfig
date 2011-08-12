@@ -19,7 +19,7 @@ config VIDEO_OV5650
 
 config VIDEO_IMX073
         bool "IMX073 rear camera ISP support"
-        depends on I2C && ARCH_TEGRA
+        depends on I2C && ARCH_TEGRA && MACH_SAMSUNG_P3_P7100
         default n
         ---help---
           This is a driver for the FUJITSU M5MO 8MP ISP and SONY camera sensor
@@ -28,7 +28,7 @@ config VIDEO_IMX073
 
 config CAMERA_S5K5CCGX
         bool "S5K5CCGX rear camera SOC"
-        depends on I2C && ARCH_TEGRA
+        depends on I2C && ARCH_TEGRA && !MACH_SAMSUNG_P3_P7100
         default y
         ---help---
           This is a driver for the LSI 3MP SOC camera sensor

@@ -82,7 +82,11 @@
 #include "fuse.h"
 #include "wakeups-t2.h"
 #include <media/s5k5bbgx.h>
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #include <media/s5k5ccgx.h>
+#else
+#include <media/imx073.h>
+#endif
 #ifdef CONFIG_SAMSUNG_LPM_MODE
 #include <linux/moduleparam.h>
 #endif
@@ -1707,6 +1711,7 @@ static void p3_touch_init_hw(void)
 	tegra_gpio_enable(GPIO_TOUCH_INT);
 }
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 static void sec_s5k5ccgx_init(void)
 {
 	printk("%s,, \n",__func__);
@@ -1762,6 +1767,40 @@ static void sec_s5k5ccgx_init(void)
 	printk("<=PCAM=> LOW 4: %d\n",	gpio_get_value(GPIO_CAM_PMIC_EN4));
 #endif
 }
+#else
+static void sec_imx073_init(void)
+{
+        tegra_gpio_enable(GPIO_CAM_PMIC_EN1);
+        tegra_gpio_enable(GPIO_CAM_PMIC_EN2);
+        tegra_gpio_enable(GPIO_CAM_PMIC_EN3);
+        tegra_gpio_enable(GPIO_CAM_PMIC_EN4);
+        tegra_gpio_enable(GPIO_CAM_PMIC_EN5);
+        tegra_gpio_enable(GPIO_CAM_L_nRST);
+        tegra_gpio_enable(GPIO_CAM_F_nRST);
+        tegra_gpio_enable(GPIO_CAM_F_STANDBY);
+        tegra_gpio_enable(GPIO_ISP_INT);
+
+        gpio_request(GPIO_CAM_PMIC_EN1, "CAMERA_PMIC_EN1");
+        gpio_request(GPIO_CAM_PMIC_EN2, "CAMERA_PMIC_EN2");
+        gpio_request(GPIO_CAM_PMIC_EN3, "CAMERA_PMIC_EN3");
+        gpio_request(GPIO_CAM_PMIC_EN4, "CAMERA_PMIC_EN4");
+        gpio_request(GPIO_CAM_PMIC_EN5, "CAMERA_PMIC_EN5");
+        gpio_request(GPIO_CAM_L_nRST, "CAMERA_CAM_Left_nRST");
+        gpio_request(GPIO_CAM_F_nRST, "CAMERA_CAM_Front_nRST");
+        gpio_request(GPIO_CAM_F_STANDBY, "CAMERA_CAM_Front_STANDBY");
+        gpio_request(GPIO_ISP_INT, "ISP_INT");
+
+        gpio_direction_output(GPIO_CAM_PMIC_EN1, 0);
+        gpio_direction_output(GPIO_CAM_PMIC_EN2, 0);
+        gpio_direction_output(GPIO_CAM_PMIC_EN3, 0);
+        gpio_direction_output(GPIO_CAM_PMIC_EN4, 0);
+        gpio_direction_output(GPIO_CAM_PMIC_EN5, 0);
+        gpio_direction_output(GPIO_CAM_L_nRST, 0);
+        gpio_direction_output(GPIO_CAM_F_nRST, 0);
+        gpio_direction_output(GPIO_CAM_F_STANDBY, 0);
+        gpio_direction_input(GPIO_ISP_INT);
+}
+#endif
 
 struct tegra_pingroup_config mclk = {
 	TEGRA_PINGROUP_CSUS,
@@ -1783,6 +1822,7 @@ static void P3_s5k5ccgx_flash_off()
 	gpio_set_value(GPIO_CAM_FLASH_SET, 0);
 }*/
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 static void p3_s5k5ccgx_power_on()
 {
 	printk("%s,, \n",__func__);
@@ -1814,7 +1854,35 @@ static void p3_s5k5ccgx_power_on()
 	gpio_set_value(GPIO_CAM_R_nRST, 1); //3M nRST high
 	msleep(10);
 }
+#else
+static void p3_imx073_power_on(void)
+{
+        gpio_set_value(GPIO_CAM_PMIC_EN1, 1);
+        usleep_range(900, 1000);
+        gpio_set_value(GPIO_CAM_PMIC_EN2, 1);
+        usleep_range(900, 1000);
+        if (system_rev >= 0x7) {
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 1);
+                usleep_range(900, 1000);
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 1);
+        } else {
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 1);
+                usleep_range(900, 1000);
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 1);
+        }
+        usleep_range(900, 1000);
+        gpio_set_value(GPIO_CAM_PMIC_EN5, 1);
 
+        udelay(100);
+        tegra_pinmux_set_func(&mclk);
+        tegra_pinmux_set_tristate(TEGRA_PINGROUP_CSUS, TEGRA_TRI_NORMAL);
+        udelay(10);
+        gpio_set_value(GPIO_CAM_L_nRST, 1);
+        usleep_range(3000, 10000);
+}
+#endif
+
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 static void p3_s5k5ccgx_power_off()
 {
 	printk("%s,, \n",__func__);
@@ -1843,6 +1911,48 @@ static void p3_s5k5ccgx_power_off()
 		printk("p3_s5k5ccgx_power_off       msleep--------200ms  system_rev = %d\n", system_rev);
 	}
 }
+#else
+static void p3_imx073_power_off(void)
+{
+        usleep_range(3000, 10000);
+        gpio_set_value(GPIO_CAM_L_nRST, 0);
+        udelay(10);
+        tegra_pinmux_set_tristate(TEGRA_PINGROUP_CSUS, TEGRA_TRI_TRISTATE);
+        udelay(50);
+        gpio_set_value(GPIO_CAM_PMIC_EN5, 0);
+        usleep_range(900, 1000);
+        if (system_rev >= 0x7) {
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 0);
+                msleep(40);
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 0);
+        } else {
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 0);
+                msleep(40);
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 0);
+        }
+        usleep_range(900, 1000);
+        gpio_set_value(GPIO_CAM_PMIC_EN2, 0);
+        msleep(40);
+        gpio_set_value(GPIO_CAM_PMIC_EN1, 0);
+}
+
+static unsigned int p3_imx073_isp_int_read(void)
+{
+        return gpio_get_value(GPIO_ISP_INT);
+}
+struct imx073_platform_data p3_imx073_data = {
+        .power_on = p3_imx073_power_on,
+        .power_off = p3_imx073_power_off,
+        .isp_int_read = p3_imx073_isp_int_read
+};
+
+static const struct i2c_board_info sec_imx073_camera[] = {
+        {
+                I2C_BOARD_INFO("imx073", 0x3E>>1),
+                .platform_data = &p3_imx073_data,
+        },
+};
+#endif
 
 #define FLASH_MOVIE_MODE_CURRENT_100_PERCENT	1
 #define FLASH_MOVIE_MODE_CURRENT_79_PERCENT	3
@@ -1853,6 +1963,7 @@ static void p3_s5k5ccgx_power_off()
 #define FLASH_TIME_LATCH_US			500
 #define FLASH_TIME_EN_SET_US			1
 
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 /* The AAT1274 uses a single wire interface to write data to its
  * control registers. An incoming value is written by sending a number
  * of rising edges to EN_SET. Data is 4 bits, or 1-16 pulses, and
@@ -1932,6 +2043,7 @@ static const struct i2c_board_info sec_s5k5ccgx_camera[] = {
 		.platform_data = &p3_s5k5ccgx_data,
 	},
 };
+#endif
 
 struct tegra_pingroup_config s5k5bbgx_mclk = {
 	TEGRA_PINGROUP_CSUS, TEGRA_MUX_VI_SENSOR_CLK,
@@ -1940,6 +2052,7 @@ struct tegra_pingroup_config s5k5bbgx_mclk = {
 
 void p3_s5k5bbgx_power_on(void)
 {
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	printk("%s,, \n",__func__);
 	gpio_set_value(GPIO_CAM_R_nSTBY, 0); //3M STBY low
 	gpio_set_value(GPIO_CAM_R_nRST, 0); //3M nRST low
@@ -1968,10 +2081,44 @@ void p3_s5k5bbgx_power_on(void)
 
 	gpio_set_value(GPIO_CAM_F_nRST, 1); // 2M nRST High
 	msleep(10); //udelay(200);
+#else
+        gpio_set_value(GPIO_CAM_PMIC_EN1, 1);
+        usleep_range(1000, 2000);
+        gpio_set_value(GPIO_CAM_PMIC_EN2, 1);
+        usleep_range(1000, 2000);
+        if (system_rev >= 0x7) {
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 1);
+                usleep_range(1000, 2000);
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 1);
+        } else {
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 1);
+                usleep_range(1000, 2000);
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 1);
+        }
+        usleep_range(1000, 2000);
+        gpio_set_value(GPIO_CAM_PMIC_EN5, 1);
+
+        udelay(100);
+
+        tegra_pinmux_set_func(&s5k5bbgx_mclk);
+        tegra_pinmux_set_tristate(TEGRA_PINGROUP_CSUS, TEGRA_TRI_NORMAL);
+
+        udelay(10);
+
+        gpio_set_value(GPIO_CAM_F_STANDBY, 1);
+        udelay(20);
+
+        gpio_set_value(GPIO_CAM_F_nRST, 1);
+        udelay(10);
+
+        gpio_set_value(GPIO_CAM_PMIC_EN2, 0);
+        usleep_range(3000, 5000);
+#endif
 }
 
 void p3_s5k5bbgx_power_off(void)
 {
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	msleep(3);
 	gpio_set_value(GPIO_CAM_F_nRST, 0); // 2M nRST Low
 	udelay(100);
@@ -1993,6 +2140,32 @@ void p3_s5k5bbgx_power_off(void)
 		msleep(800);
 	else
 		msleep(200);
+#else
+        usleep_range(3000, 5000);
+        gpio_set_value(GPIO_CAM_F_nRST, 0);
+        udelay(10);
+
+        gpio_set_value(GPIO_CAM_F_STANDBY, 0);
+        udelay(10);
+        tegra_pinmux_set_tristate(TEGRA_PINGROUP_CSUS, TEGRA_TRI_TRISTATE);
+        udelay(50);
+
+        gpio_set_value(GPIO_CAM_PMIC_EN5, 0);
+        usleep_range(1000, 2000);
+        if (system_rev >= 0x7) {
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 0);
+                msleep(500);
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 0);
+        } else {
+                gpio_set_value(GPIO_CAM_PMIC_EN4, 0);
+                msleep(500);
+                gpio_set_value(GPIO_CAM_PMIC_EN3, 0);
+        }
+        usleep_range(1000, 2000);
+        gpio_set_value(GPIO_CAM_PMIC_EN2, 0);
+        usleep_range(1000, 2000);
+        gpio_set_value(GPIO_CAM_PMIC_EN1, 0);
+#endif
 }
 
 struct s5k5bbgx_platform_data p3_s5k5bbgx_data = {
@@ -2010,13 +2183,21 @@ static const struct i2c_board_info sec_s5k5bbgx_camera[] = {
 static int __init p3_camera_init(void)
 {
 	int status;
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	sec_s5k5ccgx_init();
 	status = i2c_register_board_info(3, sec_s5k5ccgx_camera,
 				ARRAY_SIZE(sec_s5k5ccgx_camera));
 	status = i2c_register_board_info(3, sec_s5k5bbgx_camera,
 				ARRAY_SIZE(sec_s5k5bbgx_camera));
+#else
+        sec_imx073_init();
+        status = i2c_register_board_info(3, sec_imx073_camera,
+                                ARRAY_SIZE(sec_imx073_camera));
+        status = i2c_register_board_info(3, sec_s5k5bbgx_camera,
+                                ARRAY_SIZE(sec_s5k5bbgx_camera));
+#endif
 
-	return 0;
+        return 0;
 }
 
 static void p3_touch_exit_hw(void)
