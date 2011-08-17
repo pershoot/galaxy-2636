@@ -1015,7 +1015,7 @@ int process_message(struct mxt_data *mxt, u8 *message, u8 object)
 			/*typical atmel spec. value is 250ms,
 			but it sometimes fails to recover so it needs more*/
 			reset_chip(mxt, RESET_TO_NORMAL);
-			msleep(300);
+			msleep(325);
 #endif
 		}
 		if (status & MXT_MSGB_T6_RESET) {
