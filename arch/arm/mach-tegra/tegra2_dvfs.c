@@ -57,7 +57,7 @@ static const int cpu_speedo_nominal_millivolts[] =
 static const int core_speedo_nominal_millivolts[] =
 /* spedo_id  0,    1,    2 */
 #if defined(CONFIG_TEGRA_OVERCLOCK)
-	{ 1225, 1300, 1300 };
+	{ 1225, 1275, 1300 };
 #else
 	{ 1225, 1225, 1300 };
 #endif
