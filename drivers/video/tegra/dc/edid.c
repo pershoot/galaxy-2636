@@ -56,6 +56,7 @@ struct tegra_edid {
 	u8			*data;
 	unsigned		len;
 	u8			support_stereo;
+	u8			support_underscan;
 };
 
 #if defined(DEBUG) || defined(CONFIG_DEBUG_FS)
@@ -195,6 +196,11 @@ int tegra_edid_parse_ext_block(u8 *raw, int idx, struct tegra_edid *edid)
 
 	ptr = &raw[4];
 
+	if (raw[3] & 0x80)
+		edid->support_underscan = 1;
+	else
+		edid->support_underscan = 0;
+
 	while (ptr < &raw[idx]) {
 		tmp = *ptr;
 		len = tmp & 0x1f;
@@ -272,6 +278,7 @@ int tegra_edid_get_monspecs_hdmi_checker(struct tegra_edid *edid, struct fb_mons
 	printk(KERN_INFO "[HDMI] %s()\n", __func__);
 	
 	edid->support_stereo = 0;
+	edid->support_underscan = 0;
 
 	ret = tegra_edid_read_block(edid, 0, edid->data);
 	if (ret)
@@ -381,6 +388,14 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 	tegra_edid_dump(edid);
 
 	return 0;
+}
+
+int tegra_edid_underscan_supported(struct tegra_edid *edid)
+{
+	if (!edid)
+		return 0;
+
+	return edid->support_underscan;
 }
 
 struct tegra_edid *tegra_edid_create(int bus)

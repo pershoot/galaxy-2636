@@ -30,4 +30,6 @@ void tegra_edid_destroy(struct tegra_edid *edid);
 
 int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs);
 
+int tegra_edid_underscan_supported(struct tegra_edid *edid);
+
 #endif
