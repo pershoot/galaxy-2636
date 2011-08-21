@@ -259,6 +259,7 @@ static struct tegra_suspend_platform_data p3_suspend_data = {
 	.corereq_high	= false,
 	.sysclkreq_high	= true,
 	.wake_enb	= TEGRA_WAKE_GPIO_PS4 | TEGRA_WAKE_GPIO_PQ6 |
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 		TEGRA_WAKE_GPIO_PW2 | TEGRA_WAKE_GPIO_PQ7 |
 		TEGRA_WAKE_RTC_ALARM | TEGRA_WAKE_GPIO_PY6 |
 		TEGRA_WAKE_GPIO_PS5 | TEGRA_WAKE_GPIO_PC7 |
@@ -268,6 +269,15 @@ static struct tegra_suspend_platform_data p3_suspend_data = {
 		TEGRA_WAKE_GPIO_PY6 | TEGRA_WAKE_GPIO_PS5 |
 		TEGRA_WAKE_GPIO_PI5,
 	.wake_any	= TEGRA_WAKE_GPIO_PW2 | TEGRA_WAKE_RTC_ALARM |
+#else
+		TEGRA_WAKE_GPIO_PB6 | TEGRA_WAKE_GPIO_PQ7 |
+		TEGRA_WAKE_RTC_ALARM | TEGRA_WAKE_GPIO_PY6 |
+		TEGRA_WAKE_GPIO_PS5 | TEGRA_WAKE_GPIO_PC7,
+        .wake_high      = TEGRA_WAKE_GPIO_PS4,
+        .wake_low       = TEGRA_WAKE_GPIO_PQ6 | TEGRA_WAKE_GPIO_PQ7 |
+		TEGRA_WAKE_GPIO_PY6 | TEGRA_WAKE_GPIO_PS5,
+	.wake_any  = TEGRA_WAKE_GPIO_PB6 | TEGRA_WAKE_RTC_ALARM |
+#endif
 		TEGRA_WAKE_GPIO_PC7,
 	.cpu_lp2_min_residency = 2000,
 };
@@ -306,7 +316,11 @@ int __init p3_regulator_init(void)
 #ifdef CONFIG_SAMSUNG_LPM_MODE
 	if (charging_mode_from_boot) {
 		p3_suspend_data.wake_enb = (TEGRA_WAKE_GPIO_PS4 |
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 					TEGRA_WAKE_GPIO_PW2 |
+#else
+					TEGRA_WAKE_GPIO_PB6 |
+#endif
 					TEGRA_WAKE_GPIO_PQ7 |
 					TEGRA_WAKE_RTC_ALARM);
 		p3_suspend_data.wake_low = TEGRA_WAKE_GPIO_PQ7;
