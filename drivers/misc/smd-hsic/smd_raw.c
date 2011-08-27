@@ -205,7 +205,7 @@ static void process_pdp_packet(struct str_ring_buf *rbuf,
 	skb->dev = dev;
 	skb->protocol = __constant_htons(ETH_P_IP);
 	skb->dev->stats.rx_packets++;
-	skb->dev->stats.rx_bytes = skb->len;
+	skb->dev->stats.rx_bytes += skb->len;
 	netif_rx(skb);
 
 	/* consume hdlc stop byte */
@@ -708,7 +708,7 @@ static int smdraw_pdp_tx_submit(struct sk_buff *skb)
 		return r;
 	}
 	skb->dev->stats.tx_packets++;
-	skb->dev->stats.tx_bytes = skb->len;
+	skb->dev->stats.tx_bytes += skb->len;
 	usb_mark_last_busy(hsic->usb);
 	return r;
 }
