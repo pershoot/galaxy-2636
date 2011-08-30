@@ -89,6 +89,12 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
    static void __iomem *vector_base = (IO_ADDRESS(TEGRA_EXCEPTION_VECTORS_BASE) + 0x100);
 #endif
 
+	/* Avoid timer calibration on slave cpus. Use the value calibrated
+	 * on master cpu. This reduces the bringup time for each slave cpu
+	 * by around 260ms.
+	 */
+	preset_lpj = loops_per_jiffy;
+
 	/*
 	 * set synchronisation state between this boot processor
 	 * and the secondary one
