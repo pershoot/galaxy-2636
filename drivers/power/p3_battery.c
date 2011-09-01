@@ -126,7 +126,7 @@ struct battery_data {
 	int fg_chk_cnt;
 	int recharging_cnt;
 	int previous_charging_status;
-#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI)
+#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI) || !defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	int full_check_flag;
 	bool is_first_check;
 #endif
@@ -404,7 +404,7 @@ static int p3_get_bat_level(struct power_supply *bat_ps)
 		battery->info.batt_vol = fg_vcell;
 
 	fg_current = get_fuelgauge_value(FG_CURRENT);
-#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI)
+#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI) || !defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	avg_current = get_fuelgauge_value(FG_CURRENT_AVG);
 	fg_vfsoc = get_fuelgauge_value(FG_VF_SOC);
 
@@ -493,7 +493,7 @@ __end__:
 	pr_debug("fg_vcell = %d, fg_soc = %d, is_full = %d",
 		fg_vcell, fg_soc, battery->info.batt_is_full);
 
-#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI)
+#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI) || !defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	if(battery->is_first_check)
 		battery->is_first_check = false;
 #endif
@@ -1455,7 +1455,7 @@ static int __devinit p3_bat_probe(struct platform_device *pdev)
 	battery->info.level = 100;
 	battery->info.charging_source = CHARGER_BATTERY;
 	battery->info.batt_health = POWER_SUPPLY_HEALTH_GOOD;
-#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI)
+#if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI) || !defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	battery->is_first_check = true;
 #endif
 

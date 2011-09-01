@@ -196,6 +196,7 @@ static int write_bootloader_message(char *cmd, int mode)
 		strcpy(bootmsg.command, "boot-recovery");
 #ifdef CONFIG_KERNEL_DEBUG_SEC
 		kernel_sec_set_debug_level(KERNEL_SEC_DEBUG_LEVEL_LOW);
+		kernel_sec_clear_upload_magic_number();
 #endif
 	}
 	else if (mode == REBOOT_MODE_FASTBOOT)
@@ -451,6 +452,7 @@ static __initdata struct tegra_clk_init_table p3_clk_init_table[] = {
 	{ "pll_c",	"clk_m",	586000000,	true},
 	{ "pll_a",	NULL,		11289600,	true},
 	{ "pll_a_out0",	NULL,		11289600,	true},
+	{ "clk_dev1",   "pll_a_out0",   0,              true},
 	{ "i2s1",	"pll_a_out0",	11289600,	true},
 	{ "i2s2",	"pll_a_out0",	11289600,	true},
 	{ "audio",	"pll_a_out0",	11289600,	true},
@@ -985,7 +987,7 @@ static const struct tegra_pingroup_config i2c2_gen2 = {
 static struct tegra_i2c_platform_data p3_i2c2_platform_data = {
 	.adapter_nr	= 1,
 	.bus_count	= 2,
-	.bus_clk_rate	= { 400000, 10000 },
+	.bus_clk_rate	= { 100000, 10000 },
 	.bus_mux	= { &i2c2_ddc, &i2c2_gen2 },
 	.bus_mux_len	= { 1, 1 },
 };
@@ -1237,7 +1239,7 @@ static void tegra_usb_ldo_en(int active, int instance)
 			if (ret == 0)
 				usb_data.usb_regulator_on[instance] = 1;
 			else
-				pr_err("%s: failed to turn on \\
+				pr_err("%s: failed to turn on \
 					vdd_ldo6 regulator\n", __func__);
 		}
 	} else {

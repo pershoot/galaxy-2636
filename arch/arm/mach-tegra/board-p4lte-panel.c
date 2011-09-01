@@ -304,39 +304,6 @@ static struct platform_device *p3_gfx_devices[] __initdata = {
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 
-static char *cpufreq_gov_conservative = "conservative";
-static char *cpufreq_gov_interactive = "interactive";
-static char *cpufreq_sysfs_place_holder="/sys/devices/system/cpu/cpu%i/cpufreq/scaling_governor";
-
-static void p3_panel_set_cpufreq_governor(char *governor)
-{
-	struct file *scaling_gov = NULL;
-	char    buf[128];
-	int i;
-	loff_t offset = 0;
-
-	if (governor == NULL)
-		return;
-
-	for_each_cpu(i, cpu_present_mask) {
-		sprintf(buf, cpufreq_sysfs_place_holder,i);
-		scaling_gov = filp_open(buf, O_RDWR, 0);
-		if (scaling_gov != NULL) {
-			if (scaling_gov->f_op != NULL &&
-				scaling_gov->f_op->write != NULL)
-				scaling_gov->f_op->write(scaling_gov,
-						governor,
-						strlen(governor),
-						&offset);
-			else pr_err("f_op might be null\n");
-
-			filp_close(scaling_gov, NULL);
-		} else {
-			pr_err("%s. Can't open %s\n", __func__, buf);
-		}
-	}
-}
-
 /* put early_suspend/late_resume handlers here for the display in order
  * to keep the code out of the display driver, keeping it closer to upstream
  */
@@ -346,16 +313,12 @@ static void p3_panel_early_suspend(struct early_suspend *h)
 {
 	if (num_registered_fb > 0)
 		fb_blank(registered_fb[0], FB_BLANK_POWERDOWN);
-
-	p3_panel_set_cpufreq_governor(cpufreq_gov_conservative);
 }
 
 static void p3_panel_late_resume(struct early_suspend *h)
 {
 	if (num_registered_fb > 0)
 		fb_blank(registered_fb[0], FB_BLANK_UNBLANK);
-
-	p3_panel_set_cpufreq_governor(cpufreq_gov_interactive);
 }
 #endif
 
