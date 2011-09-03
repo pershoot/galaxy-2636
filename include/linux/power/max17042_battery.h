@@ -109,7 +109,7 @@ struct max17042_chip {
 };
 
 /* SDI type low battery compensation offset */
-#ifdef CONFIG_MACH_SAMSUNG_P3
+#if defined(CONFIG_MACH_SAMSUNG_P3) || defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define SDI_Range5_1_Offset		3369
 #define SDI_Range5_3_Offset		3469
 #define SDI_Range4_1_Offset		3369
@@ -133,7 +133,7 @@ struct max17042_chip {
 #define SDI_Range1_3_Slope		0
 
 #elif defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) ||\
-	defined(CONFIG_MACH_SAMSUNG_P4LTE)
+	defined(CONFIG_MACH_SAMSUNG_P4LTE) && !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define SDI_Range5_1_Offset		3318
 #define SDI_Range5_3_Offset		3383
 #define SDI_Range4_1_Offset		3451
