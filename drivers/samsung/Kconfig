@@ -1,0 +1,43 @@
+# drivers/samsung/Kconfig
+#
+#
+
+config SAMSUNG_MODULES
+	tristate "Samsung Kernel Modules"
+	default n
+	help
+	  Say Y to enable Samsung kernel modules. j4fs and param
+	  modules are included.
+	  
+config SAMSUNG_PHONE_TTY
+	tristate "Samsung CDMA Phone Interface - TTY"
+	depends on SAMSUNG_MODULES
+	default n
+	---help---
+	  This is worked for steath-v VIA CDMA modem.
+	  The ppp daemon is using the tty interface.
+	  When in doubt, say N.
+
+config SAMSUNG_LTE_MODEM_BOOTLOADER
+	tristate "Samsung LTE Modem Bootloader - SPI"
+	depends on SAMSUNG_MODULES
+	default n
+	---help---
+	  This is worked for CMC220 LTE Modem.
+	  The daemon is using the spi interface.
+	  When in doubt, say N.
+
+config SAMSUNG_LTE_MODEMCTL 
+	tristate "Samsung LTE Modem Control"
+	depends on SAMSUNG_MODULES
+	default n
+	help
+	  This is worked for CMC220 LTE Modem.
+	  When in doubt, say N.
+
+config SAMSUNG_WTL_FOTA_DPRAM
+	tristate "Samsung WTL DPRAM driver for CP FOTA update"
+	depends on SAMSUNG_MODULES
+	default n
+	help
+	  This module is needed in recovery image to update CP.

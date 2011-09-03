@@ -1,0 +1,1 @@
+obj-y +=wtlfota_dpram_export.o

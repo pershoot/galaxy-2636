@@ -1,0 +1,24 @@
+config TEGRA_ALSA
+    tristate "Tegra ALSA SoC support"
+    select TEGRA_PCM
+    select TEGRA_I2S
+    select TEGRA_IEC
+    select TEGRA_GENERIC_CODEC
+    select TEGRA_JACK
+    help
+       Say Y if you for ALSA SoC support
+
+config TEGRA_PCM
+    tristate "Tegra ALSA pcm callbacks"
+
+config TEGRA_I2S
+    tristate "Tegra I2S"
+
+config TEGRA_IEC
+    tristate "Tegra IEC"
+
+config TEGRA_GENERIC_CODEC
+    tristate "Tegra ALSA Generic Codec support"
+
+config TEGRA_JACK
+    tristate "Tegra wired accessory jack support"

@@ -1,0 +1,14 @@
+config BCM4330
+	default m
+	tristate "Broadcom WiFi Driver"
+	depends on MMC
+	select WIRELESS_EXT
+	select WEXT_PRIV
+	---help---
+		Select this option to build Broadcom wlan driver
+#config BCM_EMBED_FW
+#	default n
+#	bool "Broadcom Embed FW into WiFi Driver"
+#	depends on BROADCOM_WIFI != n
+#	---help---
+#		Select this option to embed firmware into wlan driver
