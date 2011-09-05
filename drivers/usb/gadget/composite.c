@@ -26,7 +26,9 @@
 #include <linux/device.h>
 
 #include <linux/usb/composite.h>
-
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+#include "android_desc.h"
+#endif
 
 /*
  * The code in this file is utility code, used to build a gadget driver
@@ -373,7 +375,25 @@ int usb_interface_id(struct usb_configuration *config,
 	}
 	return -ENODEV;
 }
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+struct usb_function * find_usb_function(struct usb_composite_dev        *cdev, char * function_name)
+{
+    struct usb_function         *f;
+    struct usb_configuration *c = NULL;
 
+    list_for_each_entry(c, &cdev->configs, list) {
+        list_for_each_entry(f, &c->functions, list) {
+
+                if (!strcmp(f->name, function_name))
+                {
+                    return f;
+                 }
+        }
+
+    }
+    return NULL;
+}
+#endif
 
 static int config_buf(struct usb_configuration *config,
 		enum usb_device_speed speed, void *buf, u8 type)
@@ -1196,7 +1216,9 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	int i;
-
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        struct usb_function             *pusbfunction=NULL;
+#endif
 #  ifdef CONFIG_USB_ANDROID_SAMSUNG_MTP
 /* soonyong.cho : Added handler to respond to host about MS OS Descriptors.
  * 		  Below compatible ID is for MTP.
@@ -1257,7 +1279,31 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		break;
 #  endif	
 #endif
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        /* Handle accessory mode request */
+    case ACCESSORY_GET_PROTOCOL:
+    case ACCESSORY_SEND_STRING:
+    case ACCESSORY_START:
 
+            pusbfunction = find_usb_function(cdev,"accessory");
+
+            if (pusbfunction&& pusbfunction->setup)
+            {
+                   value = pusbfunction->setup(pusbfunction, ctrl);
+                   if ( value< 0 )
+                   {
+                        CSY_DBG_ESS("composite_setup: accessory mode setup error \r\n");
+                   }
+                   else
+                                   {
+                                                cdev->accessory_mode = 1;
+                                                goto done;
+                   }
+            }
+            else
+                CSY_DBG_ESS("composite_setup: usb function find fail \r\n");
+    break;
+#endif
 
 	/* we handle all standard USB descriptors */	
 	case USB_REQ_GET_DESCRIPTOR:
@@ -1517,7 +1563,9 @@ static void composite_disconnect(struct usb_gadget *gadget)
 	{
 		CSY_DBG_ESS("[composite_disconnect] schedule_work\n");	
 		schedule_work(&cdev->switch_work);
-
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                cdev->accessory_mode = 0;
+#endif
 	}	
 	spin_unlock_irqrestore(&cdev->lock, flags);
 }

@@ -38,6 +38,9 @@
 #include <linux/clk.h>
 
 #include "gadget_chips.h"
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+#include <linux/usb/f_accessory.h>
+#endif
 
 /*
  * Kbuild is not very cooperative with respect to linking separately
@@ -527,6 +530,17 @@ static int set_product(struct android_dev *dev, __u16 mode)
 				dev->cdev->desc.bDeviceSubClass	 = p->bDeviceSubClass;
 				dev->cdev->desc.bDeviceProtocol	 = p->bDeviceProtocol;
 				android_config_driver.label	 = p->s;
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                if ( mode == USBSTATUS_ACCESSORY )
+                    {
+                        printk("Set_Product : Google accessory mode : change Product_id \r\n");
+                        dev->cdev->desc.idVendor = __constant_cpu_to_le16(USB_ACCESSORY_VENDOR_ID);
+                    }
+                else
+                    {
+                        dev->cdev->desc.idVendor = device_desc.idVendor;         
+                    }
+#endif
 
 				ret = set_enable_functions(p->functions, p->num_functions);
 				CSY_DBG_ESS("Change Device Descriptor : DeviceClass(0x%x),SubClass(0x%x),Protocol(0x%x)\n",
@@ -580,6 +594,11 @@ void android_enable_function(struct usb_function *f, int enable)
 			if (ret != -1)
 				dev->current_usb_mode = USBSTATUS_MTPONLY;
 		}
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                if (!strcmp(f->name, "accessory")) {
+                        ret = set_product(dev, USBSTATUS_ACCESSORY);
+                }
+#endif
 #ifdef CONFIG_USB_ANDROID_RNDIS
 		if (!strcmp(f->name, "rndis")) {
 			pr_err("%s - enable rndis\n", __func__);
@@ -614,7 +633,11 @@ void android_enable_function(struct usb_function *f, int enable)
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */
 			ret = set_product(dev, USBSTATUS_ADB);
 		}
-
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                else if(!strcmp(f->name, "accessory") && dev->debugging_usb_mode) {
+                        ret = set_product(dev, USBSTATUS_ADB);
+                }
+#endif
 		else
 			ret = set_product(dev, dev->current_usb_mode);
 
@@ -742,7 +765,12 @@ static void samsung_enable_function(int mode)
 			ret = set_product(dev, USBSTATUS_VTP);
 			break;
 #endif
-
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                case USBSTATUS_ACCESSORY: /* do not save usb mode */
+                        CSY_DBG_ESS("mode = USBSTATUS_ACCESSORY (0x%x)\n", mode);
+                        ret = set_product(dev, USBSTATUS_ACCESSORY);
+                        break;
+#endif
 		case USBSTATUS_ASKON: /* do not save usb mode */
 			CSY_DBG_ESS("mode = USBSTATUS_ASKON (0x%x) Don't change usb mode\n", mode);
 			return;
@@ -895,7 +923,10 @@ static ssize_t UsbMenuSel_switch_show(struct device *dev, struct device_attribut
 			case USBSTATUS_VTP:
 				return sprintf(buf, "[UsbMenuSel] TETHERING\n");
 #endif
-	
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                        case USBSTATUS_ACCESSORY:
+                                return sprintf(buf, "[UsbMenuSel] ACCESSORY\n");
+#endif
 			case USBSTATUS_ADB:
 				return sprintf(buf, "[UsbMenuSel] ACM_ADB_UMS\n");
 		}
@@ -932,7 +963,12 @@ static ssize_t UsbMenuSel_switch_store(struct device *dev, struct device_attribu
 			CSY_DBG_ESS("Enable ASKON(%d)\n", value);
 			samsung_enable_function(USBSTATUS_ASKON);
 			break;
-
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+                case 4:
+                        CSY_DBG_ESS("Enable Accessory(%d)\n", value);
+                        samsung_enable_function(USBSTATUS_ACCESSORY);
+                        break;
+#endif
 		default:
 			CSY_DBG("Fail : value(%d) is not invaild.\n", value);
 	}

@@ -48,6 +48,9 @@
 #include <asm/dma.h>
 
 #include "fsl_usb2_udc.h"
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+#include <linux/usb/f_accessory.h>
+#endif
 
 #ifdef CONFIG_ARCH_TEGRA
 #define	DRIVER_DESC	"NVidia Tegra High-Speed USB SOC Device Controller driver"
@@ -1837,6 +1840,15 @@ static void dtd_complete_irq(struct fsl_udc *udc)
 	int i, ep_num, direction, bit_mask, status;
 	struct fsl_ep *curr_ep;
 	struct fsl_req *curr_req, *temp_req;
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        struct usb_ctrlrequest *setup = &udc->local_setup_buff;
+
+        // Delay for Accessory mode. by wookwang.lee
+        if(setup->bRequest==ACCESSORY_GET_PROTOCOL || setup->bRequest==ACCESSORY_SEND_STRING || setup->bRequest==ACCESSORY_START)
+        {
+                udelay(100);
+        }
+#endif
 
 	/* Clear the bits in the register */
 	bit_pos = fsl_readl(&dr_regs->endptcomplete);
