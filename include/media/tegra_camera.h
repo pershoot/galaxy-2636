@@ -14,6 +14,11 @@
  *
  */
 
+#if defined(CONFIG_ICS)
+/* this is to enable VI pattern generator (Null Sensor) */
+#define TEGRA_CAMERA_ENABLE_PD2VI_CLK 0x1
+#endif
+
 enum {
 	TEGRA_CAMERA_MODULE_ISP = 0,
 	TEGRA_CAMERA_MODULE_VI,
@@ -29,6 +34,9 @@ struct tegra_camera_clk_info {
 	uint id;
 	uint clk_id;
 	unsigned long rate;
+#if defined(CONFIG_ICS)
+	uint flag;      /* to inform if any special bits need to enabled/disabled */
+#endif
 };
 
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA

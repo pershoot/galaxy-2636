@@ -167,11 +167,23 @@ static int tegra_camera_clk_set_rate(struct tegra_camera_clk_info *info)
 	clk_set_rate(clk, info->rate);
 
 	if (info->clk_id == TEGRA_CAMERA_VI_CLK) {
+#if !defined(CONFIG_ICS)
 		u32 val;
+#else
+		u32 val = 0x2;
+#endif
 		void __iomem *car = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
 		void __iomem *apb_misc = IO_ADDRESS(TEGRA_APB_MISC_BASE);
 
+#if !defined(CONFIG_ICS)
 		writel(0x2, car + offset);
+#else
+		if (info->flag == TEGRA_CAMERA_ENABLE_PD2VI_CLK) {
+			val |= TEGRA_CAMERA_PD2VI_CLK_SEL_VI_SENSOR_CLK;
+		}
+
+		writel(val, car + offset);
+#endif
 
 		val = readl(apb_misc + 0x42c);
 		writel(val | 0x1, apb_misc + 0x42c);
