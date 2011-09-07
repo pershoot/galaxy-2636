@@ -25,9 +25,6 @@
 #include <linux/workqueue.h>
 #include <asm/atomic.h>
 
-#include <linux/hrtimer.h>
-#include <linux/ktime.h>
-
 #include <mach/dc.h>
 #include <mach/nvhost.h>
 #include <mach/kfuse.h>
@@ -40,16 +37,6 @@
 #include "hdmi.h"
 
 
-#if defined(CONFIG_MACH_SAMSUNG_P4) || (CONFIG_MACH_SAMSUNG_P4WIFI) || (CONFIG_MACH_SAMSUNG_P4LTE)
-#define SAMSUNG_SW_I2C 1
-#endif
-
-/* To use hrtimer */
-#define	MS_TO_NS(x)	(x * 1000000)
-
-static struct hrtimer hr_five_s_timer;
-static bool five_s_expired;
-
 DECLARE_WAIT_QUEUE_HEAD(wq_worker);
 
 /* for 0x40 Bcaps */
@@ -61,7 +48,6 @@ DECLARE_WAIT_QUEUE_HEAD(wq_worker);
 #define BSTATUS_MAX_DEVS_EXCEEDED	(1 << 7)
 #define BSTATUS_MAX_CASCADE_EXCEEDED	(1 << 11)
 
-#define VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
 #define nvhdcp_vdbg(...)	\
 		printk("nvhdcp: " __VA_ARGS__)
@@ -116,9 +102,6 @@ struct tegra_nvhdcp {
 	u64				bksv_list[TEGRA_NVHDCP_MAX_DEVS];
 	int				fail_count;
 };
-
-enum hrtimer_restart hrtimer_five_s_callback(struct hrtimer *timer);
-void start_hrtimer_five_s(void);
 
 static inline bool nvhdcp_is_plugged(struct tegra_nvhdcp *nvhdcp)
 {
@@ -424,7 +407,7 @@ static int get_ksvfifo(struct tegra_nvhdcp *nvhdcp,
 		return 0;
 
 	buf = kmalloc(buf_len, GFP_KERNEL);
-	if (buf == NULL)
+	if (IS_ERR_OR_NULL(buf))
 		return -ENOMEM;
 
 	e = nvhdcp_i2c_read(nvhdcp, 0x43, buf_len, buf);
@@ -831,7 +814,6 @@ static int get_repeater_info(struct tegra_nvhdcp *nvhdcp)
 
 	/* wait up to 5 seconds for READY on repeater */
 	retries = 51;
-	start_hrtimer_five_s();
 	do {
 		if (!nvhdcp_is_plugged(nvhdcp)) {
 			nvhdcp_err("disconnect while waiting for repeater\n");
@@ -846,10 +828,6 @@ static int get_repeater_info(struct tegra_nvhdcp *nvhdcp)
 		if (retries > 1)
 			msleep(100);
 		printk(KERN_ERR "[HDCP] Repeater retries = %d\n", retries);
-		if (five_s_expired) {
-			retries = 0;
-			break;
-		}
 	} while (--retries);
 	if (!retries) {
 		nvhdcp_err("repeater Bcaps read timeout\n");
@@ -1305,10 +1283,6 @@ struct tegra_nvhdcp *tegra_nvhdcp_create(struct tegra_dc_hdmi_data *hdmi,
 
 	nvhdcp_vdbg("%s(): created misc device %s\n", __func__, nvhdcp->name);
 
-	hrtimer_init(&hr_five_s_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	hr_five_s_timer.function = &hrtimer_five_s_callback;
-	five_s_expired = false;
-
 	return nvhdcp;
 free_workqueue:
 	destroy_workqueue(nvhdcp->downstream_wq);
@@ -1317,22 +1291,6 @@ free_nvhdcp:
 	kfree(nvhdcp);
 	nvhdcp_err("unable to create device.\n");
 	return ERR_PTR(e);
-}
-
-enum hrtimer_restart hrtimer_five_s_callback(struct hrtimer *timer)
-{
-	five_s_expired = true;
-//	hrtimer_cancel(&hr_wake_timer);
-	return HRTIMER_NORESTART;
-}
-
-void start_hrtimer_five_s(void)
-{
-	hrtimer_cancel(&hr_five_s_timer);
-	ktime_t ktime;
-	ktime = ktime_set(5, 0);
-	five_s_expired = false;
-	hrtimer_start(&hr_five_s_timer, ktime, HRTIMER_MODE_REL);
 }
 
 void tegra_nvhdcp_destroy(struct tegra_nvhdcp *nvhdcp)
