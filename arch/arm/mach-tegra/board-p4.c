@@ -2415,9 +2415,6 @@ static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 		.power_down_on_bus_suspend = 0,
 		.host_notify = 1,
 		.sec_whlist_table_num = 1,
-/* Don't merge with P3
-		.currentlimit_irq = TEGRA_GPIO_TO_IRQ(GPIO_V_ACCESSORY_5V),
-*/
 	},
 	[1] = {
 		.phy_config = &hsic_phy_config,
@@ -2484,7 +2481,9 @@ static struct tegra_otg_platform_data tegra_otg_pdata = {
 	.host_register = &tegra_usb_otg_host_register,
 	.host_unregister = &tegra_usb_otg_host_unregister,
 	.otg_en = tegra_otg_en,
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	.currentlimit_irq = TEGRA_GPIO_TO_IRQ(GPIO_V_ACCESSORY_5V),
+#endif
 };
 
 static void p3_usb_init(void)
