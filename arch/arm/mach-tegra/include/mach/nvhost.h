@@ -128,6 +128,10 @@ struct nvhost_set_nvmap_fd_args {
 	__u32 fd;
 };
 
+struct nvhost_clk_rate_args {
+	__u64 rate;
+};
+
 #define NVHOST_IOCTL_CHANNEL_FLUSH		\
 	_IOR(NVHOST_IOCTL_MAGIC, 1, struct nvhost_get_param_args)
 #define NVHOST_IOCTL_CHANNEL_GET_SYNCPOINTS	\
@@ -142,8 +146,12 @@ struct nvhost_set_nvmap_fd_args {
 	_IOR(NVHOST_IOCTL_MAGIC, 6, struct nvhost_get_param_args)
 #define NVHOST_IOCTL_CHANNEL_SUBMIT_EXT    	\
 	_IOW(NVHOST_IOCTL_MAGIC, 7, struct nvhost_submit_hdr_ext)
+#define NVHOST_IOCTL_CHANNEL_GET_CLK_RATE		\
+	_IOR(NVHOST_IOCTL_MAGIC, 8, struct nvhost_clk_rate_args)
+#define NVHOST_IOCTL_CHANNEL_SET_CLK_RATE		\
+	_IOW(NVHOST_IOCTL_MAGIC, 9, struct nvhost_clk_rate_args)
 #define NVHOST_IOCTL_CHANNEL_LAST		\
-	_IOC_NR(NVHOST_IOCTL_CHANNEL_SUBMIT_EXT)
+	_IOC_NR(NVHOST_IOCTL_CHANNEL_SET_CLK_RATE)
 #define NVHOST_IOCTL_CHANNEL_MAX_ARG_SIZE sizeof(struct nvhost_submit_hdr_ext)
 
 struct nvhost_ctrl_syncpt_read_args {

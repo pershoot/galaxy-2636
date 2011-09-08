@@ -69,6 +69,7 @@ static int nvhost_channelrelease(struct inode *inode, struct file *filp)
 
 	filp->private_data = NULL;
 
+	nvhost_module_remove_client(&priv->ch->mod, priv);
 	nvhost_putchannel(priv->ch, priv->hwctx);
 
 	if (priv->hwctx)
@@ -106,6 +107,7 @@ static int nvhost_channelopen(struct inode *inode, struct file *filp)
 	gather_size = sizeof(struct nvhost_op_pair) * NVHOST_MAX_GATHERS;
 	priv->gather_mem = nvmap_alloc(ch->dev->nvmap, gather_size, 32,
 				       NVMAP_HANDLE_CACHEABLE);
+	nvhost_module_add_client(&ch->mod, priv);
 	if (IS_ERR(priv->gather_mem))
 		goto fail;
 
@@ -429,6 +431,26 @@ static long nvhost_channelctl(struct file *filp,
 			nvmap_client_put(priv->nvmap);
 
 		priv->nvmap = new_client;
+		break;
+	}
+	case NVHOST_IOCTL_CHANNEL_GET_CLK_RATE:
+	{
+		unsigned long rate;
+		struct nvhost_clk_rate_args *arg =
+				(struct nvhost_clk_rate_args *)buf;
+
+		err = nvhost_module_get_rate(&priv->ch->mod, &rate, 0);
+		if (err == 0)
+			arg->rate = rate;
+		break;
+	}
+	case NVHOST_IOCTL_CHANNEL_SET_CLK_RATE:
+	{
+		struct nvhost_clk_rate_args *arg =
+				(struct nvhost_clk_rate_args *)buf;
+		unsigned long rate = (unsigned long)arg->rate;
+
+		err = nvhost_module_set_rate(&priv->ch->mod, priv, rate, 0);
 		break;
 	}
 	default:

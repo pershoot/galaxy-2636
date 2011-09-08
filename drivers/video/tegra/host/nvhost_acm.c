@@ -21,6 +21,7 @@
  */
 
 #include "dev.h"
+#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched.h>
 #include <linux/err.h>
@@ -152,6 +153,117 @@ static int get_module_powergate_id(const char *module)
 	return -1;
 }
 
+int nvhost_module_get_rate(struct nvhost_module *mod, unsigned long *rate,
+			    int index)
+{
+	struct clk *c;
+
+	c = mod->clk[index];
+	if (IS_ERR_OR_NULL(c))
+		return -EINVAL;
+
+	nvhost_module_busy(mod);
+	*rate = clk_get_rate(c);
+	nvhost_module_idle(mod);
+
+	return 0;
+}
+
+int nvhost_module_update_rate(struct nvhost_module *mod, int index)
+{
+	unsigned long rate = 0;
+	struct nvhost_module_client *m;
+
+	if (list_empty(&mod->client_list))
+		rate = ULONG_MAX;
+
+	list_for_each_entry(m, &mod->client_list, node) {
+		rate = max(m->rate[index], rate);
+	}
+	if (IS_ERR_OR_NULL(mod->clk[index]))
+		return -EINVAL;
+	clk_set_rate(mod->clk[index], rate);
+	return 0;
+}
+
+static unsigned long nvhost_module_round_rate(struct clk *c, unsigned long rate)
+{
+	unsigned long round_rate = 0;
+	unsigned long max_rate;
+	unsigned long delta = 0;
+
+	max_rate = clk_round_rate(c, ULONG_MAX);
+	if (rate >= max_rate)
+		return max_rate;
+
+	max_rate = rate;
+
+	round_rate = clk_round_rate(c,rate);
+	if (round_rate >= max_rate)
+		return round_rate;
+
+	delta = round_rate - clk_round_rate(c, round_rate - 1);
+
+	do {
+		rate = rate + delta;
+		round_rate = clk_round_rate(c, rate);
+	} while(round_rate < max_rate);
+
+	return round_rate;
+}
+
+int nvhost_module_set_rate(struct nvhost_module *mod, void *priv,
+			    unsigned long rate, int index)
+{
+	struct nvhost_module_client *m;
+
+	list_for_each_entry(m, &mod->client_list, node) {
+		if (m->priv == priv) {
+			rate = nvhost_module_round_rate(mod->clk[index], rate);
+			m->rate[index] = rate;
+			break;
+		}
+	}
+	return nvhost_module_update_rate(mod, index);
+}
+
+int nvhost_module_add_client(struct nvhost_module *mod, void *priv)
+{
+	int i;
+	unsigned long rate;
+	struct nvhost_module_client *client;
+
+	client = kzalloc(sizeof(*client), GFP_KERNEL);
+	if (!client) {
+		return -ENOMEM;
+	}
+	INIT_LIST_HEAD(&client->node);
+	client->priv = priv;
+
+	for (i = 0; i < mod->num_clks; i++) {
+		rate = clk_round_rate(mod->clk[i], ULONG_MAX);
+		client->rate[i] = rate;
+	}
+	list_add_tail(&client->node, &mod->client_list);
+	return 0;
+}
+
+void nvhost_module_remove_client(struct nvhost_module *mod, void *priv)
+{
+	struct nvhost_module_client *m;
+
+	list_for_each_entry(m, &mod->client_list, node) {
+		if (priv == m->priv) {
+			list_del(&m->node);
+			break;
+		}
+	}
+	m->priv = NULL;
+	kfree(m);
+
+	nvhost_module_update_rate(mod, 0);
+}
+
 int nvhost_module_init(struct nvhost_module *mod, const char *name,
 		nvhost_modulef func, struct nvhost_module *parent,
 		struct device *dev)
@@ -159,6 +271,7 @@ int nvhost_module_init(struct nvhost_module *mod, const char *name,
 	int i = 0;
 	mod->name = name;
 
+	INIT_LIST_HEAD(&mod->client_list);
 	while (i < NVHOST_MODULE_MAX_CLOCKS) {
 		long rate;
 		mod->clk[i] = clk_get(dev, get_module_clk_id(name, i));
