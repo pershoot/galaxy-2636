@@ -394,6 +394,7 @@ struct snd_soc_jack {
 	struct list_head pins;
 	int status;
 	struct blocking_notifier_head notifier;
+	bool connected;
 };
 
 /* SoC PCM stream information */

@@ -195,10 +195,18 @@ static void snd_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 	if (gpio->invert)
 		enable = !enable;
 
-	if (enable)
+	if (enable) {
+		jack->connected = true;
 		report = gpio->report;
-	else
+	} else {
+	/* FIXME: Spurious interrupt, hack to double check with the
+	 * previous state to verify the interrupt.
+	 */
+		if (!jack->connected)
+			return;
+		jack->connected = false;
 		report = 0;
+	}
 
 	if (gpio->jack_status_check)
 		report = gpio->jack_status_check();
