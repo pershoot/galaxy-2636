@@ -2393,7 +2393,9 @@ static int __init p3_touch_init(void)
 static struct usb_phy_plat_data tegra_usb_phy_pdata[] = {
 	[0] = {
 			.instance = 0,
-//			.vbus_irq = TPS6586X_INT_BASE + TPS6586X_INT_USB_DET,
+#if defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+			.vbus_irq = TPS6586X_INT_BASE + TPS6586X_INT_USB_DET,
+#endif
 			.vbus_gpio = -1,
 			.usb_ldo_en = tegra_usb_ldo_en,
 	},
