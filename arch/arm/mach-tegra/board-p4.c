@@ -1437,10 +1437,8 @@ static struct p3_battery_platform_data p3_battery_platform = {
 	.recharge_voltage = 4150,	/*4.15V */
 #else
 	.temp_high_threshold = 50000,	/* 50c */
-	//.temp_high_recovery = 42000,	/* 42c */
-	.temp_high_recovery = 44000,	/* 44c */
-	//.temp_low_recovery = 2000,		/* 2c */
-	.temp_low_recovery = 3000,		/* 3c */
+	.temp_high_recovery = 42000,	/* 42c */
+	.temp_low_recovery = 2000,		/* 2c */
 	.temp_low_threshold = 0,		/* 0c */
 	.charge_duration = 10*60*60,	/* 10 hour */
 	.recharge_duration = 1.5*60*60,	/* 1.5 hour */
@@ -2670,20 +2668,6 @@ static int __init p3_gps_init(void)
 static void p3_power_off(void)
 {
 	int ret;
-	u32 value;
-
-	/* control modem power off before pmic control */
-	gpio_set_value(GPIO_RESET_REQ_N, 0);
-	udelay(500);    /* min 300us */
-	gpio_set_value(GPIO_CP_RST, 0);
-	gpio_set_value(GPIO_CP_ON, 0);
-	mdelay(50);
-
-	value = gpio_get_value(GPIO_TA_nCONNECTED);
-	if (!value) {
-		pr_info("%s: TA_nCONNECTED! Reset!\n", __func__);
-		tps6586x_soft_rst();
-	}
 
 	ret = tps6586x_power_off();
 	if (ret)
@@ -2811,11 +2795,6 @@ static void tdmb_gpio_on(void)
 {
 	printk("tdmb_gpio_on\n");
 
-        tegra_gpio_disable(GPIO_TDMB_SPI_CS);
-        tegra_gpio_disable(GPIO_TDMB_SPI_CLK);
-        tegra_gpio_disable(GPIO_TDMB_SPI_MOSI);
-        tegra_gpio_disable(GPIO_TDMB_SPI_MISO);
-
 	gpio_set_value(GPIO_TDMB_EN, 1);
 	msleep(10);
 	gpio_set_value(GPIO_TDMB_RST, 0);
@@ -2832,14 +2811,6 @@ static void tdmb_gpio_off(void)
 	msleep(1);
 	gpio_set_value(GPIO_TDMB_EN, 0);
 
-	tegra_gpio_enable(GPIO_TDMB_SPI_CS);
-	tegra_gpio_enable(GPIO_TDMB_SPI_CLK);
-	tegra_gpio_enable(GPIO_TDMB_SPI_MOSI);
-	tegra_gpio_enable(GPIO_TDMB_SPI_MISO);
-	gpio_set_value(GPIO_TDMB_SPI_CS, 0);
-	gpio_set_value(GPIO_TDMB_SPI_CLK, 0);
-	gpio_set_value(GPIO_TDMB_SPI_MOSI, 0);
-	gpio_set_value(GPIO_TDMB_SPI_MISO, 0);
 }
 
 static struct tdmb_platform_data tdmb_pdata = {
@@ -2894,6 +2865,13 @@ static int __init p4_dmb_init(void)
 	gpio_direction_output(GPIO_TDMB_RST, 0);
 	gpio_request(GPIO_TDMB_INT, "TDMB_INT");
 	gpio_direction_input(GPIO_TDMB_INT);
+
+        /* reserved for TDMB SPI */
+        tegra_gpio_disable(TEGRA_GPIO_PA6);
+        tegra_gpio_disable(TEGRA_GPIO_PB7);
+        tegra_gpio_disable(TEGRA_GPIO_PB6);
+        tegra_gpio_disable(TEGRA_GPIO_PB5);
+
 
 	platform_device_register(&tdmb_device);
 
