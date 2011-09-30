@@ -6,7 +6,7 @@
  * published by the Free Software Foundation.
  */
 
-#define VOODOO_SOUND_VERSION 10
+#define VOODOO_SOUND_VERSION 9
 
 #if defined(CONFIG_MACH_HERRING) || defined (CONFIG_SAMSUNG_GALAXYS)	       \
 	|| defined (CONFIG_SAMSUNG_GALAXYSB)				       \
@@ -17,16 +17,12 @@
 #define NEXUS_S
 #endif
 
-#if defined(CONFIG_FB_S3C_AMS701KA) || defined(CONFIG_KOR_MODEL_M180S)
+#ifdef CONFIG_FB_S3C_AMS701KA
 #define GALAXY_TAB
 #endif
 
 #ifdef CONFIG_M110S
 #define M110S
-#endif
-
-#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
-#define GALAXY_TAB_TEGRA
 #endif
 
 #ifdef CONFIG_TDMB_T3700
@@ -62,6 +58,5 @@ void update_mono_downmix(bool with_mute);
 void update_dac_direct(bool with_mute);
 void update_digital_gain(bool with_mute);
 void update_stereo_expansion(bool with_mute);
-void update_headphone_eq(bool update_bands);
-void update_headphone_eq_bands(void);
+void update_headphone_eq(bool with_mute);
 void update_enable(void);
