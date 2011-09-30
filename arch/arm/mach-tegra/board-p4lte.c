@@ -709,6 +709,8 @@ static struct android_usb_product usb_products[] = {
 		.bDeviceProtocol= 0x01,
 		.s		= ANDROID_P4LTE_KIES_CONFIG_STRING,
 		.mode		= USBSTATUS_SAMSUNG_KIES,
+		.multi_conf_functions[0] = usb_functions_mtp,
+		.multi_conf_functions[1] = usb_functions_mtp_diag,
 	},
 	{
 		.product_id	= SAMSUNG_UMS_PRODUCT_ID,
@@ -1732,7 +1734,14 @@ static struct platform_device sec_cdma_dpram = {
 };
 #endif
 
+static struct platform_device watchdog_device = {
+       .name = "watchdog",
+       .id = -1,
+
+};
+
 static struct platform_device *p3_devices[] __initdata = {
+	&watchdog_device,
 	&androidusb_device,
 #ifndef CONFIG_USB_ANDROID_RNDIS
 	&p3_rndis_device,
@@ -1770,6 +1779,7 @@ static struct platform_device *p3_devices[] __initdata = {
 };
 
 static struct platform_device *p3_devices_rev05[] __initdata = {
+	&watchdog_device,
 	&androidusb_device,
 #ifndef CONFIG_USB_ANDROID_RNDIS
 	&p3_rndis_device,
