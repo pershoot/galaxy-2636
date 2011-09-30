@@ -99,6 +99,9 @@
 #include <media/tdmb_plat.h>
 #endif
 
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+#include <linux/usb/f_accessory.h>
+#endif
 
 struct class *sec_class;
 EXPORT_SYMBOL(sec_class);
@@ -556,13 +559,26 @@ static char *usb_functions_mtp[] = {
 	"mtp",
 };
 
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+/* accessory mode */
+static char *usb_functions_accessory[] = {
+        "accessory",
+};
+static char *usb_functions_accessory_adb[] = {
+        "accessory",
+        "adb",
+};
+#endif
+
 static char *usb_functions_all[] = {
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 /* soonyong.cho : Every function driver for samsung composite.
  *  		  Number of to enable function features have to be same as below.
  */
 #  ifdef CONFIG_USB_ANDROID_SAMSUNG_ESCAPE /* USE DEVGURU HOST DRIVER */
-	
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        "accessory",
+#endif
 	"usb_mass_storage",
 	"acm",
 	"adb",
@@ -677,6 +693,30 @@ static struct android_usb_product usb_products[] = {
 		.s		= ANDROID_UMS_CONFIG_STRING,
 		.mode		= USBSTATUS_UMS,
 	},	
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        {
+                .vendor_id      = USB_ACCESSORY_VENDOR_ID,
+                .product_id     = USB_ACCESSORY_PRODUCT_ID,
+                .num_functions  = ARRAY_SIZE(usb_functions_accessory),
+                .functions      = usb_functions_accessory,
+                .bDeviceClass   = USB_CLASS_PER_INTERFACE,
+                .bDeviceSubClass= 0,
+                .bDeviceProtocol= 0,
+                .s              = ANDROID_ACCESSORY_CONFIG_STRING,
+                .mode           = USBSTATUS_ACCESSORY,
+        },
+        {
+                .vendor_id      = USB_ACCESSORY_VENDOR_ID,
+                .product_id     = USB_ACCESSORY_PRODUCT_ID,
+                .num_functions  = ARRAY_SIZE(usb_functions_accessory_adb),
+                .functions      = usb_functions_accessory_adb,
+                .bDeviceClass   = USB_CLASS_PER_INTERFACE,
+                .bDeviceSubClass= 0,
+                .bDeviceProtocol= 0,
+                .s              = ANDROID_ACCESSORY_ADB_CONFIG_STRING,
+                .mode           = USBSTATUS_ACCESSORY,
+        },
+#endif
 	{
 		.product_id	= SAMSUNG_RNDIS_PRODUCT_ID,
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
@@ -1396,10 +1436,8 @@ static struct p3_battery_platform_data p3_battery_platform = {
 	.recharge_voltage = 4150,	/*4.15V */
 #else
 	.temp_high_threshold = 50000,	/* 50c */
-	//.temp_high_recovery = 42000,	/* 42c */
-	//.temp_low_recovery = 2000,		/* 2c */
-	.temp_high_recovery = 44000,	/* 44c */
-	.temp_low_recovery = 3000,		/* 3c */
+	.temp_high_recovery = 42000,	/* 42c */
+	.temp_low_recovery = 2000,		/* 2c */
 	.temp_low_threshold = 0,		/* 0c */
 	.charge_duration = 10*60*60,	/* 10 hour */
 	.recharge_duration = 1.5*60*60,	/* 1.5 hour */
@@ -2584,11 +2622,6 @@ static void tdmb_gpio_on(void)
 {
 	printk("tdmb_gpio_on\n");
 
-        tegra_gpio_disable(GPIO_TDMB_SPI_CS);
-        tegra_gpio_disable(GPIO_TDMB_SPI_CLK);
-        tegra_gpio_disable(GPIO_TDMB_SPI_MOSI);
-        tegra_gpio_disable(GPIO_TDMB_SPI_MISO);
-
 	gpio_set_value(GPIO_TDMB_EN, 1);
 	msleep(10);
 	gpio_set_value(GPIO_TDMB_RST, 0);
@@ -2604,15 +2637,6 @@ static void tdmb_gpio_off(void)
 	gpio_set_value(GPIO_TDMB_RST, 0);
 	msleep(1);
 	gpio_set_value(GPIO_TDMB_EN, 0);
-
-	tegra_gpio_enable(GPIO_TDMB_SPI_CS);
-	tegra_gpio_enable(GPIO_TDMB_SPI_CLK);
-	tegra_gpio_enable(GPIO_TDMB_SPI_MOSI);
-	tegra_gpio_enable(GPIO_TDMB_SPI_MISO);
-	gpio_set_value(GPIO_TDMB_SPI_CS, 0);
-	gpio_set_value(GPIO_TDMB_SPI_CLK, 0);
-	gpio_set_value(GPIO_TDMB_SPI_MOSI, 0);
-	gpio_set_value(GPIO_TDMB_SPI_MISO, 0);
 }
 
 static struct tdmb_platform_data tdmb_pdata = {
@@ -2667,6 +2691,12 @@ static int __init p4_dmb_init(void)
 	gpio_direction_output(GPIO_TDMB_RST, 0);
 	gpio_request(GPIO_TDMB_INT, "TDMB_INT");
 	gpio_direction_input(GPIO_TDMB_INT);
+
+        /* reserved for TDMB SPI */
+        tegra_gpio_disable(TEGRA_GPIO_PA6);
+        tegra_gpio_disable(TEGRA_GPIO_PB7);
+        tegra_gpio_disable(TEGRA_GPIO_PB6);
+        tegra_gpio_disable(TEGRA_GPIO_PB5);
 
 	platform_device_register(&tdmb_device);
 

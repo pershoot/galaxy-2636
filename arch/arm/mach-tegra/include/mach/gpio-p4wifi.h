@@ -131,10 +131,6 @@
 #define GPIO_TDMB_EN            TEGRA_GPIO_PU5
 #define GPIO_TDMB_RST           TEGRA_GPIO_PA7
 #define GPIO_TDMB_INT           TEGRA_GPIO_PB4
-#define GPIO_TDMB_SPI_CS        TEGRA_GPIO_PB5
-#define GPIO_TDMB_SPI_CLK       TEGRA_GPIO_PA6
-#define GPIO_TDMB_SPI_MOSI      TEGRA_GPIO_PB6
-#define GPIO_TDMB_SPI_MISO      TEGRA_GPIO_PB7
 
 /* Warning: deprecated definitions. These should be deleted later */
 #if 1  
