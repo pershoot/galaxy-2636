@@ -18,6 +18,10 @@
 #include <linux/clk.h>
 #include "wm8994_samsung.h"
 
+#ifdef CONFIG_SND_VOODOO
+#include "wm8994_voodoo.h"
+#endif
+
 /*
  * Debug Feature
  */
@@ -2118,6 +2122,10 @@ void wm8994_record_main_mic(struct snd_soc_codec *codec)
 
 		DEBUG_LOG("AT Command Codec Loopback\n");
 	}
+
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
+	voodoo_hook_record_main_mic();
+#endif
 
 }
 
