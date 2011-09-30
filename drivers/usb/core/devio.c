@@ -1932,9 +1932,6 @@ static long usbdev_ioctl(struct file *file, unsigned int cmd,
 
 	ret = usbdev_do_ioctl(file, cmd, (void __user *)arg);
 
-	if (ret < 0)
-		printk(KERN_ERR "%s cmd=%d ret=%d\n", __func__, cmd, ret);
-
 	return ret;
 }
 

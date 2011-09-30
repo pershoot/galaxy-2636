@@ -2570,9 +2570,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 #if (defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA) || defined(CONFIG_MACH_N1)) && defined(CONFIG_HAS_WAKELOCK)
 	wake_lock_init(&dhd->pub.wow_wakelock, WAKE_LOCK_SUSPEND, "wow_wake_lock");
-#ifdef PNO_SUPPORT
-	wake_lock_init(&dhd->pub.pno_wakelock, WAKE_LOCK_SUSPEND, "pno_wake_lock");
-#endif
 #endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -3071,9 +3068,6 @@ dhd_detach(dhd_pub_t *dhdp)
 
 #if (defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA) || defined(CONFIG_MACH_N1)) && defined(CONFIG_HAS_WAKELOCK)
 		wake_lock_destroy(&dhdp->wow_wakelock);
-#ifdef PNO_SUPPORT
-		wake_lock_destroy(&dhdp->pno_wakelock);
-#endif
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP)
@@ -3907,7 +3901,7 @@ int dhd_os_wake_lock_timeout(dhd_pub_t *pub)
 		ret = dhd->wakelock_timeout_enable;
 #ifdef CONFIG_HAS_WAKELOCK
 		if (dhd->wakelock_timeout_enable)
-			wake_lock_timeout(&dhd->wl_rxwake, 6*HZ/10);
+			wake_lock_timeout(&dhd->wl_rxwake, HZ);
 #endif
 		dhd->wakelock_timeout_enable = 0;
 		spin_unlock_irqrestore(&dhd->wakelock_spinlock, flags);
@@ -3924,24 +3918,6 @@ int net_os_wake_lock_timeout(struct net_device *dev)
 		ret = dhd_os_wake_lock_timeout(&dhd->pub);
 	return ret;
 }
-
-#ifdef PNO_SUPPORT
-int net_os_wake_lock_timeout_for_pno(struct net_device *dev, int sec)
-{
-	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
-	int ret = 0;
-	unsigned long flags;
-
-	if (dhd) {
-		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
-#ifdef CONFIG_HAS_WAKELOCK
-		wake_lock_timeout(&dhd->pub.pno_wakelock, HZ * sec);
-#endif
-		spin_unlock_irqrestore(&dhd->wakelock_spinlock, flags);
-	}
-	return 0;
-}
-#endif
 
 int dhd_os_wake_lock_timeout_enable(dhd_pub_t *pub)
 {

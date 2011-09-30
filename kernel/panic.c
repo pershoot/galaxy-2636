@@ -133,10 +133,6 @@ NORET_TYPE void panic(const char * fmt, ...)
 		kernel_sec_set_upload_cause(UPLOAD_CAUSE_LTE_ERROR_FATAL);    
 	else if (!strcmp(buf, "Forced_Upload"))
 		kernel_sec_set_upload_cause(UPLOAD_CAUSE_FORCED_UPLOAD);
-#if defined(CONFIG_MACH_SAMSUNG_P5KORWIFI)
-	else if (!strncmp(buf, "EXT4-fs", 7))
-		kernel_sec_set_upload_cause(UPLOAD_CAUSE_EXT4_ERROR);
-#endif
 	else
 		kernel_sec_set_upload_cause(UPLOAD_CAUSE_KERNEL_PANIC);
 #endif

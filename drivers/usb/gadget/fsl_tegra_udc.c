@@ -16,7 +16,6 @@
 static struct tegra_usb_phy *phy;
 static struct clk *udc_clk;
 static struct clk *emc_clk;
-static struct clk *sclk;
 static void *udc_base;
 
 int fsl_udc_clk_init(struct platform_device *pdev)
@@ -45,13 +44,6 @@ int fsl_udc_clk_init(struct platform_device *pdev)
 	clk_enable(emc_clk);
 
 	clk_set_rate(emc_clk, 400000000);
-
-	sclk = clk_get(&pdev->dev, "sclk");
-	if (IS_ERR(sclk)) {
-		dev_err(&pdev->dev, "Can't get sclk clock\n");
-		err = PTR_ERR(sclk);
-		goto err_sclk;
-	}	
 
 	/* we have to remap the registers ourselves as fsl_udc does not
 	 * export them for us.
@@ -85,27 +77,12 @@ int fsl_udc_clk_init(struct platform_device *pdev)
 err1:
 	iounmap(udc_base);
 err0:
-	clk_put(sclk);
-err_sclk:	
 	clk_disable(emc_clk);
 	clk_put(emc_clk);
 err_emc:
 	clk_disable(udc_clk);
 	clk_put(udc_clk);
 	return err;
-}
-
-void fsl_udc_lock_sclk(uint rate)
-{
-	printk(KERN_ERR "sclk rate lock %d\n", rate);
-	clk_set_rate(sclk, rate);
-	clk_enable(sclk);
-}
-
-void fsl_udc_unlock_sclk()
-{
-	printk(KERN_ERR "sclk rate unlock 80Mhz\n");
-	clk_disable(sclk);
 }
 
 void fsl_udc_clk_finalize(struct platform_device *pdev)

@@ -42,8 +42,6 @@
 #define WM8994_VERSION "0.1"
 #define SUBJECT "wm8994_samsung.c"
 
-#define CONFIG_SND_SOC_P5_AUDIO_CHN 1 //jm.choi_2010.07.04 add for audio
-
 #if defined(CONFIG_VIDEO_TV20) && defined(CONFIG_SND_S5P_WM8994_MASTER)
 #define HDMI_USE_AUDIO
 #endif
@@ -126,7 +124,9 @@ select_route universal_wm8994_playback_paths[] = {
 	wm8994_set_playback_speaker_headset,	/* RING_NO_MIC */
 	wm8994_set_playback_speaker_headset,	/* RING_SPK_HP */
 	wm8994_set_playback_extra_dock_speaker,	/* LINEOUT */
+#if !defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_TARGET_LOCALE_KOR)
 	wm8994_set_playback_speaker_lineout		/* SPK_LINEOUT */
+#endif	
 };
 
 select_route universal_wm8994_voicecall_paths[] = {
@@ -791,15 +791,9 @@ static int wm8994_set_headset_analog_vol(struct snd_kcontrol *kcontrol,
 						0x19, 0x1C, 0x20, 0x23, 0x26, 
 						0x29, 0x2C, 0x2F, 0x32, 0x36};	
 #else
-#if defined(CONFIG_SND_SOC_P5_AUDIO_CHN)
-	unsigned short analog_vol_table[] = {0x17, 0x17, 0x17, 0x17, 0x17, 0x17,
-						0x1A, 0x1D, 0x21, 0x24, 0x27,
-						0x29, 0x2c, 0x30, 0x34, 0x36};
-#else
 	unsigned short analog_vol_table[] = {0x17, 0x17, 0x17, 0x17, 0x17, 0x17,
 						0x1A, 0x1D, 0x1F, 0x21, 0x23,
 						0x25, 0x27, 0x29, 0x2C, 0x30};
-#endif
 #endif
 #else
 	unsigned short analog_vol_table[] = {0x17, 0x17, 0x17, 0x17, 0x17, 0x17,
@@ -1565,7 +1559,7 @@ static void wm8994_shutdown(struct snd_pcm_substream *substream,
 		return;
 	}
 
-#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_TARGET_LOCALE_KOR)
+#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		wm8994->stream_state &=  ~(PCM_STREAM_CAPTURE);
 		wm8994->codec_state &= ~(CAPTURE_ACTIVE);
@@ -1625,7 +1619,7 @@ static void wm8994_shutdown(struct snd_pcm_substream *substream,
 	DEBUG_LOG("Preserve codec state = [0x%X], Stream State = [0x%X]",
 			wm8994->codec_state, wm8994->stream_state);
 
-#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_TARGET_LOCALE_KOR)
+#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		wm8994_disable_rec_path(codec);
 		wm8994->codec_state &= ~(CAPTURE_ACTIVE);

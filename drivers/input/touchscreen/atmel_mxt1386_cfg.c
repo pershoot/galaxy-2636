@@ -243,37 +243,6 @@ static int mxt_palmsuppression_config(struct mxt_data *mxt)
 	return 0;
 }
 
-static int mxt_other_configs(struct mxt_data *mxt)
-{
-	struct i2c_client *client = mxt->client;
-	u16 obj_addr, obj_size;
-	int error = 0, i = 0;
-	u8 addr = 0;
-	u8 obj_data[65];
-	u8 obj_type[MXT_MAX_OBJECT_TYPES] = {
-		MXT_TOUCH_KEYARRAY_T15,
-		MXT_SPT_COMMSCONFIG_T18,
-		MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24,
-		MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27,
-		MXT_SPT_DIGITIZER_T43,
-		0, };
-	for (i= 0; i < 20; i++)
-		obj_data[i] = 0;
-	for (i= 0; i < MXT_MAX_OBJECT_TYPES; i++) {
-		if (0 == obj_type[i])
-			break;
-		else
-			addr = obj_type[i];
-		obj_addr = MXT_BASE_ADDR(addr);
-		obj_size = MXT_GET_SIZE(addr);
-		error = mxt_write_block(client, obj_addr,	obj_size, (u8 *)&obj_data);
-		if (error < 0) {
-			dev_err(&client->dev, "mxt_write_byte failed!\n");
-			return -EIO;
-		}
-	}
-	return 0;
-}
 int mxt_config_settings(struct mxt_data *mxt)
 {
 	pr_err("mxt_config_settings");
@@ -291,8 +260,6 @@ int mxt_config_settings(struct mxt_data *mxt)
 	if (mxt_gripsuppression_config(mxt) < 0)
 		return -1;
 	if (mxt_palmsuppression_config(mxt) < 0)
-		return -1;
-	if (mxt_other_configs(mxt) < 0)
 		return -1;
 
 	/* backup to nv memory */

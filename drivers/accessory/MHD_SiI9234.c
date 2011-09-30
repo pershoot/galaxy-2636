@@ -58,11 +58,11 @@ static void ReadModifyWriteIndexedRegister (byte PageNum, byte Offset,
 static void TxPowerStateD3(void);
 static void TxPowerStateD0 (void); 
 static void CheckTxFifoStable (void); 
-void HotPlugService (void) ;
+static void HotPlugService (void) ;
 static void ReadModifyWriteCBUS(byte Offset, byte Mask, byte Value) ;
 static void OnMHDCableConnected (void) ;
 static void OnDownstreamRxPoweredDown (void) ;
-void OnHdmiCableDisconnected (void) ;
+static void OnHdmiCableDisconnected (void) ;
 static void OnDownstreamRxPoweredUp (void) ;
 static void OnHdmiCableConnected (void) ;
 
@@ -471,7 +471,7 @@ static void CheckTxFifoStable (void)
 	}
 }
 
-void HotPlugService (void) 
+static void HotPlugService (void) 
 {
 	/* disable interrupts */
 	ReadModifyWriteTPI(TPI_INTERRUPT_ENABLE_REG,
@@ -490,7 +490,6 @@ void HotPlugService (void)
 
 	CheckTxFifoStable();
 }
-EXPORT_SYMBOL(HotPlugService);
 
 static void ReadModifyWriteCBUS(byte Offset, byte Mask, byte Value) 
 {
@@ -550,7 +549,7 @@ void OnHdmiCableDisconnected (void)
 	hdmiCableConnected = FALSE;
 	OnDownstreamRxPoweredDown();
 }
-EXPORT_SYMBOL(OnHdmiCableDisconnected);
+
 
 void sii9234_tpi_init(void)
 {

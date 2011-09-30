@@ -167,10 +167,16 @@ static struct mtpg_dev    *the_mtpg;
 struct usb_interface_descriptor mtpg_interface_desc = {
 	.bLength =		sizeof mtpg_interface_desc,
 	.bDescriptorType =	USB_DT_INTERFACE,
-	.bNumEndpoints =	3,
+	.bNumEndpoints =	3,		
+#ifndef CONFIG_MACH_SAMSUNG_P4LTE		
 	.bInterfaceClass =	USB_CLASS_STILL_IMAGE,
 	.bInterfaceSubClass =	01,
 	.bInterfaceProtocol =	01,
+#else
+	.bInterfaceClass =	USB_CLASS_VENDOR_SPEC,
+	.bInterfaceSubClass =	USB_SUBCLASS_VENDOR_SPEC,
+	.bInterfaceProtocol =	00,
+#endif
 };
 
 static struct usb_endpoint_descriptor fs_mtpg_in_desc = {

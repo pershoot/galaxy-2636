@@ -450,7 +450,7 @@ int pdp_netif_rx(struct net_device *parent_ndev, struct sk_buff *skb,
 	skb->protocol = protocol;
 	skb->dev = ndev;
 #ifdef CONFIG_BRIDGE
-	skb->ip_summed = CHECKSUM_UNNECESSARY;
+	skb->ip_summed = CHECKSUM_NONE; //CHECKSUM_UNNECESSARY;
 #endif
 	ndev->stats.rx_packets++;
 	ndev->stats.rx_bytes += skb->len;

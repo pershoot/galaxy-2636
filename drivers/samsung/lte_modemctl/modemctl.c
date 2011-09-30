@@ -48,7 +48,7 @@ static struct modemctl *global_mc;
 extern struct usbsvn *share_svn;
 
 static int ignore_irq_count = 1;
-int modemctl_shutdown_flag = 0;
+extern int modemctl_shutdown_flag;
 
 int mc_is_phone_on_disable(void)
 {
@@ -775,7 +775,7 @@ static int modemctl_shutdown(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 
 	if (mc_is_modem_on()) {
-		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+		printk(KERN_INFO "%s %d\n", __func__, __LINE__);
 		disable_irq(mc->irq[0]);
 		disable_irq(mc->irq[1]);
 	}	

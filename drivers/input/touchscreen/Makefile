@@ -57,4 +57,4 @@ obj-$(CONFIG_TOUCHSCREEN_WM97XX_ZYLONITE)	+= zylonite-wm97xx.o
 obj-$(CONFIG_TOUCHSCREEN_W90X900)	+= w90p910_ts.o
 obj-$(CONFIG_TOUCHSCREEN_TPS6507X)	+= tps6507x-ts.o
 obj-$(CONFIG_TOUCHSCREEN_MXT1386)	+= atmel_mxt1386.o atmel_mxt1386_cfg.o
-obj-$(CONFIG_TOUCHSCREEN_MELFAS) += melfas_ts.o mcs8000_download.o
+obj-$(CONFIG_TOUCHSCREEN_MELFAS) += melfas_ts.o mcs8000_download.o mms100_ISC_download.o

@@ -100,6 +100,7 @@ static int bh1721fvc_write_byte(struct i2c_client *client, u8 value);
 static int bh1721fvc_get_luxvalue(struct i2c_client *client, u16 *value)
 {
         int retry;
+	struct bh1721fvc_data *bh1721fvc = i2c_get_clientdata(client);
 
         for (retry = 0; retry < 10; retry++)
                 if (i2c_master_recv(client, (u8 *)value, 2) == 2) {
@@ -543,15 +544,14 @@ static void bh1721fvc_work_func_light(struct work_struct *work)
 	int err;
 	u16 lux;
 	static int cnt = 0;
-	unsigned int result = 0;
+	unsigned int result;
 	
 	struct bh1721fvc_data *bh1721fvc = container_of(work,
 					struct bh1721fvc_data, work_light);
 
 #if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	err = bh1721fvc_get_luxvalue(bh1721fvc, &lux);
-	if (err ==0)
-	{
+	if (!err) {
 		result = (lux * 10) / 12;
 		result = result * 139 / 13;
 		if(result > 65000) result = 65000;

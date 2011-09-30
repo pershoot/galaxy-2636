@@ -214,6 +214,8 @@ static void sec_jack_set_type(struct sec_jack_info *hi, int jack_type)
 	} else {
 		/* for all other jacks, disable send/end key detection */
 		if (hi->send_key_dev != NULL) {
+			/* cancel the work if it is queued */
+			cancel_work_sync(&hi->buttons_work);
 			/* disable to prevent false events on next insert */
 			platform_device_unregister(hi->send_key_dev);
 			hi->send_key_dev = NULL;

@@ -166,8 +166,6 @@ static void samsung_enable_function(int mode);
 #ifdef CONFIG_TEGRA_CPU_FREQ_LOCK
 extern void tegra_cpu_lock_speed(int min_rate, int timeout_ms);
 extern void tegra_cpu_unlock_speed(void);
-extern void fsl_udc_lock_sclk(uint rate);
-extern void fsl_udc_unlock_sclk(void);
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */
 
 
@@ -530,15 +528,15 @@ static int set_product(struct android_dev *dev, __u16 mode)
 				dev->cdev->desc.bDeviceSubClass	 = p->bDeviceSubClass;
 				dev->cdev->desc.bDeviceProtocol	 = p->bDeviceProtocol;
 				android_config_driver.label	 = p->s;
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
+#ifdef CONFIG_USB_ANDROID_ACCESSORY				
                 if ( mode == USBSTATUS_ACCESSORY )
                     {
                         printk("Set_Product : Google accessory mode : change Product_id \r\n");
-                        dev->cdev->desc.idVendor = __constant_cpu_to_le16(USB_ACCESSORY_VENDOR_ID);
+                        dev->cdev->desc.idVendor = __constant_cpu_to_le16(USB_ACCESSORY_VENDOR_ID);                                        
                     }
                 else
-                    {
-                        dev->cdev->desc.idVendor = device_desc.idVendor;         
+                    {                          
+                        dev->cdev->desc.idVendor = device_desc.idVendor;                                        
                     }
 #endif
 
@@ -595,10 +593,10 @@ void android_enable_function(struct usb_function *f, int enable)
 				dev->current_usb_mode = USBSTATUS_MTPONLY;
 		}
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
-                if (!strcmp(f->name, "accessory")) {
-                        ret = set_product(dev, USBSTATUS_ACCESSORY);
-                }
-#endif
+		if (!strcmp(f->name, "accessory")) {
+			ret = set_product(dev, USBSTATUS_ACCESSORY);
+		}
+#endif		
 #ifdef CONFIG_USB_ANDROID_RNDIS
 		if (!strcmp(f->name, "rndis")) {
 			pr_err("%s - enable rndis\n", __func__);
@@ -606,7 +604,6 @@ void android_enable_function(struct usb_function *f, int enable)
 #ifdef CONFIG_TEGRA_CPU_FREQ_LOCK
 			if (!clk_lock_status) {
 				tegra_cpu_lock_speed(912000, 0);
-				fsl_udc_lock_sclk(240000000);	
 				clk_lock_status = true;
 			}
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */
@@ -627,17 +624,16 @@ void android_enable_function(struct usb_function *f, int enable)
 #ifdef CONFIG_TEGRA_CPU_FREQ_LOCK
 			if (clk_lock_status) {
 				tegra_cpu_unlock_speed();
-				fsl_udc_unlock_sclk();				
 				clk_lock_status = false;
 			}
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */
 			ret = set_product(dev, USBSTATUS_ADB);
 		}
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
-                else if(!strcmp(f->name, "accessory") && dev->debugging_usb_mode) {
-                        ret = set_product(dev, USBSTATUS_ADB);
-                }
-#endif
+#ifdef CONFIG_USB_ANDROID_ACCESSORY		
+		else if(!strcmp(f->name, "accessory") && dev->debugging_usb_mode) {
+			ret = set_product(dev, USBSTATUS_ADB);
+		}
+#endif			
 		else
 			ret = set_product(dev, dev->current_usb_mode);
 
@@ -766,11 +762,11 @@ static void samsung_enable_function(int mode)
 			break;
 #endif
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
-                case USBSTATUS_ACCESSORY: /* do not save usb mode */
-                        CSY_DBG_ESS("mode = USBSTATUS_ACCESSORY (0x%x)\n", mode);
-                        ret = set_product(dev, USBSTATUS_ACCESSORY);
-                        break;
-#endif
+		case USBSTATUS_ACCESSORY: /* do not save usb mode */
+			CSY_DBG_ESS("mode = USBSTATUS_ACCESSORY (0x%x)\n", mode);
+			ret = set_product(dev, USBSTATUS_ACCESSORY);
+			break;
+#endif			
 		case USBSTATUS_ASKON: /* do not save usb mode */
 			CSY_DBG_ESS("mode = USBSTATUS_ASKON (0x%x) Don't change usb mode\n", mode);
 			return;
@@ -924,9 +920,9 @@ static ssize_t UsbMenuSel_switch_show(struct device *dev, struct device_attribut
 				return sprintf(buf, "[UsbMenuSel] TETHERING\n");
 #endif
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
-                        case USBSTATUS_ACCESSORY:
-                                return sprintf(buf, "[UsbMenuSel] ACCESSORY\n");
-#endif
+			case USBSTATUS_ACCESSORY:
+				return sprintf(buf, "[UsbMenuSel] ACCESSORY\n");
+#endif				
 			case USBSTATUS_ADB:
 				return sprintf(buf, "[UsbMenuSel] ACM_ADB_UMS\n");
 		}
@@ -963,12 +959,12 @@ static ssize_t UsbMenuSel_switch_store(struct device *dev, struct device_attribu
 			CSY_DBG_ESS("Enable ASKON(%d)\n", value);
 			samsung_enable_function(USBSTATUS_ASKON);
 			break;
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
-                case 4:
-                        CSY_DBG_ESS("Enable Accessory(%d)\n", value);
-                        samsung_enable_function(USBSTATUS_ACCESSORY);
-                        break;
-#endif
+#ifdef CONFIG_USB_ANDROID_ACCESSORY			
+		case 4:
+			CSY_DBG_ESS("Enable Accessory(%d)\n", value);
+			samsung_enable_function(USBSTATUS_ACCESSORY);
+			break;
+#endif			
 		default:
 			CSY_DBG("Fail : value(%d) is not invaild.\n", value);
 	}

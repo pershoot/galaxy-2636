@@ -28,9 +28,24 @@
 //
 //============================================================
 
-#include "Master_bin_V40.c"
-#include "Master_bin_V57.c"
+#if MELFAS_ISP_DOWNLOAD
 
+#include "Master_bin_V38.c"
+#include "Slave_bin_V38.c"
+
+#include "Master_bin_V55.c"
+#include "Slave_bin_V55.c"
+
+#else
+//#include "master_original_bin.c"		// Core & Private
+//#include "master_PublicUpdated_bin.c"	// Public
+
+#include "Core_bin_V02.c"				// Core & Private
+#include "Public_MEL_bin_V02.c"			// Melfas Public
+#include "Public_ILJ_bin_V02.c"			// Iljin Public
+
+
+#endif
 
 UINT8  ucVerifyBuffer[MELFAS_TRANSFER_LENGTH];		//	You may melloc *ucVerifyBuffer instead of this
 
@@ -59,6 +74,11 @@ static void mcsdl_read_32bits( UINT8 *pData );
 static void mcsdl_write_bits(UINT32 wordData, int nBits);
 static void mcsdl_scl_toggle_twice(void);
 
+
+//---------------------------------
+//	Delay functions
+//---------------------------------
+void mcsdl_delay(UINT32 nCount);
 
 
 //---------------------------------
@@ -99,7 +119,9 @@ int mcsdl_download_binary_data(bool touch_id)
 	int nRet = 0;
 	int retry_cnt = 0;
 	long fw1_size = 0;
+	long fw2_size = 0;
 	unsigned char *fw_data1;
+	unsigned char *fw_data2;
 #ifdef FW_FROM_FILE
 	struct file *filp;
 	loff_t  pos;
@@ -135,6 +157,31 @@ int mcsdl_download_binary_data(bool touch_id)
 
 	filp_close(filp, current->files);
 
+	filp = filp_open(MELFAS_FW2, O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		pr_err("file open error:%d\n", (s32)filp);
+		return -1;
+	}
+
+	fw2_size = filp->f_path.dentry->d_inode->i_size;
+	pr_info("Size of the file : %ld(bytes)\n", fw2_size);
+
+	fw_data2 = kmalloc(fw2_size, GFP_KERNEL);
+	memset(fw_data2, 0, fw2_size);
+
+	pos = 0;
+	memset(fw_data2, 0, fw2_size);
+	ret = vfs_read(filp, (char __user *)fw_data2, fw2_size, &pos);
+
+	if(ret != fw2_size) {
+		pr_err("Failed to read file %s (ret = %d)\n", MELFAS_FW2, ret);
+		kfree(fw_data2);
+		filp_close(filp, current->files);
+		return -1;
+	}
+
+	filp_close(filp, current->files);
+
 	set_fs(oldfs);
 	spin_lock_init(&lock);
 	spin_lock(&lock);
@@ -163,33 +210,53 @@ int mcsdl_download_binary_data(bool touch_id)
 			continue;
 #if MELFAS_2CHIP_DOWNLOAD_ENABLE
 		pr_info("[TSP] ADB - SLAVE CHIP Firmware update! try : %d",retry_cnt+1);
-		nRet = mcsdl_download( (const UINT8*) fw_data1, (const UINT16)fw1_size, 1);
+		nRet = mcsdl_download( (const UINT8*) fw_data2, (const UINT16)fw2_size, 1);
 	if (nRet)
 		continue;
 #endif
 	break;	
 	}
-	
+
 #else	//FW_FROM_FILE
+
+
+#if MELFAS_ISP_DOWNLOAD
 
 	for (retry_cnt = 0; retry_cnt < 5; retry_cnt++) {
 		if (touch_id)
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_2, (const UINT16)MELFAS_binary_nLength_2, 0);
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_3, (const UINT16)MELFAS_binary_nLength_3 , 0);
 		else
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_1, (const UINT16)MELFAS_binary_nLength_1 , 0);
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength , 0);
 
 		if (nRet)
 			continue;
 #if MELFAS_2CHIP_DOWNLOAD_ENABLE
 		if (touch_id)
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_2, (const UINT16)MELFAS_binary_nLength_2, 1); // Slave Binary data download
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_3, (const UINT16)MELFAS_binary_nLength_3, 1); // Slave Binary data download
 		else
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_1, (const UINT16)MELFAS_binary_nLength_1, 1); // Slave Binary data download
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength, 1); // Slave Binary data download
 		if (nRet)
 			continue;
 #endif
 		break;
 	}
+
+#else	// MELFAS_ISP_DOWNLOAD
+
+
+	for (retry_cnt = 0; retry_cnt < 5; retry_cnt++) {
+		nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength , 0);
+		if (nRet)
+			continue;
+#if MELFAS_2CHIP_DOWNLOAD_ENABLE
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength, 1); // Slave Binary data download
+		if (nRet)
+			continue;
+#endif
+		break;
+	}
+
+#endif	// MELFAS_ISP_DOWNLOAD
 
 #endif	//FW_FROM_FILE
 
@@ -203,6 +270,7 @@ fw_error:
 	}
 #ifdef FW_FROM_FILE
 	kfree(fw_data1);
+	kfree(fw_data2);
 	spin_unlock(&lock);
 #endif
 	return nRet;

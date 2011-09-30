@@ -239,7 +239,9 @@ void wm8994_set_playback_speaker(struct snd_soc_codec *codec);
 void wm8994_set_playback_bluetooth(struct snd_soc_codec *codec);
 void wm8994_set_playback_speaker_headset(struct snd_soc_codec *codec);
 void wm8994_set_playback_extra_dock_speaker(struct snd_soc_codec *codec);
+#if !defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_TARGET_LOCALE_KOR)
 void wm8994_set_playback_speaker_lineout(struct snd_soc_codec *codec);
+#endif
 void wm8994_set_voicecall_common_setting(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_receiver(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_headset(struct snd_soc_codec *codec);

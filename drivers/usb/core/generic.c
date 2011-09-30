@@ -192,6 +192,9 @@ static void generic_disconnect(struct usb_device *udev)
 		usb_set_configuration(udev, -1);
 }
 
+#ifdef CONFIG_MACH_SAMSUNG_P4LTE
+int modemctl_shutdown_flag = 0;
+#endif
 #ifdef	CONFIG_PM
 
 static int generic_suspend(struct usb_device *udev, pm_message_t msg)
@@ -204,7 +207,16 @@ static int generic_suspend(struct usb_device *udev, pm_message_t msg)
 	 * interfaces manually by doing a bus (or "global") suspend.
 	 */
 	if (!udev->parent)
+#ifdef CONFIG_MACH_SAMSUNG_P4LTE
+	{	
+		if (!modemctl_shutdown_flag)
+#endif
 		rc = hcd_bus_suspend(udev, msg);
+#ifdef CONFIG_MACH_SAMSUNG_P4LTE
+		else
+			printk(KERN_INFO "%s %d, skip hcd_bus_suspend when shutdown\n", __func__, __LINE__);
+	}
+#endif
 
 	/* Non-root devices don't need to do anything for FREEZE or PRETHAW */
 	else if (msg.event == PM_EVENT_FREEZE || msg.event == PM_EVENT_PRETHAW)

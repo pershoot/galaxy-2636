@@ -654,6 +654,11 @@ static int tegra_ehci_reset(struct usb_hcd *hcd)
 	return 0;
 }
 
+
+#ifdef CONFIG_MACH_SAMSUNG_P4LTE
+static int shutdown = 0;
+#endif
+
 static void tegra_ehci_shutdown(struct usb_hcd *hcd)
 {
 	struct tegra_ehci_hcd *tegra = dev_get_drvdata(hcd->self.controller);
@@ -661,7 +666,10 @@ static void tegra_ehci_shutdown(struct usb_hcd *hcd)
 	 * controller has clocks to it */
 
 #ifdef CONFIG_MACH_SAMSUNG_P4LTE
-	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+	printk(KERN_INFO "%s %d\n", __func__, __LINE__);
+
+	if (tegra->phy->instance == 2)
+		shutdown = 1;
 #endif
     
 	if (!tegra->host_resumed)
@@ -670,7 +678,7 @@ static void tegra_ehci_shutdown(struct usb_hcd *hcd)
 	/* call ehci shut down */
 	ehci_shutdown(hcd);
 
-#ifdef CONFIG_MACH_SAMSUNG_P4LTE	
+#if 0	
 	/* Turn Off Interrupts */
 	ehci_writel(tegra->ehci, 0, &tegra->ehci->regs->intr_enable);
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
@@ -702,13 +710,16 @@ static void tegra_ehci_shutdown(struct usb_hcd *hcd)
 
 	kfree(tegra);    
 
-	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
+	printk(KERN_INFO "%s %d\n", __func__, __LINE__);
 
 	/* we are ready to shut down, powerdown the phy */
 //	tegra_ehci_power_down(hcd);
 #else
 	/* we are ready to shut down, powerdown the phy */
 	tegra_ehci_power_down(hcd);
+#endif
+#ifdef CONFIG_MACH_SAMSUNG_P4LTE
+	printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 #endif
 }
 
@@ -814,6 +825,11 @@ static int tegra_ehci_bus_suspend(struct usb_hcd *hcd)
 
 #ifdef CONFIG_MACH_SAMSUNG_P4LTE
 	printk(KERN_INFO "%s %d\n", __func__, __LINE__);
+
+	if (tegra->phy->instance == 2 && shutdown == 1) {
+		printk(KERN_INFO "%s %d, return by shutdown\n", __func__, __LINE__);
+		return ret;
+	}
 #endif
 
 	if (0 != (ret = ehci_bus_suspend(hcd)))

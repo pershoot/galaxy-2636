@@ -220,7 +220,6 @@ int check_keyboard_dock(bool val)
 		data->dockconnected = false;
 	else {
 		data->pre_connected = true;
-		del_timer(&data->timer);
 
 		/*for checking handshake*/
 		data->connected_time = jiffies_to_msecs(jiffies);

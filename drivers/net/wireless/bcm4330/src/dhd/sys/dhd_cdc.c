@@ -711,11 +711,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	setbit(eventmask, WLC_E_TRACE);
 #endif
 
-#ifdef PNO_SUPPORT /* patch PNO */
-	setbit(eventmask, WLC_E_PFN_NET_FOUND);
-	setbit(eventmask, WLC_E_PFN_NET_LOST);
-#endif
-
 	bcm_mkiovar("event_msgs", eventmask, WL_EVENTING_MASK_LEN, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
 

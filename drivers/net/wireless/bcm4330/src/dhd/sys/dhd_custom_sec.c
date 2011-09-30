@@ -107,8 +107,8 @@ start_readmac:
 
 	if(ret)
 		sscanf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",
-			   (unsigned int *)&(mac->octet[0]), (unsigned int *)&(mac->octet[1]),(unsigned int *)&(mac->octet[2]), 
-			   (unsigned int *)&(mac->octet[3]), (unsigned int *)&(mac->octet[4]),(unsigned int *)&(mac->octet[5]));
+			   mac->octet[0], mac->octet[1], mac->octet[2], 
+			   mac->octet[3], mac->octet[4], mac->octet[5]);
 	else
 		DHD_ERROR(("dhd_bus_start: Reading from the '%s' returns 0 bytes\n", filepath));
 
@@ -266,8 +266,8 @@ int CheckRDWR_Macaddr(	struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr 
 				g_iMacFlag = MACADDR_MOD_RANDOM;
 			} else {
 				sscanf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",
-					(unsigned int *)&(mac->octet[0]), (unsigned int *)&(mac->octet[1]), (unsigned int *)&(mac->octet[2]),
-					(unsigned int *)&(mac->octet[3]), (unsigned int *)&(mac->octet[4]), (unsigned int *)&(mac->octet[5]));
+				   &(mac->octet[0]), &(mac->octet[1]), &(mac->octet[2]), 
+				   &(mac->octet[3]), &(mac->octet[4]), &(mac->octet[5]));
 				if(memcmp(cur_mac,mac->octet,ETHER_ADDR_LEN) == 0) { // read mac is same
 					g_iMacFlag = MACADDR_NONE;
 				}
@@ -296,8 +296,8 @@ int CheckRDWR_Macaddr(	struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr 
 		}
 		else {
 			sscanf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",
-			   (unsigned int *)&(mac->octet[0]), (unsigned int *)&(mac->octet[1]), (unsigned int *)&(mac->octet[2]), 
-			   (unsigned int *)&(mac->octet[3]), (unsigned int *)&(mac->octet[4]), (unsigned int *)&(mac->octet[5]));
+			   &(mac->octet[0]), &(mac->octet[1]), &(mac->octet[2]),
+			   &(mac->octet[3]), &(mac->octet[4]), &(mac->octet[5]));
 			/* Writing Newly generated MAC ID to the Dongle */
 			if (0 == _dhd_set_mac_address(dhd, 0, mac)) {
 				DHD_INFO(("dhd_bus_start: MACID is overwritten\n"));
@@ -316,8 +316,8 @@ int CheckRDWR_Macaddr(	struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr 
 				0x60,0xd0,0xa9,randommac[0],randommac[1],randommac[2]);		
 		DHD_ERROR(("[WIFI] The Random Generated MAC ID : %s\n", macbuffer));
 		sscanf(macbuffer,"%02X:%02X:%02X:%02X:%02X:%02X",
-			   (unsigned int *)&(mac->octet[0]), (unsigned int *)&(mac->octet[1]), (unsigned int *)&(mac->octet[2]), 
-			   (unsigned int *)&(mac->octet[3]), (unsigned int *)&(mac->octet[4]), (unsigned int *)&(mac->octet[5]));
+			   &(mac->octet[0]), &(mac->octet[1]), &(mac->octet[2]), 
+			   &(mac->octet[3]), &(mac->octet[4]), &(mac->octet[5]));
 		if (0 == _dhd_set_mac_address(dhd, 0, mac)) {
 			DHD_INFO(("dhd_bus_start: MACID is overwritten\n"));
 			g_iMacFlag = MACADDR_COB;

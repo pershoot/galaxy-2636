@@ -68,9 +68,6 @@ struct acc_con_info {
 };
 
 extern	s16 stmpe811_adc_get_value(u8 channel);
-extern void HotPlugService(void);
-extern void OnHdmiCableDisconnected(void);
-
 
 #ifdef CONFIG_MHL_SII9234
 #include "sii9234.h"
@@ -186,15 +183,11 @@ static void acc_con_early_suspend(struct early_suspend *early_sus)
 		struct acc_con_info, early_suspend);
 
 	printk(KERN_ERR "%s\n", __func__);
-/*
 	if (acc->mhl_pwr_state) {
 	printk(KERN_ERR "%s2\n", __func__);
 		MHD_HW_Off();
 		acc->mhl_pwr_state = false;
 	}
-*/
-	if (acc->mhl_pwr_state)
-		OnHdmiCableDisconnected();
 }
 
 static void acc_con_late_resume(struct early_suspend *early_sus)
@@ -203,12 +196,9 @@ static void acc_con_late_resume(struct early_suspend *early_sus)
 		struct acc_con_info, early_suspend);
 
 	printk(KERN_ERR "%s\n", __func__);
-/*
 	schedule_delayed_work(&acc->acc_con_work,
 			msecs_to_jiffies(500));
-*/
-	if (acc->mhl_pwr_state)
-		HotPlugService();
+
 }
 #endif
 
@@ -353,7 +343,7 @@ void acc_notified(struct acc_con_info *acc, int acc_adc)
 			env_ptr = "ACCESSORY=lineout";
 			acc->current_accessory = ACCESSORY_LINEOUT;
 			switch_set_state(&acc->ear_jack_switch, 1);
-		} else if ((1600 < acc_adc) && (2300 > acc_adc)) { /* for nonideal adc value when insert earjeck */
+		} else if ((1700 < acc_adc) && (2300 > acc_adc)) { /* for nonideal adc value when insert earjeck */
 			env_ptr = "ACCESSORY=lineout";
 			acc->current_accessory = ACCESSORY_LINEOUT;
 			switch_set_state(&acc->ear_jack_switch, 1);

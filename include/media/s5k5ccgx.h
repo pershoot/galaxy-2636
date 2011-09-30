@@ -176,7 +176,6 @@ enum s5k5ccgx_iso_mode {
 enum s5k5ccgx_cam_mode {
 	CAMMODE_CAMERA = 1,
 	CAMMODE_CAMCORDER,
-	CAMMODE_MMS_CAMCORDER,
 	CAMMODE_MAX,
 };
 

@@ -725,15 +725,6 @@ typedef struct {
 #define WPA_AUTH_WAPI		0x0400	
 #endif /* LINUX_POSTMOGRIFY_REMOVAL */
 
-#ifdef PNO_SUPPORT /* for PNO */
-#define WL_PNO_IDLE		0
-#define WL_PNO_NETFOUND		1
-#define WL_PNO_DISABLED		2
-#define WL_PNO_ENABLE		3
-
-#define WPA_AUTH_PFN_ANY 0x00 /* for PFN, match only ssid */
-#endif
-
 /* pmkid */
 #define	MAXPMKID		16
 
@@ -2727,10 +2718,6 @@ enum {
 #define	AUTO_CONNECT_MASK		0x10
 
 #define PFN_VERSION			1
-
-#ifdef PNO_SUPPORT /* by tjkang for PNO */
-#define MAX_PFN_LIST_COUNT 16
-#endif
 
 /* PFN data structure */
 typedef struct wl_pfn_param {

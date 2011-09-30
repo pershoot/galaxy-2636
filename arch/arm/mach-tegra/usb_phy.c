@@ -272,10 +272,8 @@ static struct tegra_utmip_config utmip_default[] = {
 		.term_range_adj = 6,
 #if defined(CONFIG_MACH_SAMSUNG_P5SKT) ||defined(CONFIG_MACH_SAMSUNG_P5KORWIFI)
 		.xcvr_setup = 14,
-#elif defined(CONFIG_MACH_SAMSUNG_P5) ||defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+#elif defined(CONFIG_MACH_SAMSUNG_P5)
 		.xcvr_setup = 14,
-#elif defined(CONFIG_MACH_SAMSUNG_P4) ||defined(CONFIG_MACH_SAMSUNG_P4WIFI)
-		.xcvr_setup = 13,
 #elif defined(CONFIG_MACH_SAMSUNG_P4LTE)
 		.xcvr_setup = 12,
 #else
@@ -291,10 +289,8 @@ static struct tegra_utmip_config utmip_default[] = {
 		.term_range_adj = 6,
 #if defined(CONFIG_MACH_SAMSUNG_P5SKT) ||defined(CONFIG_MACH_SAMSUNG_P5KORWIFI)
 		.xcvr_setup = 14,
-#elif defined(CONFIG_MACH_SAMSUNG_P5) ||defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+#elif defined(CONFIG_MACH_SAMSUNG_P5)
 		.xcvr_setup = 14,
-#elif defined(CONFIG_MACH_SAMSUNG_P4) ||defined(CONFIG_MACH_SAMSUNG_P4WIFI)
-		.xcvr_setup = 13,
 #else
 		.xcvr_setup = 9,
 #endif

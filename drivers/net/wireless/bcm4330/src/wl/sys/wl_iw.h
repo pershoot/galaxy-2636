@@ -199,10 +199,6 @@ extern int net_os_set_dtim_skip(struct net_device *dev, int val);
 extern int net_os_set_packet_filter(struct net_device *dev, int val);
 extern int net_os_send_hang_message(struct net_device *dev);
 
-#ifdef PNO_SUPPORT
-int net_os_wake_lock_timeout_for_pno(struct net_device *dev, int sec);
-#endif
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
 #define IWE_STREAM_ADD_EVENT(info, stream, ends, iwe, extra) \
 	iwe_stream_add_event(info, stream, ends, iwe, extra)
@@ -230,9 +226,8 @@ extern int dhd_dev_pno_enable(struct net_device *dev,  int pfn_enabled);
 extern int dhd_dev_get_pno_status(struct net_device *dev);
 
 #define PNO_TLV_PREFIX			'S'
-#define PNO_TLV_VERSION			'1'
-#define PNO_TLV_SUBVERSION 		'2'
-
+#define PNO_TLV_VERSION			1
+#define PNO_TLV_SUBVERSION 		0
 #define PNO_TLV_RESERVED		0
 #define PNO_TLV_TYPE_SSID_IE		'S'
 #define PNO_TLV_TYPE_TIME		'T'

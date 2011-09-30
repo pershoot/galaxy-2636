@@ -76,7 +76,7 @@ static int stmpe811_i2c_read(struct i2c_client *client, u8 reg, u8 *data, u8 len
 
 	value = i2c_smbus_read_i2c_block_data(client, (u8)reg, length, data);
 	if (value < 0)
-		printk("%s: Failed to stmpe811_i2c_read, value: %d\n", __func__, value);
+		printk("%s: Failed to stmpe811_i2c_read\n", __func__);
 	
 	return 0;
 }
@@ -106,53 +106,7 @@ int stmpe811_write_register(u8 addr, u16 w_data)
 
 	return 0;
 }
-#ifdef CONFIG_MACH_SAMSUNG_P5
-s16 stmpe811_adc_get_value(u8 channel)
-{
-	struct i2c_client *client = stmpe811_adc_i2c_client;
-	s16 ret;
-	u8 data[2];
-	u16 w_data = 0;
-	int data_channel_addr = 0;
-	int count = 0;
 
-	stmpe811_write_register(STMPE811_ADC_CAPT, (1 << channel));
-
-	while(count < 10)
-	{
-		stmpe811_i2c_read(client, STMPE811_ADC_CAPT, data, (u8)1);
-		w_data = ((data[0]<<8) | data[1]) & 0x0FFF;
-
-		//printk("%s: try count (%d)\n", __func__, count);
-		if(w_data & (1 << channel))
-		{
-			printk("%s: Confirmed new data in channel(%d) \n", __func__, channel);
-			break;
-		}
-		
-		msleep(1);
-		count++;
-	}
-	
-	data_channel_addr = STMPE811_ADC_DATA_CH0 + (channel * 2);
-	msleep(10);
-
-	/* read value from ADC */
-	if (stmpe811_i2c_read(client, data_channel_addr, data, (u8)2) < 0) {
-		printk("%s: Failed to read ADC_DATA_CH(%d).\n", __func__,channel);
-		return -1;
-	}
-
-	w_data = ((data[0]<<8) | data[1]) & 0x0FFF;	
-	printk("%s: ADC_DATA_CH(%d) = 0x%x, %d. \n", __func__,channel, w_data,w_data );
-
-	stmpe811_write_register(STMPE811_ADC_CAPT, (1 << channel));
-	
-	ret = w_data;
-
-	return ret;
-}
-#else //P3, P4, P4 LTE
 s16 stmpe811_adc_get_value(u8 channel)
 {
 	struct i2c_client *client = stmpe811_adc_i2c_client;
@@ -165,6 +119,7 @@ s16 stmpe811_adc_get_value(u8 channel)
 
 	stmpe811_write_register(STMPE811_ADC_CAPT, (1 << channel));
 
+	msleep(10);
 	stmpe811_i2c_read(client, STMPE811_ADC_CAPT, data, (u8)1);
 //	printk("STMPE811_ADC_CAPT = 0x%x..\n", data[0]);
 
@@ -176,6 +131,7 @@ s16 stmpe811_adc_get_value(u8 channel)
 	data_channel_addr = STMPE811_ADC_DATA_CH0 + (channel * 2);
 
 //	printk("%s: data_channel_addr = 0x%x, channel = 0x%x\n", __func__,data_channel_addr, (1 << channel));
+	msleep(10);
 
 	/* read value from ADC */
 	if (stmpe811_i2c_read(client, data_channel_addr, data, (u8)2) < 0) {
@@ -192,7 +148,6 @@ s16 stmpe811_adc_get_value(u8 channel)
 //	ret = ((data&0x0FFF)*2048)/4095;
 	return ret;
 }
-#endif
 EXPORT_SYMBOL(stmpe811_adc_get_value);
 
 static ssize_t adc_test_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -315,37 +270,6 @@ static int stmpe811_adc_i2c_probe(struct i2c_client *client,  const struct i2c_d
 
 	msleep(10);
 	
-#ifdef CONFIG_MACH_SAMSUNG_P5
-	stmpe811_write_register(STMPE811_SYS_CTRL2, 0x0a); // enable adc & ts clock
-	stmpe811_i2c_read(client, STMPE811_SYS_CTRL2, data, (u8)1);
-	printk("STMPE811_SYS_CTRL2 = 0x%x..\n", data[0]);
-
-	//in reference code, write 0x40 into STMPE811_INT_EN(0x0A) - enabling ADC interrupt
-	stmpe811_write_register(STMPE811_INT_EN, 0x00); // disable interrupt
-	stmpe811_i2c_read(client, STMPE811_INT_EN, data, (u8)1);
-	printk("STMPE811_INT_EN = 0x%x..\n", data[0]);
-
-	//in reference code, write 0x0 into STMPE811_ADC_CTRL1(0x20)
-	stmpe811_write_register(STMPE811_ADC_CTRL1, 0x38); //64, 12bit, internal
-	stmpe811_i2c_read(client, STMPE811_ADC_CTRL1, data, (u8)1);
-	printk("STMPE811_ADC_CTRL1 = 0x%x..\n", data[0]);
-
-	//in reference code, write 0x0 into STMPE811_ADC_CTRL2(0x21)
-	stmpe811_write_register(STMPE811_ADC_CTRL2, 0x03); //clock speed 6.5MHz
-	stmpe811_i2c_read(client, STMPE811_ADC_CTRL2, data, (u8)1);
-	printk("STMPE811_ADC_CTRL2 = 0x%x..\n", data[0]);
-
-//   It should be ADC settings. So the value should be 0x00 instead of 0xFF 
-//   		2011.05.05 by Rami.Jung 
-	stmpe811_write_register(STMPE811_GPIO_AF, 0x00); // gpio 0-3 -> ADC
-
-	stmpe811_i2c_read(client, STMPE811_GPIO_AF, data, (u8)1);
-	printk("STMPE811_GPIO_AF = 0x%x..\n", data[0]);
-
-	//
-	stmpe811_write_register(STMPE811_ADC_CAPT, 0xD0);
-
-#else //P3, P4, P4 LTE
 	stmpe811_write_register(STMPE811_SYS_CTRL2, 0x00); // enable adc & ts clock
 	stmpe811_i2c_read(client, STMPE811_SYS_CTRL2, data, (u8)1);
 	printk("STMPE811_SYS_CTRL2 = 0x%x..\n", data[0]);
@@ -374,7 +298,6 @@ static int stmpe811_adc_i2c_probe(struct i2c_client *client,  const struct i2c_d
 	stmpe811_write_register(STMPE811_TSC_CTRL, 0x00);
 	stmpe811_i2c_read(client, STMPE811_TSC_CTRL, data, (u8)1);
 	printk("STMPE811_TSC_CTRL = 0x%x..\n", data[0]);
-#endif
 
 	printk("adc_i2c_probe success!!!\n");
 	

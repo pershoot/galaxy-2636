@@ -283,7 +283,7 @@ static int tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	//unsigned long ulFreq = 0;
 	//unsigned char subChID = 0;
 	//unsigned char svcType = 0;
-	unsigned long FIG_Frequency = 0;
+	unsigned long FIG_Frequency;
 	EnsembleInfoType *pEnsembleInfo;
 	tdmb_dm dmBuff;
 
@@ -348,9 +348,9 @@ static int tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 
 	case IOCTL_TDMB_SCAN_FREQ_SYNC:
-		FIG_Frequency = ((EnsembleInfoType *)arg)->EnsembleFrequency;
-
 		DPRINTK("IOCTL_TDMB_SCAN_FREQ_SYNC %ld\n", FIG_Frequency);
+
+		FIG_Frequency = ((EnsembleInfoType *)arg)->EnsembleFrequency;
 
 		pEnsembleInfo = vmalloc(sizeof(EnsembleInfoType));
 		memset((char *)pEnsembleInfo, 0x00, sizeof(EnsembleInfoType));

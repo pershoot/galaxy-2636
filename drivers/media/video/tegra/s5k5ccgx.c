@@ -2216,16 +2216,20 @@ static int s5k5ccgx_set_cam_mode(unsigned long value)
 
 	if (value == CAMMODE_CAMCORDER)
 	{
+		if(state->preview_framesize_index == S5K5CCGX_PREVIEW_528x432)
+		{
+			//TODO : do fix frame control
+			err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
+					ARRAY_SIZE(state->regs->fps), FRAME_RATE_15);
+			printk(" 15fps fix frame!!\n\n\n");
+		}	
+		else if (!(state->preview_framesize_index == S5K5CCGX_PREVIEW_PVGA))
+		{
 			//TODO : do fix frame control
 			err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
 					ARRAY_SIZE(state->regs->fps), FRAME_RATE_30);
 			printk("30 fps fix frame!!\n\n\n");
-	}
-	else if(value == CAMMODE_MMS_CAMCORDER)
-	{
-			err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
-					ARRAY_SIZE(state->regs->fps), FRAME_RATE_15);
-			printk(" 15fps fix frame!!\n\n\n");	
+		}
 	}
 	else
 	{

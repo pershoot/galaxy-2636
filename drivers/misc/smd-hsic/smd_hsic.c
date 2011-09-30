@@ -770,10 +770,8 @@ retry:
 				g_usbdev.hsic->resume_failcnt = 0;
 				smdctl_request_connection_recover(true);
 			}
-			smdctl_request_slave_wakeup(NULL);
 			return -ETIMEDOUT;
 		}
-		smdctl_request_slave_wakeup(NULL);
 		msleep(100);
 		goto retry;
 	case RPM_SUSPENDING:

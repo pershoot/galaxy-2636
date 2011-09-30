@@ -282,26 +282,6 @@ typedef struct bt_info {
 bt_info_t *g_bt = NULL;
 static void wl_iw_bt_timerfunc(ulong data);
 #endif /* COEX_DHCP */
-
-#ifdef PNO_SUPPORT
-typedef struct pno_info {
-	struct net_device *dev;
-	struct timer_list  timer;
-
-	/* Thread to work on iscan */
-	long sysioc_pid;
-	struct semaphore sysioc_sem;
-	struct completion sysioc_exited;
-
-	uint32 wakelock_time;
-	uint32 timer_on;
-	int 	state;
-}pno_info_t;
-static void wl_iw_pno_timerfunc(ulong data);
-
-pno_info_t* g_pno = NULL;
-#endif
-
 iscan_info_t *g_iscan = NULL;
 void dhd_print_buf(void *pbuf, int len, int bytes_per_line);
 static void wl_iw_timerfunc(ulong data);
@@ -1310,9 +1290,7 @@ wl_iw_set_pno_set(
 	char *str_ptr;
 	int tlv_size_left;
 	int pno_time;
-	char str_pno_time[3]; /* patch PNO */
-
-// #define  PNO_SET_DEBUG  1 
+/* #define  PNO_SET_DEBUG  1 */
 #ifdef PNO_SET_DEBUG
 	int i;
 	char pno_in_example[] = {
@@ -1392,27 +1370,6 @@ wl_iw_set_pno_set(
 			/* Get other params */
 	while (tlv_size_left > 0) {
 				type = str_ptr[0];
-				
-#if 1  /* patch PNO, current version don't support inner option except of scan time */				
-				switch (type) {
-					case PNO_TLV_TYPE_TIME:
-						
-					str_pno_time[0] = str_ptr[1];
-					str_pno_time[1] = str_ptr[2];
-					str_pno_time[2] = NULL;
-					pno_time = bcm_strtoul(str_pno_time, NULL , 16);
-					
-					str_ptr +=3;
-					tlv_size_left = 0;					
-					break;
-
-					default :
-					WL_ERROR(("%s get unkwown type %X\n",
-							__FUNCTION__, type));
-						goto exit_proc;
-					break;
-				}
-#else
 				switch (type) {
 					case PNO_TLV_TYPE_TIME:
 					/* Search for PNO time info */
@@ -1432,8 +1389,6 @@ wl_iw_set_pno_set(
 						goto exit_proc;
 					break;
 				}
-
-#endif
 	}
 
 	/* PNO setting execution */
@@ -1443,35 +1398,6 @@ exit_proc:
 	net_os_wake_unlock(dev);
 	return res;
 }
-
-static void wl_iw_pno_timerfunc(ulong data)
-{
-	pno_info_t *pno = (pno_info_t *)data;	
-	if (pno) {
-		pno->timer_on = 0;
-		/* pno disabled */
-		if(pno->state == WL_PNO_DISABLED) {
-			pno->state = WL_PNO_ENABLE;
-			up(&pno->sysioc_sem);		
-		}
-	}
-
-
-}
-int wl_iw_pno_auto_control(pno_info_t *pno,  int sec)
-{
-	if (pno) {				
-		if(pno->state == WL_PNO_IDLE){
-			pno->wakelock_time = sec;
-			pno->state = WL_PNO_NETFOUND;
-			up(&pno->sysioc_sem);	
-			
-			net_os_wake_lock_timeout_for_pno(pno->dev, pno->wakelock_time); 
-		}
-	}	
-	return 0;
-}
-
 #endif /* PNO_SUPPORT */
 
 #ifdef OKC_SUPPORT
@@ -2430,7 +2356,7 @@ wl_iw_get_range(
 	}
 	rateset.count = dtoh32(rateset.count);
 	range->num_bitrates = rateset.count;
-	for (i = 0; i < rateset.count && i < WL_NUMRATES; i++)
+	for (i = 0; i < rateset.count && i < IW_MAX_BITRATES; i++)
 		range->bitrate[i] = (rateset.rates[i]& 0x7f) * 500000; /* convert to bps */
 	dev_wlc_intvar_get(dev, "nmode", &nmode);
 	dev_wlc_ioctl(dev, WLC_GET_PHYTYPE, &phytype, sizeof(phytype));
@@ -3625,65 +3551,6 @@ wl_iw_delete_bss_from_ss_cache(void *addr)
 
 #endif	/* !defined(CSCAN) */
 
-#ifdef PNO_SUPPORT
-static int 
-_pno_sysioc_thread(void *data)
-{
-
-	uint32 status;
-	pno_info_t *pno = (pno_info_t *)data;
-	unsigned char bssid[ETHER_ADDR_LEN]={0,};
-	int error = 0;
-	DAEMONIZE("pno_sysioc");
-	
-	pno->timer_on = 0;
-	pno->state = WL_PNO_IDLE;
-	while (down_interruptible(&pno->sysioc_sem) == 0) {
-
-		net_os_wake_lock(pno->dev);
-
-		if(pno->state == WL_PNO_NETFOUND) {			
-			if (dhd_dev_pno_enable(pno->dev, 0) >= 0) {
-				WL_TRACE(("dhd_dev_pno_enable: disable OK\n"));
-				pno->state = WL_PNO_DISABLED;
-			}else WL_ERROR(("Failed to disable pno\n"));		
-
-			pno->timer_on = 1;
-			/* Before enter suspend, make sure that pno is enabled */
-			mod_timer(&pno->timer, jiffies + (pno->wakelock_time-1) * HZ);
-		}else  if(pno->state == WL_PNO_ENABLE){			
-			net_os_wake_unlock(pno->dev);
-			/* error (may be down or disassociated) */
-			error = dev_wlc_ioctl(pno->dev, WLC_GET_BSSID, bssid, ETHER_ADDR_LEN);			
-			net_os_wake_lock(pno->dev);			
-			
-			if(error >= 0) {
-				WL_ERROR(("PNO Association : %02x:%02x:%02x:%02x:%02x:%02x\n", 
-					bssid[0],bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]));
-			}else{
-				if  (!dhd_dev_get_pno_status(pno->dev)) {
-					if (dhd_dev_pno_enable(pno->dev, 1) >= 0) {
-						WL_TRACE(("dhd_dev_pno_enable: reenable OK\n"));				
-					}else WL_ERROR(("Failed to disable pno\n"));		
-				}
-			}
-			pno->state = WL_PNO_IDLE;
-		}else if(pno->state == WL_PNO_IDLE){
-			WL_ERROR(("PNO state : IDLE\n"));
-		}
-		
-		net_os_wake_unlock(pno->dev);
-	}
-
-	if (pno->timer_on) {
-		pno->timer_on = 0;
-		del_timer_sync(&pno->timer);
-	}
-
-	complete_and_exit(&pno->sysioc_exited, 0);
-}
-#endif
-
 static int
 wl_iw_set_scan(
 	struct net_device *dev,
@@ -4109,7 +3976,6 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 			wpa_snprintf_hex(buf + 10, 2+1, &(ie->len), 1);
 			wpa_snprintf_hex(buf + 12, 2*ie->len+1, ie->data, ie->len);
 			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, buf);
-			kfree(buf);
 #endif 
 			break;
 		}
@@ -4214,7 +4080,7 @@ wl_iw_get_scan_prep(
 				iwe.cmd = SIOCGIWRATE;
 				/* Those two flags are ignored... */
 				iwe.u.bitrate.fixed = iwe.u.bitrate.disabled = 0;
-				for (j = 0; j < bi->rateset.count && j < WL_NUMRATES; j++) {
+				for (j = 0; j < bi->rateset.count && j < IW_MAX_BITRATES; j++) {
 					iwe.u.bitrate.value =
 						(bi->rateset.rates[j] & 0x7f) * 500000;
 					value = IWE_STREAM_ADD_VALUE(info, event, value, end, &iwe,
@@ -4626,7 +4492,7 @@ wl_iw_iscan_get_scan(
 			iwe.cmd = SIOCGIWRATE;
 			/* Those two flags are ignored... */
 			iwe.u.bitrate.fixed = iwe.u.bitrate.disabled = 0;
-			for (j = 0; j < bi->rateset.count && j < WL_NUMRATES; j++) {
+			for (j = 0; j < bi->rateset.count && j < IW_MAX_BITRATES; j++) {
 					iwe.u.bitrate.value =
 					        (bi->rateset.rates[j] & 0x7f) * 500000;
 				value = IWE_STREAM_ADD_VALUE(info, event, value, end, &iwe,
@@ -6748,7 +6614,7 @@ get_softap_auto_channel(struct net_device *dev, struct ap_profile *ap)
 			request.count = htod32(0);
 			ret = dev_wlc_ioctl(dev, WLC_START_CHANNEL_SEL, &request, sizeof(request));
 			if (ret < 0) {
-				WL_ERROR(("can't start auto channel scan, error code = %d\n", ret));
+				WL_ERROR(("can't start auto channel scan\n"));
 				goto fail;
 			}
 
@@ -6879,7 +6745,7 @@ set_ap_cfg(struct net_device *dev, struct ap_profile *ap)
 		WL_TRACE(("\n>in %s: apsta set result: %d \n", __FUNCTION__, res));
 #endif /* AP_ONLY */
 
-		/*  WMM and ARP offloading disable  */
+		/* add this line here */
 		dev_wlc_intvar_set(dev, "wme", 0);
 		dev_wlc_intvar_set(dev, "arpoe", 0);
 
@@ -8906,21 +8772,15 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 	/* PNO Event */
 	case WLC_E_PFN_NET_FOUND:
 	{
-#ifdef PNO_SUPPORT
 		wlc_ssid_t	* ssid;
-		int pno_wakelock_timeout = 10; /* 10 second */
 		ssid = (wlc_ssid_t *)data;
-		ssid->SSID[ssid->SSID_len] = '\0';
 		WL_ERROR(("%s Event WLC_E_PFN_NET_FOUND, send %s up : find %s len=%d\n",
 			__FUNCTION__, PNO_EVENT_UP, ssid->SSID, ssid->SSID_len));
-
+		net_os_wake_lock_timeout_enable(dev);
 		cmd = IWEVCUSTOM;
 		memset(&wrqu, 0, sizeof(wrqu));
 		strcpy(extra, PNO_EVENT_UP);
 		wrqu.data.length = strlen(extra);
-
-		wl_iw_pno_auto_control(g_pno, pno_wakelock_timeout);
-#endif		
 	}
 	break;
 #ifdef CIQ_SUPPORT
@@ -9267,10 +9127,8 @@ wl_iw_attach(struct net_device *dev, void * dhdp)
 
 	/* Allocate memory for iscan extra params */
 	iscan->iscan_ex_params_p = (wl_iscan_params_t*)kmalloc(params_size, GFP_KERNEL);
-	if (!iscan->iscan_ex_params_p) {
-		kfree(iscan);
+	if (!iscan->iscan_ex_params_p)
 		return -ENOMEM;
-	}
 	iscan->iscan_ex_param_size = params_size;
 	iscan->sysioc_pid = -1;
 	/* we only care about main interface so save a global here */
@@ -9319,24 +9177,6 @@ wl_iw_attach(struct net_device *dev, void * dhdp)
 	wl_iw_bt_init(dev);
 #endif /* COEX_DHCP */
 
-#ifdef PNO_SUPPORT
-	g_pno = kmalloc(sizeof(pno_info_t), GFP_KERNEL);
-	if (!g_pno)
-		return -ENOMEM;
-
-	g_pno->dev = dev;
-	init_timer(&g_pno->timer);
-	g_pno->timer.data = (ulong)g_pno;
-	g_pno->timer.function = wl_iw_pno_timerfunc;
-
-	sema_init(&g_pno->sysioc_sem, 0);
-	init_completion(&g_pno->sysioc_exited);
-
-	g_pno->sysioc_pid = kernel_thread(_pno_sysioc_thread, g_pno, 0);
-	if (g_pno->sysioc_pid < 0)
-		return -ENOMEM;
-#endif
-
 
 	return 0;
 }
@@ -9365,17 +9205,6 @@ wl_iw_detach(void)
 	g_iscan = NULL;
 	DHD_OS_MUTEX_UNLOCK(&wl_cache_lock);
 #endif /* WL_IW_USE_ISCAN */
-
-#ifdef PNO_SUPPORT
-	if (!g_pno)
-		return;
-	if (g_pno->sysioc_pid >= 0) {
-		KILL_PROC(g_pno->sysioc_pid, SIGTERM);
-		wait_for_completion(&g_pno->sysioc_exited);
-	}
-
-	kfree(g_pno);
-#endif
 
 	if (g_scan)
 		kfree(g_scan);

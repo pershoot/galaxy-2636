@@ -773,8 +773,10 @@ void INC_ADD_SERVICE_LABEL(ST_STREAM_INFO* pStreamInfo, INC_UINT32 ulSID, INC_UI
 
 void INC_ADD_SERVICE_COMPONENT_LABEL(ST_STREAM_INFO* pStreamInfo, INC_UINT32 ulSID, INC_UINT8* pcLabel)
 {
+	ST_FICDB_LIST*				pList;
 	ST_FICDB_SERVICE_COMPONENT* pSvcComponent;
 	INC_INT16					nLoop;
+	pList = INC_GET_FICDB_LIST();
 
 	pSvcComponent = pStreamInfo->astPrimary;
 	for(nLoop = 0 ; nLoop < pStreamInfo->nPrimaryCnt; nLoop++, pSvcComponent++)	{
@@ -1047,7 +1049,9 @@ void INC_ADD_ORGANIZAION_SUBCHANNEL_ID(ST_FICDB_SERVICE_COMPONENT* pSvcComponent
 void INC_SORT_ORGANIZAION_SUBCHANNEL_ID(ST_STREAM_INFO* pStreamInfo, INC_UINT8 ucSubChID, INC_UINT32 ulTypeInfo)
 {
 	INC_INT16					nLoop;
+	ST_FICDB_LIST*				pList;
 	ST_FICDB_SERVICE_COMPONENT* pSvcComponent;
+	pList = INC_GET_FICDB_LIST();
 
 	pSvcComponent = pStreamInfo->astPrimary;
 	for(nLoop = 0; nLoop < pStreamInfo->nPrimaryCnt; nLoop++, pSvcComponent++){

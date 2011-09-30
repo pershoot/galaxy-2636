@@ -643,7 +643,7 @@ static int read_input_info(struct melfas_ts_data *ts, u8 *val)
 	return melfas_i2c_read(ts->client, TS_READ_START_ADDR, TS_READ_REGS_LEN, val);
 }
 
-static int check_firmware_master(struct melfas_ts_data *ts, u8 *val)
+static int check_firmware(struct melfas_ts_data *ts, u8 *val)
 {
 	return melfas_i2c_read(ts->client, MCSTS_FIRMWARE_VER_REG_MASTER, 1, val);
 }
@@ -683,15 +683,8 @@ static int firmware_update(struct melfas_ts_data *ts)
 	bool empty_chip = false;
 	
 #if !MELFAS_ISP_DOWNLOAD
-	ret = check_firmware_master(ts, &val);
+	ret = check_firmware(ts, &val);
 	ret_slv = check_firmware_slave(ts, &val_slv);
-
-	msleep(100);
-	
-	if (ret || ret_slv) {
-		empty_chip = true;
-		pr_err("[TSP] ISC mode : Failed to check firmware version(ISP) : %d , %d : %0x0 , %0x0 \n",ret, ret_slv,val,val_slv);
-	}
 #endif
 
 #ifdef SET_DOWNLOAD_BY_GPIO
@@ -704,20 +697,22 @@ static int firmware_update(struct melfas_ts_data *ts)
 	gpio_request(ts->gpio_sda, "TSP_SDA");
 	gpio_request(ts->gpio_scl, "TSP_SCL");
 
-
-#ifndef FW_FROM_FILE
 #if MELFAS_ISP_DOWNLOAD
 	ret = mcsdl_download_binary_data(ts->touch_id);
-	if (ret)
-		pr_err("[TSP] SET Download ISP Fail - error code [%d]\n", ret);
+		if (ret)
+			pr_err("[TSP] SET Download ISP Fail - error code [%d]\n", ret);
 #else
-
-	/* (current version  < binary verion) */
-	if (empty_chip || (ts->touch_id == 1 && val < ILJIN_BASE_FW_VER  ) 
-			|| (ts->touch_id == 0 && (val < MELFAS_BASE_FW_VER  || val > 0x50))){
-		pr_info("[TSP] ISC mode enter and Under Base F/W Version : 0x%X\n",val);
-		mcsdl_download_binary_data(ts->touch_id); 	//ISP mode download ( CORE + PRIVATE )
-	}
+		if (ret || ret_slv) {
+			empty_chip = true;
+			pr_err("[TSP] ISC mode : Failed to check firmware version(ISP) : %d , %d : %0x0 , %0x0 \n",ret, ret_slv,val,val_slv);
+		}
+#ifndef FW_FROM_FILE
+		/* (current version  < binary verion) */
+		if (empty_chip || (ts->touch_id == 1 && val < ILJIN_FW_VER ) || (ts->touch_id == 0 && val < MELFAS_FW_VER )){
+			pr_info("[TSP] ISC mode enter & ISP download enter Once");
+			mcsdl_download_binary_data(ts->touch_id); 	//ISP mode download ( CORE + PRIVATE )
+		}
+#endif
 
 	ret = mms100_ISC_download_binary_data(ts->touch_id);
 	if (ret)
@@ -735,13 +730,6 @@ static int firmware_update(struct melfas_ts_data *ts)
 				break;
 		}
 	}
-#endif
-
-#else
-	ret = mcsdl_download_binary_data(ts->touch_id);
-	if (ret)
-		pr_err("[TSP] SET Download From File is Fail - error code [%d]\n", ret);
-
 #endif
 
 	gpio_free(ts->gpio_sda);
@@ -922,7 +910,7 @@ static ssize_t show_firmware_dev(struct device *dev,
 	struct melfas_ts_data *ts = dev_get_drvdata(dev);
 	u8 ver = 0;
 
-	check_firmware_master(ts, &ver);
+	check_firmware(ts, &ver);
 
 	if (!ts->touch_id)
 		return snprintf(buf, PAGE_SIZE,	"MEL_%Xx%d\n", ver, 0x0);
@@ -1024,9 +1012,7 @@ static DEVICE_ATTR(threshold, S_IRUGO, show_threshold, NULL);
 
 #if defined(TSP_FACTORY_TEST)
 static u16 inspection_data[1134] = { 0, };
-#ifdef DEBUG_LOW_DATA
 static u16 low_data[1134] = { 0, };
-#endif
 static u16 lntensity_data[1134] = { 0, };
 static void check_debug_data(struct melfas_ts_data *ts)
 {
@@ -1051,15 +1037,12 @@ static void check_debug_data(struct melfas_ts_data *ts)
 		printk(".");
 		udelay(100);
 	}
-
-	if (debug_print)
-		pr_info("[TSP] read dummy\n");
+	pr_info("[TSP] read dummy\n");
 
 	/* read the dummy data */
 	melfas_i2c_read(ts->client, 0xA8, 2, read_buffer);
 
-	if (debug_print)
-		pr_info("[TSP] read inspenction data\n");
+	pr_info("[TSP] read inspenction data\n");
 	write_buffer[5] = 0x02;
 	for (sensing_line = 0; sensing_line < 27; sensing_line++) {
 		for (exciting_line =0; exciting_line < 42; exciting_line++) {
@@ -1071,9 +1054,8 @@ static void check_debug_data(struct melfas_ts_data *ts)
 				(read_buffer[1] & 0xf) << 8 | read_buffer[0];
 		}
 	}
-#ifdef DEBUG_LOW_DATA
-	if (debug_print)
-		pr_info("[TSP] read low data\n");
+
+	pr_info("[TSP] read low data\n");
 	write_buffer[5] = 0x03;
 	for (sensing_line = 0; sensing_line < 27; sensing_line++) {
 		for (exciting_line =0; exciting_line < 42; exciting_line++) {
@@ -1085,12 +1067,7 @@ static void check_debug_data(struct melfas_ts_data *ts)
 				(read_buffer[1] & 0xf) << 8 | read_buffer[0];
 		}
 	}
-#endif
-	release_all_fingers(ts);
-	ts->power_enable(0);
 
-	msleep(200);
-	ts->power_enable(1);
 	enable_irq(ts->client->irq);
 }
 
@@ -1104,30 +1081,26 @@ static ssize_t all_refer_show(struct device *dev,
 
 	check_debug_data(ts);
 
-	if (debug_print)
-		pr_info("[TSP] inspection data\n");
+	pr_info("[TSP] inspenction data");
 	for (i = 0; i < 1134; i++) {
-		/* out of range */
-		if (inspection_data[i] < 30) {
-			status = 1;
-			break;
-		}
-
-		if (debug_print) {
-			if (0 == i % 27)
-				printk("\n");
-			printk("%5u  ", inspection_data[i]);
-		}
+		if (0 == i % 27)
+			printk("\n");
+		printk("%5u  ", inspection_data[i]);
 	}
 
-#if DEBUG_LOW_DATA
-	pr_info("[TSP] low data\n");
+	pr_info("[TSP] low data");
 	for (i = 0; i < 1134; i++) {
 		if (0 == i % 27)
 			printk("\n");
 		printk("%5u  ", low_data[i]);
 	}
-#endif
+
+	release_all_fingers(ts);
+	ts->power_enable(0);
+
+	msleep(700);
+	ts->power_enable(1);
+
 	return sprintf(buf, "%u\n", status);
 }
 
@@ -1367,7 +1340,7 @@ static int melfas_ts_probe(struct i2c_client *client, const struct i2c_device_id
 #endif
 	struct input_dev *input;
 	bool empty_chip = false;
-	u8 val_mst = 0;
+	u8 val = 0;
 	u8 val_slv = 0;
 	u8 fw_ver = 0;
 	int ret = 0;
@@ -1413,13 +1386,12 @@ static int melfas_ts_probe(struct i2c_client *client, const struct i2c_device_id
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 
-#ifndef FW_FROM_FILE
-
-	ret = check_firmware_master(ts, &val_mst);
-	ret_slv = check_firmware_slave(ts, &val_slv);
 
 #if MELFAS_ISP_DOWNLOAD
 // ISP mode start
+	ret = check_firmware(ts, &val);
+	ret_slv = check_firmware_slave(ts, &val_slv);
+
 	if (ret || ret_slv) {
 		empty_chip = true;
 		pr_err("[TSP] Failed to check firmware version : %d , %d",ret, ret_slv);
@@ -1427,30 +1399,37 @@ static int melfas_ts_probe(struct i2c_client *client, const struct i2c_device_id
 
 	fw_ver = ts->touch_id ? ILJIN_FW_VER : MELFAS_FW_VER;
 
-	if(val_mst > 0x0 && val_mst < 0x50 )
+	if(val > 0x0 && val < 0x50 )
 		val_firm = 0;
-	else if (val_mst > 0x50 )
+	else if (val > 0x50 )
 		val_firm = 1;
 	else
 		val_firm = -1;
 
+#ifndef FW_FROM_FILE
 	/* (current version  < binary verion) */
-	if (val_mst != val_slv || val_firm != ts->touch_id || val_mst < fw_ver || empty_chip )
+	if (val != val_slv || val_firm != ts->touch_id || val < fw_ver || empty_chip )
 		firmware_update(ts);
+#endif
 
-	ret = check_firmware_master(ts, &val_mst);
+	ret = check_firmware(ts, &val);
 	ret_slv = check_firmware_slave(ts, &val_slv);
 
 	pr_info("[TSP] %s panel - current firmware version : 0x%x , 0x%x\n",
-		ts->touch_id ? "Iljin" : "Melfas", val_mst, val_slv);
+		ts->touch_id ? "Iljin" : "Melfas", val, val_slv);
 
-	ret = check_slave_boot(ts, &val_mst);
+	ret = check_slave_boot(ts, &val);
 	if (ret)
 		pr_err("[TSP] Failed to check slave boot : %d", ret);
 #else
 // ISC mode start
+#ifndef FW_FROM_FILE
+
+	ret = check_firmware(ts, &val);
+	ret_slv = check_firmware_slave(ts, &val_slv);
 	pr_info("[TSP] ISC mode Before update %s panel - current firmware version : 0x%x , 0x%x\n",
-		ts->touch_id ? "Iljin" : "Melfas", val_mst, val_slv);
+		ts->touch_id ? "Iljin" : "Melfas", val, val_slv);
+
 
 	firmware_update(ts);
 
@@ -1459,7 +1438,8 @@ static int melfas_ts_probe(struct i2c_client *client, const struct i2c_device_id
 	ret_public 	= check_firmware_public(ts, &val_public);
 
 	if (ret_core || ret_private || ret_public) {
-		pr_err("[TSP] Failed to check firmware version : %d , %d, %d\n",
+		empty_chip = true;
+		pr_err("[TSP] Failed to check firmware version : %d , %d, %d",
 			ret_core, ret_private , ret_public);
 	}
 	pr_info("[TSP] %s panel - current firmware version(ISC mode) : 0x%x , 0x%x, 0x%x\n",

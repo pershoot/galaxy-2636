@@ -57,9 +57,6 @@
 #include "../smd-hsic/smd_hsic.h"
 #include "smd_ctl.h"
 #include <linux/kernel_sec_common.h>
-#if defined(CONFIG_MACH_SAMSUNG_P5)
-#include <linux/regulator/consumer.h>
-#endif
 
 #undef pr_debug
 #define pr_debug pr_info
@@ -103,14 +100,10 @@ static unsigned int smdctl_get_pm_status(void)
 
 int smdctl_request_slave_wakeup(struct completion *done)
 {
-	unsigned long flags;
 	struct str_ctl_gpio *gpio = gsmdctl->gpio;
 
 	if (gpio_get_value(gpio[SMD_GPIO_CP_ACT].num) == LOW) {
 		pr_err("%s : modem. not connected\n", __func__);
-		spin_lock_irqsave(&gsmdctl->lock, flags);
-		g_L2complete = NULL;
-		spin_unlock_irqrestore(&gsmdctl->lock, flags);
 		return -ENOTCONN;
 	}
 
@@ -118,15 +111,10 @@ int smdctl_request_slave_wakeup(struct completion *done)
 		pr_debug("%s: host wkp level LOW return 1\n", __func__);
 		if (gsmdctl->pm_kthread > 0)
 			wake_up_process(gsmdctl->pm_kthread);
-		spin_lock_irqsave(&gsmdctl->lock, flags);
-		g_L2complete = NULL;
-		spin_unlock_irqrestore(&gsmdctl->lock, flags);
 		return 1;
 	}
 
-	spin_lock_irqsave(&gsmdctl->lock, flags);
 	g_L2complete = done;
-	spin_unlock_irqrestore(&gsmdctl->lock, flags);
 
 	pr_debug("%s: smdctl->host wake = %d, pm status = %d\n", __func__,
 		gsmdctl->host_wake,
@@ -459,7 +447,6 @@ static int smdctl_request_sim_detect(struct str_smdctl *smdctl)
 static irqreturn_t irq_host_wakeup(int irq, void *dev_id)
 {
 	int hst_wkp;
-	unsigned long flags;
 	struct str_smdctl *smdctl = (struct str_smdctl *)dev_id;
 	struct str_ctl_gpio *gpio = smdctl->gpio;
 
@@ -495,7 +482,6 @@ static irqreturn_t irq_host_wakeup(int irq, void *dev_id)
 				__func__);
 		} else if (smdctl->host_wake == CP_SUS_RESET) {
 			gpio = &smdctl->gpio[SMD_GPIO_SLV_WKP];
-			spin_lock_irqsave(&gsmdctl->lock, flags);
 			if (g_L2complete) {
 				pr_debug("do complete at hst_wkp high\n");
 				complete(g_L2complete);
@@ -511,7 +497,6 @@ static irqreturn_t irq_host_wakeup(int irq, void *dev_id)
 				}
 				smdctl_set_pm_status(PM_STATUS_L0);
 			}
-			spin_unlock_irqrestore(&gsmdctl->lock, flags);
 		} else
 			smdctl->host_wake = CP_SUS_LOW;
 	}
@@ -740,18 +725,6 @@ static void kernel_upload(void)
 	/*TODO: check the DEBUG LEVEL*/
 	/* panic("CP Crash"); */
 	kernel_sec_set_upload_cause(UPLOAD_CAUSE_CP_ERROR_FATAL);
-#if defined(CONFIG_MACH_SAMSUNG_P5)
-	struct regulator *reg;
-
-	reg = regulator_get(NULL, "vdd_ldo4");
-	if (IS_ERR_OR_NULL(reg))
-		pr_err("%s: couldn't get regulator vdd_ldo4\n", __func__);
-	else {
-		regulator_enable(reg);
-		pr_debug("%s: enabling regulator vdd_ldo4\n", __func__);
-		regulator_put(reg);
-	}
-#endif
 	kernel_sec_hw_reset(false);
 	emergency_restart();
 }
@@ -794,7 +767,6 @@ static int smdctl_release(struct inode *inode, struct file *file)
 static long smdctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int r = 0;
-	unsigned long flags;
 	struct str_smdctl *smdctl = (struct str_smdctl *)file->private_data;
 	struct str_ctl_gpio *gpio = smdctl->gpio;
 
@@ -804,7 +776,7 @@ static long smdctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 
-	printk(KERN_ERR "ioctl code = %x\n", cmd);
+	printk(KERN_ERR "ioctl code =%x\n", IOCTL_CP_RESET);
 
 	switch (cmd) {
 	case IOCTL_CP_ON:
@@ -834,10 +806,8 @@ static long smdctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case IOCTL_CP_OFF:
 		pr_info("IOCTL_CP_OFF\n");
 
-		/* fix timeout recovery lockup */
-		spin_lock_irqsave(&gsmdctl->lock, flags);
+		/* fix timeout recovery lockup*/
 		g_L2complete = NULL;
-		spin_unlock_irqrestore(&gsmdctl->lock, flags);
 
 		/* stop hsic resume kernel thread */
 		if (!IS_ERR_OR_NULL(smdctl->pm_kthread)) {
@@ -1207,8 +1177,6 @@ static int __devinit smdctl_probe(struct platform_device *pdev)
 
 	wake_lock_init(&smdctl->ctl_wake_lock, WAKE_LOCK_SUSPEND, "hsic");
 	smdctl_set_pm_status(PM_STATUS_UNDEFINE);
-
-	spin_lock_init(&smdctl->lock);
 
 	platform_set_drvdata(pdev, smdctl);
 

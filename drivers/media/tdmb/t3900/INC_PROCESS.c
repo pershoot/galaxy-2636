@@ -630,6 +630,9 @@ INC_UINT8 INC_FICDECODER(INC_UINT8 ucI2CID, ST_SIMPLE_FIC bSimpleFIC)
 	ST_FICDB_LIST*		pList;
 	INC_UINT8		ucTimeOutCnt = 0;
 	pList = INC_GET_FICDB_LIST();
+#else
+	ST_FICDB_LIST*		pList;
+	pList = INC_GET_FICDB_LIST();
 #endif
 
 	pInfo = INC_GET_STRINFO(ucI2CID);
@@ -1185,7 +1188,7 @@ INC_UINT8 INC_GET_SNR(INC_UINT8 ucI2CID)
 }
 
 #define INC_RSSI_STEP		5
-#define INC_ADC_STEP_MAX			17
+#define INC_ADC_STEP_MAX			18
 INC_INT16 INC_GET_RSSI(INC_UINT8 ucI2CID)
 {
 	INC_INT16 nLoop, nRSSI = 0;
@@ -1193,26 +1196,26 @@ INC_INT16 INC_GET_RSSI(INC_UINT8 ucI2CID)
 	INC_UINT32 uiAdcValue;
 	INC_UINT16 aRFAGCTable[INC_ADC_STEP_MAX][2] = {
 
-		{100,	1140},
-		{95,	1080},
-		{90,	1025},
-		{85, 	965},
+		{100,	1199},
+		{95,	1160},
+		{90,	1085},
+		{85, 	1018},
 
-		{80,	900},
-		{75,	835},
-		{70, 	770},
-		{65,	685},
-		{60, 	635},
+		{80,	953},
+		{75,	875},
+		{70, 	805},
+		{65,	720},
+		{60, 	655},
 
-		{55,	590},
-		{50,	525},
-		{45,	470},
-		{40,	430},
-		{35, 	360},
+		{55,	625},
+		{50,	565},
+		{45,	500},
+		{40,	465},
+		{35, 	405},
 
-		{30,	300},
-		{25,	235},
-		{20,	175},
+		{30,	340},
+		{25,	270},
+		{20,	200},
 	};
 
 	uiAdcValue  = (INC_CMD_READ(ucI2CID, APB_RF_BASE+ 0xD4) >> 5) & 0x3FF;

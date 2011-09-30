@@ -885,61 +885,6 @@ static int s5k5bbgx_set_recording_frame(struct s5k5bbgx_info *info, enum s5k5bbg
 	return err;
 }
 
-static int s5k5bbgx_set_frame_rate(struct s5k5bbgx_info *info, enum s5k5bbgx_cam_mode arg)
-{
-	FUNC_ENTR;
-
-	int err;
-
-	pr_debug("test recording frame!!!\n");
-	switch (arg) {
-	case FRONT_CAMMODE_CAMCORDER:
-	{
-	pr_debug("test recording frame - fix!!!\n");
-#ifdef CONFIG_LOAD_FILE
-		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_preview_800x600_fixframe");
-		pr_info("s5k5bbgx_set_recording_frame - fix(tuning)   err(%d)!!!\n", err);
-#else
-		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_800x600_fixframe);
-#endif
-		break;
-	}
-	case FRONT_CAMMODE_CAMERA:
-	{
-	pr_debug("test recording frame - variable!!!\n");	
-#ifdef CONFIG_LOAD_FILE
-		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_return_camera_preview");
-		pr_info("s5k5bbgx_set_recording_frame - variable(tuning)    err(%d)!!!\n", err);
-#else	
-		err = s5k5bbgx_write_table(info->i2c_client, mode_return_camera_preview);
-#endif
-		break;
-	}
-       case FRONT_CAMMODE_MMS_CAMCORDER:
-   	{
-#ifdef CONFIG_LOAD_FILE
-		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_preview_800x600_fixframe_15fps");
-		pr_info("s5k5bbgx_set_recording_frame - fix(tuning)   err(%d)!!!\n", err);
-#else
-		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_800x600_fixframe_15fps);
-#endif
-		break;
-   	}
-	default:
-	{
-		pr_info("==================================test recording frame - DEFAULT DEFAULT DEFAULT !!!\n");	
-		pr_err("%s: Invalid recording frame Value, %d\n", __func__, arg);
-		return 0;
-		break;
-	}
-	}
-
-	if (err < 0)
-		pr_err("%s: s5k5bbgx_write_table() returned error, %d, %d\n", __func__, arg, err);
-
-	return err;
-}
-
 
 #ifdef FACTORY_TEST
 static int s5k5bbgx_return_normal_preview(struct s5k5bbgx_info *info)
@@ -993,9 +938,7 @@ static long s5k5bbgx_ioctl(struct file *file,
 		return s5k5bbgx_set_esd_reset(info, (enum s5k5bbgx_esd_reset) arg);
 
 	case S5K5BBGX_IOCTL_RECORDING_FRAME:
-	{
 		return s5k5bbgx_set_recording_frame(info, (enum s5k5bbgx_recording_frame) arg);
-	}
 
 	case S5K5BBGX_IOCTL_EXIF_INFO:
 	{
@@ -1005,10 +948,7 @@ static long s5k5bbgx_ioctl(struct file *file,
 		}
 		break;
 	}
-       case S5K5BBGX_IOCTL_CAMMODE:
-	{
-	   	return s5k5bbgx_set_frame_rate(info, (enum s5k5bbgx_cam_mode) arg);
-   	}
+
 	default:
 		return -EINVAL;
 	}

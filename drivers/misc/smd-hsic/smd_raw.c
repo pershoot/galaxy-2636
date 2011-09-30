@@ -351,7 +351,7 @@ static int smdraw_rx_submit(struct str_smdraw *smdraw)
 	struct str_hsic *hsic = &smdraw->hsic;
 	struct str_smd_urb *rx_urb;
 
-	if (!hsic || !hsic->usb || !hsic->rx_urb[0].urb)
+	if (!hsic || !hsic->usb)
 		return -ENODEV;
 
 	tegra_ehci_txfilltuning();
@@ -717,8 +717,6 @@ static ssize_t smdraw_write(struct file *file, const char __user * buf,
 			    size_t count, loff_t *ppos)
 {
 	int r;
-	int send_byte, byte_total;
-	int byte_sent = 0;
 	struct str_raw_dev *rawdev = file->private_data;
 	struct str_smdraw *smdraw = dev_get_drvdata(rawdev->dev);
 
@@ -729,21 +727,12 @@ static ssize_t smdraw_write(struct file *file, const char __user * buf,
 		return -ENODEV;
 	}
 
-	if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT)
-		return -ENODEV;
-
-	/* max packet size : 1500 byte */
-	while (count > byte_sent) {
-		send_byte = (count - byte_sent > 1500) ? 1500 : count - byte_sent;
-	
-		r = smdraw_tx_submit(buf + byte_sent , smdraw, rawdev->cid, send_byte);
+		r = smdraw_tx_submit(buf, smdraw, rawdev->cid, count);
 		if (r) {
 			pr_err("%s:smdraw_tx_submit() failed\n", __func__);
 			return r;
 		}
-		byte_sent += send_byte;
-	}
-	return count;
+		return count;
 }
 
 static ssize_t smdraw_read(struct file *file, char *buf, size_t count,
@@ -968,12 +957,6 @@ static void pdp_workqueue_handler(struct work_struct *work)
 	struct sk_buff *skb, *tx_skb;
 	struct str_pdp_priv *pdp_priv;
 	struct str_smdraw *smdraw = container_of(work, struct str_smdraw, pdp_work.work);
-
-	if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT) {
-		cancel_delayed_work(&smdraw->pdp_work);
-		skb_queue_purge(&smdraw->pdp_txq);
-		return;
-	}
 
 	if (smdraw->tx_flow_control) {
 		cancel_delayed_work(&smdraw->pdp_work);

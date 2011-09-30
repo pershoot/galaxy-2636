@@ -630,7 +630,7 @@ static int hub_port_disable(struct usb_hub *hub, int port1, int set_state)
  */
 static void hub_port_logical_disconnect(struct usb_hub *hub, int port1)
 {
-#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+#ifdef CONFIG_MACH_SAMSUNG_P4LTE
 	dev_err(hub->intfdev, "logical disconnect on port %d\n", port1);
 #else
 	dev_dbg(hub->intfdev, "logical disconnect on port %d\n", port1);
@@ -3863,9 +3863,6 @@ int usb_reset_device(struct usb_device *udev)
 	int i;
 	struct usb_host_config *config = udev->actconfig;
 
-	dev_info(&udev->dev, "%s udev->state %d\n",
-				__func__, udev->state);
-	
 	if (udev->state == USB_STATE_NOTATTACHED ||
 			udev->state == USB_STATE_SUSPENDED) {
 		dev_dbg(&udev->dev, "device reset not allowed in state %d\n",
