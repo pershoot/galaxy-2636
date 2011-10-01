@@ -171,6 +171,7 @@ void tegra_init_legacy_irq(void)
 		void __iomem *ictlr = ictlr_reg_base[i];
 		writel(~0, ictlr + ICTLR_CPU_IER_CLR);
 		writel(0, ictlr + ICTLR_CPU_IEP_CLASS);
+		writel(~0, ictlr + ICTLR_CPU_IEP_FIR_CLR);
 	}
 }
 
