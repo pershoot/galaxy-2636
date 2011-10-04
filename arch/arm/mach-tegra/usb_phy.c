@@ -274,6 +274,8 @@ static struct tegra_utmip_config utmip_default[] = {
 		.xcvr_setup = 14,
 #elif defined(CONFIG_MACH_SAMSUNG_P5)
 		.xcvr_setup = 14,
+#elif defined(CONFIG_MACH_SAMSUNG_P4)
+		.xcvr_setup = 13,
 #elif defined(CONFIG_MACH_SAMSUNG_P4LTE)
 		.xcvr_setup = 12,
 #else
@@ -291,6 +293,8 @@ static struct tegra_utmip_config utmip_default[] = {
 		.xcvr_setup = 14,
 #elif defined(CONFIG_MACH_SAMSUNG_P5)
 		.xcvr_setup = 14,
+#elif defined(CONFIG_MACH_SAMSUNG_P4)
+		.xcvr_setup = 13,
 #else
 		.xcvr_setup = 9,
 #endif
