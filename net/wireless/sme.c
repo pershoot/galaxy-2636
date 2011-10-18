@@ -647,8 +647,10 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION))
 		return;
 
+#ifndef CONFIG_CFG80211_ALLOW_RECONNECT
 	if (wdev->sme_state != CFG80211_SME_CONNECTED)
 		return;
+#endif
 
 	if (wdev->current_bss) {
 		cfg80211_unhold_bss(wdev->current_bss);
