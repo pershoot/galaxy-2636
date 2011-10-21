@@ -24,6 +24,7 @@
 
 #include <linux/kallsyms.h>
 #include <linux/ptrace.h>
+#include <linux/ratelimit.h>
 
 #ifndef arch_irq_stat_cpu
 #define arch_irq_stat_cpu(cpu) 0
@@ -556,7 +557,7 @@ bool kernel_sec_set_debug_level(int level)
 	if (!(level == KERNEL_SEC_DEBUG_LEVEL_LOW 
 			|| level == KERNEL_SEC_DEBUG_LEVEL_MID 
 			|| level == KERNEL_SEC_DEBUG_LEVEL_HIGH)) {
-		printk(KERN_NOTICE "(kernel_sec_set_debug_level) The debug value is \
+		printk_ratelimited(KERN_NOTICE "(kernel_sec_set_debug_level) The debug value is \
 				invalid(0x%x)!! Set default level(LOW)\n", level);
 		debuglevel = KERNEL_SEC_DEBUG_LEVEL_LOW;
 		return 0;
