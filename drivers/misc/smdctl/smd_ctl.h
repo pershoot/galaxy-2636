@@ -131,6 +131,9 @@ struct str_smdctl {
 	bool modem_uevent_requested;
 	bool modem_reset_remained;
 	bool shutdown_called;
+#if defined(CONFIG_MACH_SAMSUNG_P4)
+	spinlock_t lock;
+#endif
 
 	unsigned cp_reset_cnt;
 };

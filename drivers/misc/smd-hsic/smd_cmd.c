@@ -269,6 +269,11 @@ static ssize_t smdcmd_write(struct file *file, const char __user * buf,
 	smdcmd = file->private_data;
 	hsic = &smdcmd->hsic;
 
+#if defined(CONFIG_MACH_SAMSUNG_P4)
+	if (!smdcmd || smdcmd->pm_stat == CMD_PM_STATUS_DISCONNECT)
+	  return -ENODEV;
+#endif
+
 	urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!urb) {
 		pr_err("%s: tx urb is NULL\n", __func__);

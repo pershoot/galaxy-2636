@@ -770,8 +770,15 @@ retry:
 				g_usbdev.hsic->resume_failcnt = 0;
 				smdctl_request_connection_recover(true);
 			}
+#if defined(CONFIG_MACH_SAMSUNG_P4)
+			smdctl_request_slave_wakeup(NULL);
 			return -ETIMEDOUT;
 		}
+			smdctl_request_slave_wakeup(NULL);
+#else
+			return -ETIMEDOUT;
+		}
+#endif
 		msleep(100);
 		goto retry;
 	case RPM_SUSPENDING:
