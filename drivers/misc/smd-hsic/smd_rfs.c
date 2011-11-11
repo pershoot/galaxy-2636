@@ -261,11 +261,6 @@ static ssize_t smdrfs_write(struct file *file, const char __user * buf,
 	if (!hsic)
 		return -ENODEV;
 
-#if defined(CONFIG_MACH_SAMSUNG_P4)
-	if (smdrfs->pm_stat == RFS_PM_STATUS_DISCONNECT)
-	  return -ENODEV;
-#endif
-
 	urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!urb) {
 		pr_err("%s: tx urb is NULL\n", __func__);
