@@ -146,6 +146,9 @@ struct bootloader_message {
 static struct clk *wifi_32k_clk;
 static struct mxt_callbacks *charger_callbacks;
 
+/* to indicate REBOOT_MODE_RECOVERY */
+extern int reboot_mode;
+
 /*Check ADC value to select headset type*/
 extern s16 adc_get_value(u8 channel);
 extern s16 stmpe811_adc_get_value(u8 channel);
@@ -183,8 +186,8 @@ static int write_bootloader_message(char *cmd, int mode)
 	if (mode == REBOOT_MODE_RECOVERY) {
 		strcpy(bootmsg.command, "boot-recovery");
 #ifdef CONFIG_KERNEL_DEBUG_SEC
+		reboot_mode = REBOOT_MODE_RECOVERY;
 		kernel_sec_set_debug_level(KERNEL_SEC_DEBUG_LEVEL_LOW);
-		kernel_sec_clear_upload_magic_number();
 #endif
 	}
 	else if (mode == REBOOT_MODE_FASTBOOT)
@@ -541,6 +544,11 @@ static char *usb_functions_ums_acm_adb[] = {
 	"acm",
 	"adb",
 };
+static char *usb_functions_mtp_acm_adb[] = {
+        "mtp",
+        "acm",
+        "adb",
+};
 #else /* USE MCCI HOST DRIVER */
 /* kies mode */
 static char *usb_functions_acm_mtp[] = {
@@ -663,8 +671,8 @@ static struct android_usb_product usb_products[] = {
 #    else /* Not used KIES_UMS */
 	{
 		.product_id	= SAMSUNG_DEBUG_PRODUCT_ID,
-		.num_functions	= ARRAY_SIZE(usb_functions_ums_acm_adb),
-		.functions	= usb_functions_ums_acm_adb,
+                .num_functions  = ARRAY_SIZE(usb_functions_mtp_acm_adb),
+                .functions      = usb_functions_mtp_acm_adb,
 		.bDeviceClass	= 0xEF,
 		.bDeviceSubClass= 0x02,
 		.bDeviceProtocol= 0x01,
@@ -1505,8 +1513,22 @@ static struct uart_platform_data uart_pdata {
 };
 
 #else
+static int dock_wakeup(void)
+{
+        unsigned long status =
+                readl(IO_ADDRESS(TEGRA_PMC_BASE) + PMC_WAKE_STATUS);
+
+        if (status & TEGRA_WAKE_GPIO_PI5) {
+                writel(TEGRA_WAKE_GPIO_PI5,
+                        IO_ADDRESS(TEGRA_PMC_BASE) + PMC_WAKE_STATUS);
+        }
+
+        return status & TEGRA_WAKE_GPIO_PI5 ? KEY_WAKEUP : KEY_RESERVED;
+}
+
 static struct dock_keyboard_platform_data kbd_pdata = {
 	.acc_power = tegra_acc_power,
+	.wakeup_key = dock_wakeup,
 	.accessory_irq_gpio = GPIO_ACCESSORY_INT,
 };
 
@@ -1649,7 +1671,6 @@ struct platform_device sec_device_connector = {
 #endif
 
 static struct platform_device *p3_devices[] __initdata = {
-	&androidusb_device,
 #if 0  //def CONFIG_USB_ANDROID_RNDIS  // TODO: conflict after merging (USB team should check)
 	&s3c_device_rndis,
 #endif
@@ -1658,7 +1679,6 @@ static struct platform_device *p3_devices[] __initdata = {
 	&tegra_btuart_device,
 	&tegra_uartd_device,		/* uartd is factory_uart */
 	&pmu_device,
-	&tegra_udc_device,
 	&tegra_gart_device,
 	&tegra_aes_device,
 	&p3_keys_device,
@@ -2137,7 +2157,7 @@ static struct mxt_platform_data p3_touch_platform_data = {
 	.touchscreen_config.xpitch = 1,
 	.touchscreen_config.ypitch = 3,
 	/*noise_suppression_config*/
-	.noise_suppression_config.ctrl = 5,
+	.noise_suppression_config.ctrl = 0x87,
 	.noise_suppression_config.reserved = 0,
 	.noise_suppression_config.reserved1 = 0,
 	.noise_suppression_config.reserved2 = 0,
@@ -2178,10 +2198,32 @@ static struct mxt_platform_data p3_touch_platform_data = {
 	.palmsupression_config.supextto = 5,
 	/*config change for ta connected*/
 	.tchthr_for_ta_connect = 80,
-	.tchdi_for_ta_connect = 2,
 	.noisethr_for_ta_connect = 55,
 	.idlegcafdepth_ta_connect = 32,
-	.actvgcafdepth_ta_connect = 63,
+        .freq_for_ta_connect[0] = 45,
+        .freq_for_ta_connect[1] = 49,
+        .freq_for_ta_connect[2] = 55,
+        .freq_for_ta_connect[3] = 59,
+        .freq_for_ta_connect[4] = 63,
+        .fherr_cnt = 0,
+        .tch_blen_for_fherr = 0,
+        .tchthr_for_fherr = 35,
+        .noisethr_for_fherr = 30,
+        .freq_for_fherr1[0] = 45,
+        .freq_for_fherr1[1] = 49,
+        .freq_for_fherr1[2] = 55,
+        .freq_for_fherr1[3] = 59,
+        .freq_for_fherr1[4] = 63,
+        .freq_for_fherr2[0] = 10,
+        .freq_for_fherr2[1] = 12,
+        .freq_for_fherr2[2] = 18,
+        .freq_for_fherr2[3] = 40,
+        .freq_for_fherr2[4] = 72,
+        .freq_for_fherr3[0] = 7,
+        .freq_for_fherr3[1] = 33,
+        .freq_for_fherr3[2] = 39,
+        .freq_for_fherr3[3] = 52,
+        .freq_for_fherr3[4] = 64,
 #ifdef MXT_CALIBRATE_WORKAROUND
 	/*autocal config at idle status*/
 	.atchcalst_idle = 9,
@@ -2243,6 +2285,7 @@ static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 		.phy_config = &hsic_phy_config,
 		.operating_mode = TEGRA_USB_HOST,
 		.power_down_on_bus_suspend = 0,
+		.phy_type = TEGRA_USB_PHY_TYPE_LINK_ULPI,
 	},
 	[2] = {
 		.phy_config = &utmi_phy_config[1],
@@ -2348,8 +2391,12 @@ static void p3_usb_init(void)
 
 	tegra_usb_phy_init(tegra_usb_phy_pdata, ARRAY_SIZE(tegra_usb_phy_pdata));
 
+	/* OTG should be the first to be registered */
 	tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
 	platform_device_register(&tegra_otg_device);
+
+        platform_device_register(&androidusb_device);
+        platform_device_register(&tegra_udc_device);
 
 #if 0 /* TODO: USB team must verify */
 	/* create a fake MAC address from our serial number.
@@ -2402,6 +2449,27 @@ void p3_wlan_gpio_disable(void)
 
 }
 EXPORT_SYMBOL(p3_wlan_gpio_disable);
+
+void p3_wlan_reset_enable(void)
+{
+        printk(KERN_DEBUG "wlan reset enable OK\n");
+        gpio_set_value(GPIO_WLAN_EN, 1);
+        mdelay(100);
+        printk(KERN_DEBUG "wlan get value  (%d)\n",
+        gpio_get_value(GPIO_WLAN_EN));
+}
+EXPORT_SYMBOL(p3_wlan_reset_enable);
+
+void p3_wlan_reset_disable(void)
+{
+        printk(KERN_DEBUG "wlan reset disable OK\n");
+        gpio_set_value(GPIO_WLAN_EN, 0);
+        mdelay(100);
+        printk(KERN_DEBUG "wlan get value  (%d)\n",
+        gpio_get_value(GPIO_WLAN_EN));
+
+}
+EXPORT_SYMBOL(p3_wlan_reset_disable);
 
 int	is_JIG_ON_high()
 {
@@ -2622,6 +2690,11 @@ static void tdmb_gpio_on(void)
 {
 	printk("tdmb_gpio_on\n");
 
+        tegra_gpio_disable(GPIO_TDMB_SPI_CS);
+        tegra_gpio_disable(GPIO_TDMB_SPI_CLK);
+        tegra_gpio_disable(GPIO_TDMB_SPI_MOSI);
+        tegra_gpio_disable(GPIO_TDMB_SPI_MISO);
+
 	gpio_set_value(GPIO_TDMB_EN, 1);
 	msleep(10);
 	gpio_set_value(GPIO_TDMB_RST, 0);
@@ -2637,6 +2710,15 @@ static void tdmb_gpio_off(void)
 	gpio_set_value(GPIO_TDMB_RST, 0);
 	msleep(1);
 	gpio_set_value(GPIO_TDMB_EN, 0);
+
+        tegra_gpio_enable(GPIO_TDMB_SPI_CS);
+        tegra_gpio_enable(GPIO_TDMB_SPI_CLK);
+        tegra_gpio_enable(GPIO_TDMB_SPI_MOSI);
+        tegra_gpio_enable(GPIO_TDMB_SPI_MISO);
+        gpio_set_value(GPIO_TDMB_SPI_CS, 0);
+        gpio_set_value(GPIO_TDMB_SPI_CLK, 0);
+        gpio_set_value(GPIO_TDMB_SPI_MOSI, 0);
+        gpio_set_value(GPIO_TDMB_SPI_MISO, 0);
 }
 
 static struct tdmb_platform_data tdmb_pdata = {
@@ -2691,12 +2773,6 @@ static int __init p4_dmb_init(void)
 	gpio_direction_output(GPIO_TDMB_RST, 0);
 	gpio_request(GPIO_TDMB_INT, "TDMB_INT");
 	gpio_direction_input(GPIO_TDMB_INT);
-
-        /* reserved for TDMB SPI */
-        tegra_gpio_disable(TEGRA_GPIO_PA6);
-        tegra_gpio_disable(TEGRA_GPIO_PB7);
-        tegra_gpio_disable(TEGRA_GPIO_PB6);
-        tegra_gpio_disable(TEGRA_GPIO_PB5);
 
 	platform_device_register(&tdmb_device);
 

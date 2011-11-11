@@ -265,9 +265,9 @@ static struct tegra_suspend_platform_data p3_suspend_data = {
 		TEGRA_WAKE_RTC_ALARM | TEGRA_WAKE_GPIO_PY6 | TEGRA_WAKE_GPIO_PC7 |
 		TEGRA_WAKE_GPIO_PI5,
 	.wake_high	= TEGRA_WAKE_GPIO_PS4,
-	.wake_low	= TEGRA_WAKE_GPIO_PQ7 |	TEGRA_WAKE_GPIO_PY6 | TEGRA_WAKE_GPIO_PI5,
+	.wake_low	= TEGRA_WAKE_GPIO_PQ7 |	TEGRA_WAKE_GPIO_PY6,
 	.wake_any	= TEGRA_WAKE_GPIO_PW2 | TEGRA_WAKE_RTC_ALARM |
-		TEGRA_WAKE_GPIO_PC7,
+		TEGRA_WAKE_GPIO_PC7 | TEGRA_WAKE_GPIO_PI5,
 	.cpu_lp2_min_residency = 2000,
 };
 
