@@ -531,7 +531,7 @@ static int config_buf(struct usb_configuration *config,
                 } 
               }
             }
-            CSY_DBG_ESS("After MTP mode intf->bInterfaceClass : 0x%x, config->cdev->bMultiConfiguration : %d\n", intf->bInterfaceClass, config->cdev->bMultiConfiguration);                                                      
+            CSY_DBG_ESS("After MTP mode intf->bInterfaceClass : 0x%x, config->cdev->bMultiConfiguration : %d\n", intf->bInterfaceClass, config->cdev->bMultiConfiguration);                             
 #endif                          
 						if (intf->bAlternateSetting == 0)
 							intf->bInterfaceNumber = interfaceCount++;
@@ -815,6 +815,7 @@ static int set_config(struct usb_composite_dev *cdev,
 			struct usb_endpoint_descriptor *ep;
 			int addr;
 
+
 			if ((*descriptors)->bDescriptorType == USB_DT_ENDPOINT)
 			{
 				ep = (struct usb_endpoint_descriptor *)*descriptors;
@@ -1065,7 +1066,7 @@ static int get_string(struct usb_composite_dev *cdev,
 			output.bMS_VendorCode = 0x54;
 			output.bPad = 0x00;
 
-			memcpy(os_desc->wData, &output.qwsignature, sizeof(os_string_descriptor_set));
+			memcpy(os_desc->wData, &output.qwsignature, sizeof(output.qwsignature));
 			os_desc->bLength = 0x12;
 			return os_desc->bLength;
 		}
@@ -1267,7 +1268,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 					struct usb_string_descriptor *os_func_desc = req->buf;
 					CSY_DBG("0x%x request, mode=mtp, p_num=%d, f_index=%d\n",ctrl->bRequest, cdev->product_num,i);
 					os_func_desc->bDescriptorType = 0x00;
-					memcpy(os_func_desc->wData, &ms_descriptor, 40);
+					memcpy(os_func_desc->wData, &ms_descriptor, sizeof(ms_descriptor));
 					os_func_desc->bLength = value = 0x28;
 			               	if (value >= 0) {
 			                    value = min(w_length, (u16) value);

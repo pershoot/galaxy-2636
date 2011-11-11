@@ -48,6 +48,9 @@ enum s5k5ccgx_dtp_test {
 	DTP_ON,
 };
 #endif
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	//devide internal and market app : goggles, QRcode, etc..
+#define S5K5CCGX_IOCTL_APPMODE        _IOW('o', 24, enum s5k5ccgx_app_mode)
+#endif
 
 struct s5k5ccgx_exif_info {
 	unsigned int info_exptime_numer;
@@ -176,6 +179,7 @@ enum s5k5ccgx_iso_mode {
 enum s5k5ccgx_cam_mode {
 	CAMMODE_CAMERA = 1,
 	CAMMODE_CAMCORDER,
+	CAMMODE_MMS_CAMCORDER,
 	CAMMODE_MAX,
 };
 
@@ -266,6 +270,15 @@ enum s5k5ccgx_mode_info {
 	MODE_INFO_VIDEO,
 	MODE_INFO_MAX
 };
+
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	//devide internal and market app : goggles, QRcode, etc..
+enum s5k5ccgx_app_mode {
+	APPMODE_SEC_APP = 0,
+	APPMODE_3RD_APP,
+	APPMODE_MAX,
+};
+#endif
+
 
 struct s5k5ccgx_mode {
 	int xres;

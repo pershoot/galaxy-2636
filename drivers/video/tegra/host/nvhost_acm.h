@@ -58,9 +58,7 @@ struct nvhost_module {
 	struct nvhost_module *parent;
 	int powergate_id;
 	struct list_head client_list;
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 	bool force_suspend;	
-#endif
 };
 
 int nvhost_module_init(struct nvhost_module *mod, const char *name,

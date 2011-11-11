@@ -714,8 +714,8 @@ void ext4_mb_generate_buddy(struct super_block *sb,
 
 	if (free != grp->bb_free) {
 		ext4_grp_locked_error(sb, group, 0, 0,
-				      "%u blocks in bitmap, %u in gd",
-				      free, grp->bb_free);
+				      "%u blocks in bitmap, %u in gd, and max : %d, fragments : %u, inodes/grp : %d",
+				      free, grp->bb_free, max, fragments, EXT4_INODES_PER_GROUP(sb));
 		/*
 		 * If we intent to continue, we consider group descritor
 		 * corrupt and update bb_free using bitmap value

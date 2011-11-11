@@ -23,9 +23,10 @@
 #define MXT_CALIBRATE_WORKAROUND
 
 /*For Performance*/
-#define MXT_DRIVER_FILTER
+//#define MXT_DRIVER_FILTER
 #define MXT_FACTORY_TEST
 #define ENABLE_NOISE_TEST_MODE
+//#define MXT_TUNNING_ENABLE
 
 /*Normal Feature*/
 #define MXT_SLEEP_POWEROFF
@@ -701,7 +702,13 @@ struct mxt_platform_data {
 	uint8_t noisethr_for_ta_connect;
 	uint8_t freq_for_ta_connect[5];
 	uint8_t idlegcafdepth_ta_connect;
-	uint8_t actvgcafdepth_ta_connect;
+	uint8_t fherr_cnt;
+	uint8_t tch_blen_for_fherr;
+	uint8_t tchthr_for_fherr;
+	uint8_t noisethr_for_fherr;
+	uint8_t freq_for_fherr1[5];
+	uint8_t freq_for_fherr2[5];
+	uint8_t freq_for_fherr3[5];
 #ifdef MXT_CALIBRATE_WORKAROUND
 	/* recalibration suspend time after last detection */
 	uint8_t atchcalst_idle;

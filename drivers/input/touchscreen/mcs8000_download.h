@@ -10,24 +10,20 @@
 #ifndef __MELFAS_FIRMWARE_DOWNLOAD_H__
 #define __MELFAS_FIRMWARE_DOWNLOAD_H__
 
-//#define FW_FROM_FILE
-
-#ifdef FW_FROM_FILE
 #include <asm/io.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
 #define MELFAS_FW1 "/sdcard/Master.bin"
-#define MELFAS_FW2 "/sdcard/Slave.bin"
-#define MELFAS_FW3 "/sdcard/Core.bin"
-#define MELFAS_FW4 "/sdcard/Public.bin"
-#endif
 
-#define MELFAS_FW_VER	0x38
-#define ILJIN_FW_VER	0x55
-#define CORE_FW_VER		0x02
-#define PRIVATE_FW_VER	0x02
-#define PUBLIC_FW_VER	0x02
+#define MELFAS_BASE_FW_VER	0x40
+#define ILJIN_BASE_FW_VER	0x57
+
+#define MELFAS_FW_VER	0x43
+#define ILJIN_FW_VER	0x60
+#define CORE_FW_VER		0x08
+#define PRIVATE_FW_VER	0x16
+#define PUBLIC_FW_VER	0x11
 
 //=====================================================================
 //
@@ -60,7 +56,7 @@
 //   ISC Mode
 //----------------------------------------------------
 
-#define MELFAS_CRC_CHECK_ENABLE                     1
+#define MELFAS_CRC_CHECK_ENABLE 				1
 
 #define ISC_MODE_SLAVE_ADDRESS                  0x48
 
@@ -71,15 +67,15 @@
 //address for ISC MODE
 #define ISC_DOWNLOAD_MODE_ENTER                 0x5F
 #define ISC_DOWNLOAD_MODE                       0x60
-#define ISC_PRIVATE_CONFIGURATION_START_ADDR     0x61
-#define ISC_PUBLIC_CONFIGURATION_START_ADDR      0x62
+#define ISC_PRIVATE_CONFIGURATION_START_ADDR    0x61
+#define ISC_PUBLIC_CONFIGURATION_START_ADDR     0x62
 
 #define ISC_READ_SLAVE_CRC_OK                   0x63        // return value from slave
 
 // mode
 #define ISC_CORE_FIRMWARE_DL_MODE               0x01
-#define ISC_PRIVATE_CONFIGURATION_DL_MODE        0x02
-#define ISC_PUBLIC_CONFIGURATION_DL_MODE         0x03
+#define ISC_PRIVATE_CONFIGURATION_DL_MODE       0x02
+#define ISC_PUBLIC_CONFIGURATION_DL_MODE        0x03
 #define ISC_SLAVE_DOWNLOAD_START                0x04
 
 //----------------------------------------------------
@@ -133,21 +129,19 @@ void mcsdl_vdd_off(void);
 /* Touch Screen Interface Specification Multi Touch (V0.5) */
 
 /* REGISTERS */
-#define MCSTS_STATUS_REG        0x00 //Status
-#define MCSTS_MODE_CONTROL_REG  0x01 //Mode Control
-#define MCSTS_RESOL_HIGH_REG    0x02 //Resolution(High Byte)
-#define MCSTS_RESOL_X_LOW_REG   0x08 //Resolution(X Low Byte)
-#define MCSTS_RESOL_Y_LOW_REG   0x0a //Resolution(Y Low Byte)
-#define MCSTS_INPUT_INFO_REG    0x10 //Input Information
-#define MCSTS_POINT_HIGH_REG    0x11 //Point(High Byte)
-#define MCSTS_POINT_X_LOW_REG   0x12 //Point(X Low Byte)
-#define MCSTS_POINT_Y_LOW_REG   0x13 //Point(Y Low Byte)
-#define MCSTS_STRENGTH_REG      0x14 //Strength
-#define MCSTS_MODULE_VER_REG    0x30 //H/W Module Revision
-#if 1
-#define MCSTS_FIRMWARE_VER_REG_MASTER  	0x31 //F/W Version MASTER
-#define MCSTS_FIRMWARE_VER_REG_SLAVE  	0x32 //F/W Version SLAVE
-#endif
+#define MCSTS_STATUS_REG        		0x00 //Status
+#define MCSTS_MODE_CONTROL_REG  		0x01 //Mode Control
+#define MCSTS_RESOL_HIGH_REG    		0x02 //Resolution(High Byte)
+#define MCSTS_RESOL_X_LOW_REG   		0x08 //Resolution(X Low Byte)
+#define MCSTS_RESOL_Y_LOW_REG   		0x0a //Resolution(Y Low Byte)
+#define MCSTS_INPUT_INFO_REG    		0x10 //Input Information
+#define MCSTS_POINT_HIGH_REG    		0x11 //Point(High Byte)
+#define MCSTS_POINT_X_LOW_REG   		0x12 //Point(X Low Byte)
+#define MCSTS_POINT_Y_LOW_REG   		0x13 //Point(Y Low Byte)
+#define MCSTS_STRENGTH_REG      		0x14 //Strength
+#define MCSTS_MODULE_VER_REG    		0x30 //H/W Module Revision
+#define MCSTS_FIRMWARE_VER_REG_MASTER  			0x31 //F/W Version MASTER
+#define MCSTS_FIRMWARE_VER_REG_SLAVE  			0x32 //F/W Version SLAVE
 #define MCSTS_FIRMWARE_VER_REG_CORE  			0x33 //CORE F/W Version
 #define MCSTS_FIRMWARE_VER_REG_PRIVATE_CUSTOM  	0x34 //PRIVATE_CUSTOM F/W Version
 #define MCSTS_FIRMWARE_VER_REG_PUBLIC_CUSTOM	0x35 //PUBLIC CUSTOM F/W version	
@@ -169,7 +163,7 @@ void mcsdl_vdd_off(void);
 int mcsdl_download_binary_data(bool);			// with binary type .c   file.
 int mcsdl_download_binary_file(void);			// with binary type .bin file.
 
-int mms100_ISC_download_binary_data(bool);
+int mms100_ISC_download_binary_data(bool, INT8);
 int mms100_ISC_download_binary_file(void);
 
 //---------------------------------

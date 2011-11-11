@@ -32,6 +32,7 @@ struct tegra_utmip_config {
 	u8 xcvr_setup;
 	u8 xcvr_lsfslew;
 	u8 xcvr_lsrslew;
+	u8 xcvr_fsslew;
 };
 
 enum tegra_ulpi_inf_type {

@@ -23,12 +23,15 @@
 #include <linux/syscalls.h>
 #include <media/tegra_camera.h>
 
+#ifndef CONFIG_MACH_SAMSUNG_P5W_KT
 #ifdef CONFIG_MACH_SAMSUNG_P5
 #include "s5k5ccgx_regs_p5.h"
 #else
 #include "s5k5ccgx_regs.h"
 #endif
-
+#else	//homepad
+#include "s5k5ccgx_regs_p5_kt.h"
+#endif
 
 #include <media/s5k5ccgx.h>
 
@@ -122,6 +125,9 @@ enum s5k5ccgx_preview_frame_size {
 	S5K5CCGX_PREVIEW_CIF,		/* 352x288 */
 	S5K5CCGX_PREVIEW_528x432,	/* 528x432 */	
 	S5K5CCGX_PREVIEW_VGA,		/* 640x480 */
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	S5K5CCGX_PREVIEW_4CIF,		/* 704x576 */
+#endif
 	S5K5CCGX_PREVIEW_D1,		/* 720x480 */
 	S5K5CCGX_PREVIEW_SVGA,		/* 800x600 */
 	S5K5CCGX_PREVIEW_XGA,		/* 1024x768*/
@@ -131,6 +137,13 @@ enum s5k5ccgx_preview_frame_size {
 };
 
 enum s5k5ccgx_capture_frame_size {
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	S5K5CCGX_CAPTURE_VGA = 0,	/* 640x480 */
+	S5K5CCGX_CAPTURE_1MP,		/* 1280x960 */
+	S5K5CCGX_CAPTURE_2MP,		/* UXGA  - 1600x1200 */
+	S5K5CCGX_CAPTURE_3MP,		/* QXGA  - 2048x1536 */
+	S5K5CCGX_CAPTURE_MAX,
+#else
 	S5K5CCGX_CAPTURE_VGA = 0,	/* 640x480 */
 	S5K5CCGX_CAPTURE_WVGA,		/* 800x480 */
 	S5K5CCGX_CAPTURE_SVGA,		/* 800x600 */
@@ -141,6 +154,7 @@ enum s5k5ccgx_capture_frame_size {
 	S5K5CCGX_CAPTURE_W2MP,		/* 35mm Academy Offset Standard 1.66 */
 	S5K5CCGX_CAPTURE_3MP,		/* QXGA  - 2048x1536 */
 	S5K5CCGX_CAPTURE_MAX,
+#endif
 };
 
 
@@ -157,11 +171,14 @@ static const struct s5k5ccgx_framesize s5k5ccgx_preview_framesize_list[] = {
 	{ S5K5CCGX_PREVIEW_CIF,		352,  288 },
 	{ S5K5CCGX_PREVIEW_528x432,	528,  432 },	
 	{ S5K5CCGX_PREVIEW_VGA,		640,  480 },
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	{ S5K5CCGX_PREVIEW_4CIF,	704,  576 },
+#endif
 	{ S5K5CCGX_PREVIEW_D1,		720,  480 },
 	{ S5K5CCGX_PREVIEW_SVGA,	800,  600 },
 	{ S5K5CCGX_PREVIEW_XGA,		1024, 768 },
 	{ S5K5CCGX_PREVIEW_PVGA,	1280, 720 },
-	{ S5K5CCGX_PREVIEW_SXGA,	1280, 1024 },	
+	{ S5K5CCGX_PREVIEW_SXGA,	1280, 1024 },
 };
 
 static const struct s5k5ccgx_framesize s5k5ccgx_capture_framesize_list[] = {
@@ -444,6 +461,9 @@ static const struct s5k5ccgx_regs regs_for_fw_version_1_1 = {
 		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_CIF, s5k5ccgx_352_288_Preview),
 		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_528x432, s5k5ccgx_528_432_Preview),		
 		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_VGA, s5k5ccgx_640_480_Preview),
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_4CIF, s5k5ccgx_704_576_Preview),
+#endif
 		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_D1, s5k5ccgx_720_480_Preview),
 		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_SVGA, s5k5ccgx_800_600_Preview),
 		S5K5CCGX_REGSET(S5K5CCGX_PREVIEW_XGA, s5k5ccgx_1024_768_Preview),
@@ -520,11 +540,14 @@ struct s5k5ccgx_state {
 	struct s5k5ccgx_exif_info exif_info;
 	struct s5k5ccgx_mode state_mode;
 	bool esd_status;	
-       //modify to TouchAF by Teddy 
+	//modify to TouchAF by Teddy 
 	bool touchaf_enable;    
 	bool bHD_enable;           
 	int bCammode;
 	bool isAFCancel;
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	//devide internal and market app : goggles, QRcode, etc..
+	int bAppmode;
+#endif
 };
 
 static struct s5k5ccgx_state *state;
@@ -957,63 +980,61 @@ static int s5k5ccgx_set_capture_size()
 //modify to TouchAF by Teddy
 static int s5k5ccgx_reset_AF_region()
 {
-    u16 mapped_x = 512;
-    u16 mapped_y = 384;
-    u16 inner_window_start_x = 0;
-    u16 inner_window_start_y = 0;
-    u16 outer_window_start_x = 0;
-    u16 outer_window_start_y = 0;
+	u16 mapped_x = 512;
+	u16 mapped_y = 384;
+	u16 inner_window_start_x = 0;
+	u16 inner_window_start_y = 0;
+	u16 outer_window_start_x = 0;
+	u16 outer_window_start_y = 0;
 
-    state->touchaf_enable = false;
-    // mapping the touch position on the sensor display
-    mapped_x = (mapped_x * 1024) / 1066;
-    mapped_y = (mapped_y * 768) / 800;
-    printk("\n\n%s : mapped xPos = %d, mapped yPos = %d\n\n", __func__, mapped_x, mapped_y);
+	state->touchaf_enable = false;
+	// mapping the touch position on the sensor display
+	mapped_x = (mapped_x * 1024) / 1066;
+	mapped_y = (mapped_y * 768) / 800;
+	printk("\n\n%s : mapped xPos = %d, mapped yPos = %d\n\n", __func__, mapped_x, mapped_y);
 
-    inner_window_start_x    = mapped_x - (INNER_WINDOW_WIDTH_1024_768 / 2);
-    outer_window_start_x    = mapped_x - (OUTER_WINDOW_WIDTH_1024_768 / 2);
-    printk("\n\n%s : boxes are in the sensor window. in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
+	inner_window_start_x    = mapped_x - (INNER_WINDOW_WIDTH_1024_768 / 2);
+	outer_window_start_x    = mapped_x - (OUTER_WINDOW_WIDTH_1024_768 / 2);
+	printk("\n\n%s : boxes are in the sensor window. in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
 
-    inner_window_start_y    = mapped_y - (INNER_WINDOW_HEIGHT_1024_768 / 2);
-    outer_window_start_y    = mapped_y - (OUTER_WINDOW_HEIGHT_1024_768 / 2);
-    printk("\n\n%s : boxes are in the sensor window. in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
+	inner_window_start_y    = mapped_y - (INNER_WINDOW_HEIGHT_1024_768 / 2);
+	outer_window_start_y    = mapped_y - (OUTER_WINDOW_HEIGHT_1024_768 / 2);
+	printk("\n\n%s : boxes are in the sensor window. in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
 
+	//calculate the start position value
+	inner_window_start_x = inner_window_start_x * 1024 /1024;
+	outer_window_start_x = outer_window_start_x * 1024 / 1024;
+	inner_window_start_y = inner_window_start_y * 1024 / 768;
+	outer_window_start_y = outer_window_start_y * 1024 / 768;
+	printk("\n\n%s : calculated value inner_window_start_x = %d\n\n", __func__, inner_window_start_x);
+	printk("\n\n%s : calculated value inner_window_start_y = %d\n\n", __func__, inner_window_start_y);
+	printk("\n\n%s : calculated value outer_window_start_x = %d\n\n", __func__, outer_window_start_x);
+	printk("\n\n%s : calculated value outer_window_start_y = %d\n\n", __func__, outer_window_start_y);
 
-    //calculate the start position value
-    inner_window_start_x = inner_window_start_x * 1024 /1024;
-    outer_window_start_x = outer_window_start_x * 1024 / 1024;
-    inner_window_start_y = inner_window_start_y * 1024 / 768;
-    outer_window_start_y = outer_window_start_y * 1024 / 768;
-    printk("\n\n%s : calculated value inner_window_start_x = %d\n\n", __func__, inner_window_start_x);
-    printk("\n\n%s : calculated value inner_window_start_y = %d\n\n", __func__, inner_window_start_y);
-    printk("\n\n%s : calculated value outer_window_start_x = %d\n\n", __func__, outer_window_start_x);
-    printk("\n\n%s : calculated value outer_window_start_y = %d\n\n", __func__, outer_window_start_y);
+	//Write register
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0028, 0x7000);
 
+	// inner_window_start_x
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0234);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_x);
 
-    //Write register
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0028, 0x7000);
+	// outer_window_start_x
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022C);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_x);
 
-    // inner_window_start_x
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0234);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_x);
+	// inner_window_start_y
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0236);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_y);
 
-    // outer_window_start_x
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022C);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_x);
-    
-    // inner_window_start_y
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0236);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_y);
-    
-    // outer_window_start_y
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022E);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_y);
-  
-    // Update AF window
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x023C);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, 0x0001);
+	// outer_window_start_y
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022E);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_y);
 
-    return 0;
+	// Update AF window
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x023C);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, 0x0001);
+
+	return 0;
 }
 
 static int s5k5ccgx_start_capture(struct s5k5ccgx_state *state, struct s5k5ccgx_mode *mode)
@@ -1539,23 +1560,25 @@ static int s5k5ccgx_get_auto_focus_check_second_search(struct i2c_client *client
 
 static int s5k5ccgx_get_auto_focus_pre_check(struct i2c_client *client)
 {
-       if (!(state->touchaf_enable))
-       {
+	if (!(state->touchaf_enable)) {
 		if (ae_check_need) {
-			if (s5k5ccgx_get_ae_stable() != 0x0001)
-			{
+			if (s5k5ccgx_get_ae_stable() != 0x0001) {
 				msleep(70);
 				//PCAM_DEBUG("msleep ------ 70ms  ");			
 				if (ae_check_need++ < 10)
 				return 0;
 			}
 		}
-	
-		s5k5ccgx_set_from_table(state->i2c_client, "ae lock on",
-		&state->regs->ae_lock_on, 1, 0);	
-		if ((state->parms.mode_flash != FLASH_ON || !ae_check_need) && state->parms.mode_wb == WB_AUTO) {
-			s5k5ccgx_set_from_table(state->i2c_client, "awb lock on",
-			&state->regs->awb_lock_on, 1, 0);
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	//devide internal and market app : goggles, QRcode, etc..
+		if(state->bAppmode == APPMODE_SEC_APP)
+#endif
+		{
+			s5k5ccgx_set_from_table(state->i2c_client, "ae lock on",
+			&state->regs->ae_lock_on, 1, 0);	
+			if ((state->parms.mode_flash != FLASH_ON || !ae_check_need) && state->parms.mode_wb == WB_AUTO) {
+				s5k5ccgx_set_from_table(state->i2c_client, "awb lock on",
+				&state->regs->awb_lock_on, 1, 0);
+			}
 		}
 	}
 
@@ -1572,14 +1595,13 @@ static int s5k5ccgx_get_auto_focus_pre_check(struct i2c_client *client)
 		s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0224);
 		s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, 0x0006);
 		printk("\n\n%s : 720P Auto Focus Operation \n\n", __func__);
-	} else
-            {     
-                  if ( (state->parms.mode_scene == SCENE_FIRE_WORK) || (state->parms.mode_scene == SCENE_NIGHT))
-                        msleep(250);
-                  else
-                        msleep(100);
-                  s5k5ccgx_set_from_table(state->i2c_client, "single af start", &state->regs->single_af_start, 1, 0);
-           }
+	} else {     
+		if ( (state->parms.mode_scene == SCENE_FIRE_WORK) || (state->parms.mode_scene == SCENE_NIGHT))
+			msleep(250);
+		else
+			msleep(100);
+		s5k5ccgx_set_from_table(state->i2c_client, "single af start", &state->regs->single_af_start, 1, 0);
+	}
 	state->af_status = AF_START;
 	dev_dbg(&state->i2c_client->dev, "%s: af_status set to start\n", __func__);
 
@@ -1599,7 +1621,7 @@ static int s5k5ccgx_get_auto_focus_check_first_search(struct i2c_client *client)
 	s5k5ccgx_i2c_read_twobyte(state->i2c_client, 0x0F12, &read_value);
 
 	PCAM_DEBUG("START  %04X\n", read_value);
-	
+
 	return read_value;
 }
 
@@ -1922,10 +1944,21 @@ static int s5k5ccgx_set_mode(struct s5k5ccgx_state *state, struct s5k5ccgx_mode 
 		state->preview_framesize_index = S5K5CCGX_PREVIEW_VGA;
 	else if (mode->xres == 528 && mode->yres == 432)
 		state->preview_framesize_index = S5K5CCGX_PREVIEW_528x432;
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	else if (mode->xres == 352 && mode->yres == 288)
+		state->preview_framesize_index = S5K5CCGX_PREVIEW_CIF;
+	else if (mode->xres == 320 && mode->yres == 240)
+		state->preview_framesize_index = S5K5CCGX_PREVIEW_320x240;
+	else if (mode->xres == 704 && mode->yres == 576)
+		state->preview_framesize_index = S5K5CCGX_PREVIEW_4CIF;
+	else if (mode->xres == 176 && mode->yres == 144)
+		state->preview_framesize_index = S5K5CCGX_PREVIEW_QCIF;
+#else
 	else if (mode->xres == 352 && mode->yres == 288)
 		state->preview_framesize_index = S5K5CCGX_PREVIEW_528x432;
 	else if (mode->xres == 320 && mode->yres == 240)
 		state->preview_framesize_index = S5K5CCGX_PREVIEW_320x240;
+#endif
 	else {
 		pr_err("%s : invalid resolution supplied to set mode %dx%d\n",
 				__func__, mode->xres, mode->yres);
@@ -1942,7 +1975,8 @@ static int s5k5ccgx_set_mode(struct s5k5ccgx_state *state, struct s5k5ccgx_mode 
 		s5k5ccgx_start_capture(state, mode);
 		s5k5ccgx_set_exif_info(state);		
 		state->preview_framesize_index = S5K5CCGX_PREVIEW_MAX;
-		s5k5ccgx_reset_AF_region();
+		if(state->touchaf_enable)
+			s5k5ccgx_reset_AF_region();
 	} else if (mode->mode_info == MODE_INFO_PREVIEW || mode->mode_info == MODE_INFO_VIDEO) {
 		//TODO : make continuous frame setting - preview or video
 		state->isAFCancel = false;
@@ -2212,24 +2246,20 @@ static int s5k5ccgx_set_cam_mode(unsigned long value)
 {
 	int err = 0;
 
-                printk("%s : value = %d\n\n",__func__, value);
+	printk("%s : value = %d\n\n",__func__, value);
 
 	if (value == CAMMODE_CAMCORDER)
 	{
-		if(state->preview_framesize_index == S5K5CCGX_PREVIEW_528x432)
-		{
-			//TODO : do fix frame control
-			err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
-					ARRAY_SIZE(state->regs->fps), FRAME_RATE_15);
-			printk(" 15fps fix frame!!\n\n\n");
-		}	
-		else if (!(state->preview_framesize_index == S5K5CCGX_PREVIEW_PVGA))
-		{
-			//TODO : do fix frame control
-			err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
-					ARRAY_SIZE(state->regs->fps), FRAME_RATE_30);
-			printk("30 fps fix frame!!\n\n\n");
-		}
+		//TODO : do fix frame control
+		err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
+				ARRAY_SIZE(state->regs->fps), FRAME_RATE_30);
+		printk("30 fps fix frame!!\n\n\n");
+	}
+	else if(value == CAMMODE_MMS_CAMCORDER)
+	{
+		err = s5k5ccgx_set_from_table(state->i2c_client, "fps" , &state->regs->fps,
+				ARRAY_SIZE(state->regs->fps), FRAME_RATE_15);
+		printk(" 15fps fix frame!!\n\n\n");	
 	}
 	else
 	{
@@ -2238,7 +2268,8 @@ static int s5k5ccgx_set_cam_mode(unsigned long value)
 				ARRAY_SIZE(state->regs->fps), FRAME_RATE_AUTO);		
 		printk("variable frame!!\n\n\n");
 	}
-                state->bCammode = value;     
+
+	state->bCammode = value;     
 
 	return err;
 }
@@ -2331,158 +2362,151 @@ static int s5k5ccgx_check_dataline_stop(struct i2c_client *client, int arg)
 //modify to TouchAF by Teddy
 static int s5k5ccgx_set_touchaf(struct s5k5ccgx_touchaf_pos *tpos)
 {
-    u16 mapped_x = 0;
-    u16 mapped_y = 0;
-    u16 inner_window_start_x = 0;
-    u16 inner_window_start_y = 0;
-    u16 outer_window_start_x = 0;
-    u16 outer_window_start_y = 0;
+	u16 mapped_x = 0;
+	u16 mapped_y = 0;
+	u16 inner_window_start_x = 0;
+	u16 inner_window_start_y = 0;
+	u16 outer_window_start_x = 0;
+	u16 outer_window_start_y = 0;
 
-    u16 sensor_width    =0;
-    u16 sensor_height   =0;
+	u16 sensor_width = 0;
+	u16 sensor_height = 0;
 
-    u16 inner_window_width = 0;
-    u16 inner_window_height= 0;
-    u16 outer_window_width= 0;
-    u16 outer_window_height= 0;
-    
-    u16 touch_width= 0;
-    u16 touch_height= 0;
+	u16 inner_window_width = 0;
+	u16 inner_window_height = 0;
+	u16 outer_window_width = 0;
+	u16 outer_window_height = 0;
 
-    if (state->bHD_enable)
-    {
-        sensor_width    = 1280;
-        sensor_height   = 720;
-        inner_window_width = INNER_WINDOW_WIDTH_720P;
-        inner_window_height= INNER_WINDOW_HEIGHT_720P;
-        outer_window_width= OUTER_WINDOW_WIDTH_720P;
-        outer_window_height= OUTER_WINDOW_HEIGHT_720P;
-        touch_width= 1280;
-        touch_height= 720;
-    } else
-    {
-        sensor_width    = 1024;
-        sensor_height   = 768;
-        inner_window_width = INNER_WINDOW_WIDTH_1024_768;
-        inner_window_height= INNER_WINDOW_HEIGHT_1024_768;
-        outer_window_width= OUTER_WINDOW_WIDTH_1024_768;
-        outer_window_height= OUTER_WINDOW_HEIGHT_1024_768;
-        //touch_width= 1066;
-        //touch_height= 800;
-        touch_width= 1000;
-        touch_height= 750;          
-    }
-        
-    state->touchaf_enable = true;
-    printk("\n\n%s : xPos = %d, yPos = %d \n\n", __func__, tpos->xpos, tpos->ypos);
+	u16 touch_width = 0;
+	u16 touch_height = 0;
 
+	if (state->bHD_enable) {
+		sensor_width    = 1280;
+		sensor_height   = 720;
+		inner_window_width = INNER_WINDOW_WIDTH_720P;
+		inner_window_height= INNER_WINDOW_HEIGHT_720P;
+		outer_window_width= OUTER_WINDOW_WIDTH_720P;
+		outer_window_height= OUTER_WINDOW_HEIGHT_720P;
+		touch_width= 1280;
+		touch_height= 720;
+	} else {
+		sensor_width    = 1024;
+		sensor_height   = 768;
+		inner_window_width = INNER_WINDOW_WIDTH_1024_768;
+		inner_window_height= INNER_WINDOW_HEIGHT_1024_768;
+		outer_window_width= OUTER_WINDOW_WIDTH_1024_768;
+		outer_window_height= OUTER_WINDOW_HEIGHT_1024_768;
+		//touch_width= 1066;
+		//touch_height= 800;
+		touch_width= 1000;
+		touch_height= 750;          
+	}
 
-    // mapping the touch position on the sensor display
-    mapped_x = (tpos->xpos * sensor_width) / touch_width;
-    mapped_y = (tpos->ypos * sensor_height) / touch_height;
-    printk("\n\n%s : mapped xPos = %d, mapped yPos = %d\n\n", __func__, mapped_x, mapped_y);
+	state->touchaf_enable = true;
+	printk("\n\n%s : xPos = %d, yPos = %d \n\n", __func__, tpos->xpos, tpos->ypos);
 
-    // set X axis
-    if ( mapped_x  <=  (inner_window_width / 2) )
-    {
-        inner_window_start_x    = 0;
-        outer_window_start_x    = 0;
-        printk("\n\n%s : inbox over the left side. boxes are left side align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
-    }
-    else if ( mapped_x  <=  (outer_window_width / 2) )
-    {
-        inner_window_start_x    = mapped_x - (inner_window_width / 2);
-        outer_window_start_x    = 0;
-        printk("\n\n%s : outbox only over the left side. outbox is only left side align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
-    }
-    else if ( mapped_x  >=  ( (sensor_width - 1) - (inner_window_width / 2) ) )
-    {
-        inner_window_start_x    = (sensor_width - 1) - inner_window_width;
-        outer_window_start_x    = (sensor_width - 1) - outer_window_width;
-        printk("\n\n%s : inbox over the right side. boxes are rightside align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
-    }
-    else if ( mapped_x  >=  ( (sensor_width - 1) - (outer_window_width / 2) ) )
-    {
-        inner_window_start_x    = mapped_x - (inner_window_width / 2);
-        outer_window_start_x    = (sensor_width - 1) - outer_window_width;
-        printk("\n\n%s : outbox only over the right side. out box is only right side align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
-    }
-    else
-    {
-        inner_window_start_x    = mapped_x - (inner_window_width / 2);
-        outer_window_start_x    = mapped_x - (outer_window_width / 2);
-        printk("\n\n%s : boxes are in the sensor window. in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
-    }
+	// mapping the touch position on the sensor display
+	mapped_x = (tpos->xpos * sensor_width) / touch_width;
+	mapped_y = (tpos->ypos * sensor_height) / touch_height;
+	printk("\n\n%s : mapped xPos = %d, mapped yPos = %d\n\n", __func__, mapped_x, mapped_y);
 
+	// set X axis
+	if ( mapped_x  <=  (inner_window_width / 2) ) {
+		inner_window_start_x    = 0;
+		outer_window_start_x    = 0;
+		printk("\n\n%s : inbox over the left side. boxes are left side align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
+	} else if ( mapped_x  <=  (outer_window_width / 2) ) {
+		inner_window_start_x    = mapped_x - (inner_window_width / 2);
+		outer_window_start_x    = 0;
+		printk("\n\n%s : outbox only over the left side. outbox is only left side align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
+	} else if ( mapped_x  >=  ( (sensor_width - 1) - (inner_window_width / 2) ) ) {
+		inner_window_start_x    = (sensor_width - 1) - inner_window_width;
+		outer_window_start_x    = (sensor_width - 1) - outer_window_width;
+		printk("\n\n%s : inbox over the right side. boxes are rightside align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
+	} else if ( mapped_x  >=  ( (sensor_width - 1) - (outer_window_width / 2) ) ) {
+		inner_window_start_x    = mapped_x - (inner_window_width / 2);
+		outer_window_start_x    = (sensor_width - 1) - outer_window_width;
+		printk("\n\n%s : outbox only over the right side. out box is only right side align in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
+	} else {
+		inner_window_start_x    = mapped_x - (inner_window_width / 2);
+		outer_window_start_x    = mapped_x - (outer_window_width / 2);
+		printk("\n\n%s : boxes are in the sensor window. in_Sx = %d, out_Sx= %d\n\n", __func__, inner_window_start_x, outer_window_start_x);
+	}
 
-    // set Y axis
-    if ( mapped_y  <=  (inner_window_height / 2) )
-    {
-        inner_window_start_y    = 0;
-        outer_window_start_y    = 0;
-        printk("\n\n%s : inbox over the top side. boxes are top side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
-    }
-    else if ( mapped_y  <=  (outer_window_height / 2) )
-    {
-        inner_window_start_y    = mapped_y - (inner_window_height / 2);
-        outer_window_start_y    = 0;
-        printk("\n\n%s : outbox only over the top side. outbox is only top side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
-    }
-    else if ( mapped_y  >=  ( (sensor_height - 1) - (inner_window_height / 2) ) )
-    {
-        inner_window_start_y    = (sensor_height - 1) - inner_window_height;
-        outer_window_start_y    = (sensor_height - 1) - outer_window_height;
-        printk("\n\n%s : inbox over the bottom side. boxes are bottom side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
-    }
-    else if ( mapped_y  >=  ( (sensor_height - 1) - (outer_window_height / 2) ) )
-    {
-        inner_window_start_y    = mapped_y - (inner_window_height / 2);
-        outer_window_start_y    = (sensor_height - 1) - outer_window_height;
-        printk("\n\n%s : outbox only over the bottom side. out box is only bottom side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
-    }
-    else
-    {
-        inner_window_start_y    = mapped_y - (inner_window_height / 2);
-        outer_window_start_y    = mapped_y - (outer_window_height / 2);
-        printk("\n\n%s : boxes are in the sensor window. in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
-    }
+	// set Y axis
+	if ( mapped_y  <=  (inner_window_height / 2) ) {
+		inner_window_start_y    = 0;
+		outer_window_start_y    = 0;
+		printk("\n\n%s : inbox over the top side. boxes are top side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
+	} else if ( mapped_y  <=  (outer_window_height / 2) ) {
+		inner_window_start_y    = mapped_y - (inner_window_height / 2);
+		outer_window_start_y    = 0;
+		printk("\n\n%s : outbox only over the top side. outbox is only top side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
+	} else if ( mapped_y  >=  ( (sensor_height - 1) - (inner_window_height / 2) ) ) {
+		inner_window_start_y    = (sensor_height - 1) - inner_window_height;
+		outer_window_start_y    = (sensor_height - 1) - outer_window_height;
+		printk("\n\n%s : inbox over the bottom side. boxes are bottom side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
+	} else if ( mapped_y  >=  ( (sensor_height - 1) - (outer_window_height / 2) ) ) {
+		inner_window_start_y    = mapped_y - (inner_window_height / 2);
+		outer_window_start_y    = (sensor_height - 1) - outer_window_height;
+		printk("\n\n%s : outbox only over the bottom side. out box is only bottom side align in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
+	} else {
+		inner_window_start_y    = mapped_y - (inner_window_height / 2);
+		outer_window_start_y    = mapped_y - (outer_window_height / 2);
+		printk("\n\n%s : boxes are in the sensor window. in_Sy = %d, out_Sy= %d\n\n", __func__, inner_window_start_y, outer_window_start_y);
+	}
 
-    //calculate the start position value
-    inner_window_start_x = inner_window_start_x * 1024 /sensor_width;
-    outer_window_start_x = outer_window_start_x * 1024 / sensor_width;
-    inner_window_start_y = inner_window_start_y * 1024 / sensor_height;
-    outer_window_start_y = outer_window_start_y * 1024 / sensor_height;
-    printk("\n\n%s : calculated value inner_window_start_x = %d\n\n", __func__, inner_window_start_x);
-    printk("\n\n%s : calculated value inner_window_start_y = %d\n\n", __func__, inner_window_start_y);
-    printk("\n\n%s : calculated value outer_window_start_x = %d\n\n", __func__, outer_window_start_x);
-    printk("\n\n%s : calculated value outer_window_start_y = %d\n\n", __func__, outer_window_start_y);
+	//calculate the start position value
+	inner_window_start_x = inner_window_start_x * 1024 /sensor_width;
+	outer_window_start_x = outer_window_start_x * 1024 / sensor_width;
+	inner_window_start_y = inner_window_start_y * 1024 / sensor_height;
+	outer_window_start_y = outer_window_start_y * 1024 / sensor_height;
+	printk("\n\n%s : calculated value inner_window_start_x = %d\n\n", __func__, inner_window_start_x);
+	printk("\n\n%s : calculated value inner_window_start_y = %d\n\n", __func__, inner_window_start_y);
+	printk("\n\n%s : calculated value outer_window_start_x = %d\n\n", __func__, outer_window_start_x);
+	printk("\n\n%s : calculated value outer_window_start_y = %d\n\n", __func__, outer_window_start_y);
 
+	//Write register
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0028, 0x7000);
 
-    //Write register
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0028, 0x7000);
+	// inner_window_start_x
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0234);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_x);
 
-    // inner_window_start_x
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0234);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_x);
+	// outer_window_start_x
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022C);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_x);
 
-    // outer_window_start_x
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022C);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_x);
-    
-    // inner_window_start_y
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0236);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_y);
-    
-    // outer_window_start_y
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022E);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_y);
-  
-    // Update AF window
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x023C);
-    s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, 0x0001);
+	// inner_window_start_y
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x0236);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, inner_window_start_y);
 
-    return 0;
+	// outer_window_start_y
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x022E);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, outer_window_start_y);
+
+	// Update AF window
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x002A, 0x023C);
+	s5k5ccgx_i2c_write_twobyte(state->i2c_client, 0x0F12, 0x0001);
+
+	return 0;
 }
+
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	//devide internal and market app : goggles, QRcode, etc..
+static int s5k5ccgx_set_app_mode(unsigned long value)
+{
+	int err = 0;
+	printk("%s : value = %d\n\n",__func__, value);
+
+	if(value)
+		state->bAppmode = APPMODE_SEC_APP;
+	else
+		state->bAppmode = APPMODE_3RD_APP;
+
+	return err;	
+}
+#endif
+
 static long s5k5ccgx_ioctl(struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
@@ -2712,16 +2736,16 @@ static long s5k5ccgx_ioctl(struct file *file,
 		}
 		break;
 	}
-        //modify to TouchAF by Teddy
-        case S5K5CCGX_IOCTL_TOUCHAF:
-        {
-                struct s5k5ccgx_touchaf_pos tpos;
-                if (copy_from_user(&tpos, (const void __user *)arg,sizeof(struct s5k5ccgx_touchaf_pos))) {
-                    pr_info("%s %d\n", __func__, __LINE__);
-                    return -EFAULT;
-                }
-                return s5k5ccgx_set_touchaf(&tpos);
-        }
+	//modify to TouchAF by Teddy
+	case S5K5CCGX_IOCTL_TOUCHAF:
+	{
+		struct s5k5ccgx_touchaf_pos tpos;
+		if (copy_from_user(&tpos, (const void __user *)arg,sizeof(struct s5k5ccgx_touchaf_pos))) {
+		    pr_info("%s %d\n", __func__, __LINE__);
+		    return -EFAULT;
+		}
+		return s5k5ccgx_set_touchaf(&tpos);
+	}
 #ifdef FACTORY_TEST
 	case S5K5CCGX_IOCTL_DTP_TEST:
 	{
@@ -2731,6 +2755,13 @@ static long s5k5ccgx_ioctl(struct file *file,
 			status = s5k5ccgx_check_dataline_stop(client, arg);
 		dtpTest = arg;
 		return status;
+	}
+#endif
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	//devide internal and market app : goggles, QRcode, etc..
+	case S5K5CCGX_IOCTL_APPMODE:
+	{
+		PCAM_DEBUG("S5K5CCGX_IOCTL_APPMODE : %d", arg);
+		return s5k5ccgx_set_app_mode(arg);
 	}
 #endif
 	}
@@ -2983,9 +3014,9 @@ static int s5k5ccgx_open(struct inode *inode, struct file *file)
 	state->parms.mode_focus = FOCUS_AUTO;
 	state->power_status = false;
 	state->esd_status = false;	
-       //modify to TouchAF by Teddy
-       state->touchaf_enable = false;
-       state->bHD_enable = false;
+	//modify to TouchAF by Teddy
+	state->touchaf_enable = false;
+	state->bHD_enable = false;
 	state->isAFCancel = false;
 
 	if (state->pdata && state->pdata->power_on)

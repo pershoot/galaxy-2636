@@ -883,9 +883,9 @@ ppp_async_input(struct asyncppp *ap, const unsigned char *buf,
 					skb = skbuf;
 					skbuf = NULL;
 				} else {
-					skb = dev_alloc_skb(ap->mru + PPP_HDRLEN + 2);
-					if (!skb)
-						goto nomem;
+				skb = dev_alloc_skb(ap->mru + PPP_HDRLEN + 2);
+				if (!skb)
+					goto nomem;
 				}
  				ap->rpkt = skb;
  			}

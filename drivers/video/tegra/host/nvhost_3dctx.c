@@ -382,7 +382,9 @@ static void __init setup_save(
 			break;
 		}
 		if (ptr) {
-			memset(ptr, 0, count * 4);
+			u32 k = 0;
+			for (k = 0; k < count; k++) // create a signature pattern for FIFO
+				*(ptr + k) = 0xd000d000 | (offset << 16) | k;
 			ptr += count;
 		}
 		save += count;

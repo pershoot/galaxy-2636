@@ -83,13 +83,15 @@ int __ext4_check_dir_entry(const char *function, unsigned int line,
 			le32_to_cpu(EXT4_SB(dir->i_sb)->s_es->s_inodes_count))
 		error_msg = "inode out of bounds";
 
-	if (error_msg != NULL)
+	if (error_msg != NULL) {
+		printk("bh : state : %d, page_addr : %x, size : %d\n", bh->b_state, bh->b_page, bh->b_size);
 		ext4_error_inode(dir, function, line, bh->b_blocknr,
 			"bad entry in directory: %s - "
 			"offset=%u(%u), inode=%u, rec_len=%d, name_len=%d",
 			error_msg, (unsigned) (offset%bh->b_size), offset,
 			le32_to_cpu(de->inode),
 			rlen, de->name_len);
+	}
 	return error_msg == NULL ? 1 : 0;
 }
 

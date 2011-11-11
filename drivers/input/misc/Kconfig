@@ -482,23 +482,23 @@ config SENSORS_BH1721FVC
 config SENSORS_AK8975C
 	tristate "AK8975 magnetometer support"
 	default n
-	depends on I2C
+	depends on I2C && !HC_32
 	help
 	  If you say yes here you get support for Asahi Kasei's
 	  magnetometer sensor AK8975C.
 
-config SENSORS_KXSD9
-	tristate "KXSD9 accelerometer support"
+config SENSORS_AK8975
+	tristate "AK8975 magnetometer support"
 	default n
-	depends on I2C
+	depends on I2C && HC_32
 	help
-	  If you say yes here you get support for Kionix's
-	  accelerometer sensor KXSD9.
+	  If you say yes here you get support for Asahi Kasei's
+	  magnetometer sensor AK8975.
 
 config SENSORS_KXTF9
 	tristate "KXTF9 accelerometer support"
 	default n
-	depends on I2C
+	depends on !HC_32
 	help
 	  If you say yes here you get support for Kionix's
 	  accelerometer sensor KXTF9.

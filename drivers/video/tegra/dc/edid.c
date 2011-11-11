@@ -56,6 +56,7 @@ struct tegra_edid {
 	u8			*data;
 	unsigned		len;
 	u8			support_stereo;
+	struct tegra_edid_hdmi_eld              eld;
 	u8			support_underscan;
 };
 
@@ -193,7 +194,25 @@ int tegra_edid_parse_ext_block(u8 *raw, int idx, struct tegra_edid *edid)
 	u8 tmp;
 	u8 code;
 	int len;
+        int i;
+        bool basic_audio = false;
 
+        ptr = &raw[0];
+
+        /* If CEA 861 block get info for eld struct */
+        if (edid && ptr) {
+                if (*ptr <= 3)
+                        edid->eld.eld_ver = 0x02;
+                edid->eld.cea_edid_ver = ptr[1];
+
+                /* check for basic audio support in CEA 861 block */
+                if(raw[3] & (1<<6)) {
+                        /* For basic audio, set spk_alloc to Left+Right.
+                         * If there is a Speaker Alloc block this will
+                         * get over written with that value */
+                        basic_audio = true;
+                }
+        }
 	ptr = &raw[4];
 
 	if (raw[3] & 0x80)
@@ -211,13 +230,33 @@ int tegra_edid_parse_ext_block(u8 *raw, int idx, struct tegra_edid *edid)
 		 * tag code 2: video data block
 		 * tag code 3: vendor specific data block
 		 */
-		code = (tmp >> 5) & 0x3;
+		code = (tmp >> 5) & 0x7;
 		switch (code) {
+                case 1:
+                {
+                        edid->eld.sad_count = len;
+                        edid->eld.conn_type = 0x00;
+                        edid->eld.support_hdcp = 0x00;
+                        for (i = 0; (i < len) && (i < ELD_MAX_SAD); i++)
+                                edid->eld.sad[i] = ptr[i + 1];
+                        len++;
+                        ptr += len; /* adding the header */
+                        /* Got an audio data block so enable audio */
+                        if(basic_audio == true)
+                                edid->eld.spk_alloc = 1;
+                        break;
+                }
 		/* case 2 is commented out for now */
 		case 3:
 		{
 			int j = 0;
 
+                        if ((ptr[1] == 0x03) &&
+                                (ptr[2] == 0x0c) &&
+                                (ptr[3] == 0)) {
+                                edid->eld.port_id[0] = ptr[4];
+                                edid->eld.port_id[1] = ptr[5];
+                        }
 			if ((len >= 8) &&
 				(ptr[1] == 0x03) &&
 				(ptr[2] == 0x0c) &&
@@ -237,7 +276,28 @@ int tegra_edid_parse_ext_block(u8 *raw, int idx, struct tegra_edid *edid)
 						edid->support_stereo = 1;
 				}
 			}
+                        if ((len > 5) &&
+                                (ptr[1] == 0x03) &&
+                                (ptr[2] == 0x0c) &&
+                                (ptr[3] == 0)) {
 
+                                edid->eld.support_ai = (ptr[6] & 0x80);
+                        }
+
+                        if ((len > 9) &&
+                                (ptr[1] == 0x03) &&
+                                (ptr[2] == 0x0c) &&
+                                (ptr[3] == 0)) {
+
+                                edid->eld.aud_synch_delay = ptr[10];
+                        }
+                        len++;
+                        ptr += len; /* adding the header */
+                        break;
+                }
+                case 4:
+                {
+                        edid->eld.spk_alloc = ptr[1];
 			len++;
 			ptr += len; /* adding the header */
 			break;
@@ -285,6 +345,7 @@ int tegra_edid_get_monspecs_hdmi_checker(struct tegra_edid *edid, struct fb_mons
 		printk(KERN_WARNING "[HDMI][WARNING] edid read block fail but factory mode! \n");
 
 	memset(specs, 0x0, sizeof(struct fb_monspecs));
+	memset(&edid->eld, 0x0, sizeof(struct tegra_edid_hdmi_eld));
 	fb_edid_to_monspecs(edid->data, specs);	
 	if (specs->modedb == NULL)
 	{
@@ -295,6 +356,12 @@ int tegra_edid_get_monspecs_hdmi_checker(struct tegra_edid *edid, struct fb_mons
 		fb_edid_to_monspecs(edid->data, specs);
 		use_default = 1;
 	}
+        memcpy(edid->eld.monitor_name, specs->monitor, sizeof(specs->monitor));
+        edid->eld.mnl = strlen(edid->eld.monitor_name) + 1;
+        edid->eld.product_id[0] = edid->data[0x8];
+        edid->eld.product_id[1] = edid->data[0x9];
+        edid->eld.manufacture_id[0] = edid->data[0xA];
+        edid->eld.manufacture_id[1] = edid->data[0xB];
 
 	extension_blocks = edid->data[0x7e];
 
@@ -350,11 +417,18 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 	}
 
 	memset(specs, 0x0, sizeof(struct fb_monspecs));
+	memset(&edid->eld, 0x0, sizeof(struct tegra_edid_hdmi_eld));
 	fb_edid_to_monspecs(edid->data, specs);
 	if (specs->modedb == NULL) {
 		printk(KERN_ERR "[HDMI][ERROR] modedb is NULL\n");
 		return -EINVAL;
 	}
+        memcpy(edid->eld.monitor_name, specs->monitor, sizeof(specs->monitor));
+        edid->eld.mnl = strlen(edid->eld.monitor_name) + 1;
+        edid->eld.product_id[0] = edid->data[0x8];
+        edid->eld.product_id[1] = edid->data[0x9];
+        edid->eld.manufacture_id[0] = edid->data[0xA];
+        edid->eld.manufacture_id[1] = edid->data[0xB];
 
 	extension_blocks = edid->data[0x7e];
 	printk(KERN_INFO "[HDMI] %s() EXTENSIION_BLOCKS = %d\n", __func__, extension_blocks);
@@ -369,8 +443,12 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 		if (edid->data[i * 128] == 0x2) {
 			fb_edid_add_monspecs(edid->data + i * 128, specs);
 
-			tegra_edid_parse_ext_block(edid->data + i * 128,
+			ret = tegra_edid_parse_ext_block(edid->data + i * 128,
 					edid->data[i * 128 + 2], edid);
+                        if (ret < 0) {
+                                printk(KERN_ERR "[HDMI][ERROR] edid read 2nd block fail i=%d\n", i);
+                                return ret;
+                        }
 
 			if (edid->support_stereo) {
 				for (j = 0; j < specs->modedb_len; j++) {
@@ -388,6 +466,17 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 	tegra_edid_dump(edid);
 
 	return 0;
+}
+
+int tegra_edid_get_eld(struct tegra_edid *edid,
+                        struct tegra_edid_hdmi_eld *elddata)
+{
+        if (!elddata)
+                return -EFAULT;
+
+        memcpy(elddata, &edid->eld, sizeof(struct tegra_edid_hdmi_eld));
+
+        return 0;
 }
 
 int tegra_edid_underscan_supported(struct tegra_edid *edid)

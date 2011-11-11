@@ -601,7 +601,16 @@ static int mmc_suspend(struct mmc_host *host)
 
 	mmc_claim_host(host);
 	if (!mmc_host_is_spi(host))
+        {
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+	    if(host->card->cid.manfid == 0x15 && host->card->ext_csd.sectors > 40000000)
+		mmc_card_sleepawake(host,1);
+            else
 		mmc_deselect_cards(host);
+#else
+          	mmc_deselect_cards(host);
+#endif
+        }
 	host->card->state &= ~MMC_STATE_HIGHSPEED;
 	mmc_release_host(host);
 

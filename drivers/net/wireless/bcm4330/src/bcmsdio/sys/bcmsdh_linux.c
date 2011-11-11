@@ -637,8 +637,8 @@ int bcmsdh_register_oob_intr(void * dhdp)
 		SDLX_MSG(("%s IRQ=%d Type=%X \n", __FUNCTION__,
 			(int)sdhcinfo->oob_irq, (int)sdhcinfo->oob_flags));
 		/* Refer to customer Host IRQ docs about proper irqflags definition */
-		error = request_irq(sdhcinfo->oob_irq, wlan_oob_irq, sdhcinfo->oob_flags,
-			"bcmsdh_sdmmc", NULL);
+		error = request_threaded_irq(sdhcinfo->oob_irq, NULL, wlan_oob_irq, 
+			IRQF_TRIGGER_RISING, "bcmsdh_sdmmc", NULL);
 		if (error)
 			return -ENODEV;
 #ifndef DEMPSEY_SPECIFIC

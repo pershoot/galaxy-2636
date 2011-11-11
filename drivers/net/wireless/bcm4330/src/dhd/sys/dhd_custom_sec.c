@@ -4,6 +4,7 @@
 
 #include <proto/ethernet.h>
 #include <dngl_stats.h>
+#include <bcmutils.h>
 #include <dhd.h>
 #include <dhd_dbg.h>
 
@@ -107,8 +108,12 @@ start_readmac:
 
 	if(ret)
 		sscanf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",
-			   mac->octet[0], mac->octet[1], mac->octet[2], 
-			   mac->octet[3], mac->octet[4], mac->octet[5]);
+			(unsigned int *)&(mac->octet[0]),
+			(unsigned int *)&(mac->octet[1]),
+			(unsigned int *)&(mac->octet[2]),
+			(unsigned int *)&(mac->octet[3]),
+			(unsigned int *)&(mac->octet[4]),
+			(unsigned int *)&(mac->octet[5]));
 	else
 		DHD_ERROR(("dhd_bus_start: Reading from the '%s' returns 0 bytes\n", filepath));
 
@@ -149,7 +154,7 @@ int WriteRDWR_Macaddr(struct ether_addr *mac)
 
 	if ((g_iMacFlag != MACADDR_COB) && (g_iMacFlag != MACADDR_MOD))
 		return 0;
-	DHD_ERROR(("WriteRDWR_Macaddr \n"));
+
 	sprintf(buf,"%02X:%02X:%02X:%02X:%02X:%02X\n",
 			mac->octet[0],mac->octet[1],mac->octet[2],
 			mac->octet[3],mac->octet[4],mac->octet[5]);
@@ -266,8 +271,12 @@ int CheckRDWR_Macaddr(	struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr 
 				g_iMacFlag = MACADDR_MOD_RANDOM;
 			} else {
 				sscanf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",
-				   &(mac->octet[0]), &(mac->octet[1]), &(mac->octet[2]), 
-				   &(mac->octet[3]), &(mac->octet[4]), &(mac->octet[5]));
+					(unsigned int *)&(mac->octet[0]),
+					(unsigned int *)&(mac->octet[1]),
+					(unsigned int *)&(mac->octet[2]),
+					(unsigned int *)&(mac->octet[3]),
+					(unsigned int *)&(mac->octet[4]),
+					(unsigned int *)&(mac->octet[5]));
 				if(memcmp(cur_mac,mac->octet,ETHER_ADDR_LEN) == 0) { // read mac is same
 					g_iMacFlag = MACADDR_NONE;
 				}
@@ -296,8 +305,12 @@ int CheckRDWR_Macaddr(	struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr 
 		}
 		else {
 			sscanf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",
-			   &(mac->octet[0]), &(mac->octet[1]), &(mac->octet[2]),
-			   &(mac->octet[3]), &(mac->octet[4]), &(mac->octet[5]));
+				(unsigned int *)&(mac->octet[0]),
+				(unsigned int *)&(mac->octet[1]),
+				(unsigned int *)&(mac->octet[2]),
+				(unsigned int *)&(mac->octet[3]),
+				(unsigned int *)&(mac->octet[4]),
+				(unsigned int *)&(mac->octet[5]));
 			/* Writing Newly generated MAC ID to the Dongle */
 			if (0 == _dhd_set_mac_address(dhd, 0, mac)) {
 				DHD_INFO(("dhd_bus_start: MACID is overwritten\n"));
@@ -316,8 +329,12 @@ int CheckRDWR_Macaddr(	struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr 
 				0x60,0xd0,0xa9,randommac[0],randommac[1],randommac[2]);		
 		DHD_ERROR(("[WIFI] The Random Generated MAC ID : %s\n", macbuffer));
 		sscanf(macbuffer,"%02X:%02X:%02X:%02X:%02X:%02X",
-			   &(mac->octet[0]), &(mac->octet[1]), &(mac->octet[2]), 
-			   &(mac->octet[3]), &(mac->octet[4]), &(mac->octet[5]));
+			(unsigned int *)&(mac->octet[0]),
+			(unsigned int *)&(mac->octet[1]),
+			(unsigned int *)&(mac->octet[2]),
+			(unsigned int *)&(mac->octet[3]),
+			(unsigned int *)&(mac->octet[4]),
+			(unsigned int *)&(mac->octet[5]));
 		if (0 == _dhd_set_mac_address(dhd, 0, mac)) {
 			DHD_INFO(("dhd_bus_start: MACID is overwritten\n"));
 			g_iMacFlag = MACADDR_COB;
@@ -383,6 +400,7 @@ int check_module_cid(dhd_pub_t *dhd)
 {
 	int ret = -1;
 	unsigned char cis_buf[128] = {0};
+	unsigned char cid_buf[10] = {0};
 	const char* cidfilepath = "/data/.cid.info";
 
 	/* Try reading out from CIS */
@@ -391,11 +409,15 @@ int check_module_cid(dhd_pub_t *dhd)
 
 	fp_cid = filp_open(cidfilepath, O_RDONLY, 0);
 	if (!IS_ERR(fp_cid)) { 
+		kernel_read(fp_cid, fp_cid->f_pos, cid_buf, sizeof(cid_buf));
+		if(strstr(cid_buf,"samsung")||strstr(cid_buf,"murata")) {
 		/* file does exist, just return */
 		filp_close(fp_cid, NULL);
 		return 0;
 	}
 
+		DHD_ERROR(("[WIFI].cid.info file already exists but it contains an unknown id [%s]\n", cid_buf));
+	}
 	cish->source = 0;
 	cish->byteoff = 0;
 	cish->nbytes = sizeof(cis_buf);
@@ -432,7 +454,9 @@ int Write_Macaddr(struct ether_addr *mac)
 	char buf[18]			= {0};
 	mm_segment_t oldfs		= {0};
 	int ret = -1;
-	DHD_ERROR(("Write_Macaddr \n"));
+	int retry_count = 0;
+
+startwrite:
 
 	sprintf(buf,"%02X:%02X:%02X:%02X:%02X:%02X\n",
 			mac->octet[0],mac->octet[1],mac->octet[2],
@@ -457,6 +481,16 @@ int Write_Macaddr(struct ether_addr *mac)
 		set_fs(oldfs);
 		filp_close(fp_mac, NULL);
 	}
+	/* check .mac.info file is 0 byte */
+	fp_mac = filp_open(filepath, O_RDONLY, 0);
+	ret = kernel_read(fp_mac, 0, buf, 18);
+
+	if((ret == 0) && (retry_count++ < 3)){
+		filp_close(fp_mac, NULL);
+		goto startwrite;
+	}	
+	
+	filp_close(fp_mac, NULL);
 
 	return 0;
 	
@@ -464,7 +498,6 @@ int Write_Macaddr(struct ether_addr *mac)
 #endif
 
 #ifdef CONFIG_CONTROL_PM
-#include <bcmutils.h>
 extern bool g_PMcontrol;
 void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 {

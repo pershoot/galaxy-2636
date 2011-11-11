@@ -602,12 +602,6 @@ static irqreturn_t modemctl_resume_irq(int irq, void *dev_id)
 	if (!work_pending(&mc->resume_work))
 		schedule_work(&mc->resume_work);
 
-	if (!val
-		&& mc->wakeup_flag == HOST_WAKEUP_WAIT_RESET) {
-		mc->wakeup_flag = HOST_WAKEUP_LOW;
-		dev_dbg(mc->dev, "%s: wakeup flag (%d)\n",
-			__func__, mc->wakeup_flag);
-	}
 	return IRQ_HANDLED;
 }
 
@@ -775,7 +769,7 @@ static int modemctl_shutdown(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 
 	if (mc_is_modem_on()) {
-		printk(KERN_INFO "%s %d\n", __func__, __LINE__);
+		printk(KERN_ERR "%s %d\n", __func__, __LINE__);
 		disable_irq(mc->irq[0]);
 		disable_irq(mc->irq[1]);
 	}	

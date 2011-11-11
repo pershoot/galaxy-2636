@@ -131,6 +131,7 @@ struct str_smdctl {
 	bool modem_uevent_requested;
 	bool modem_reset_remained;
 	bool shutdown_called;
+	spinlock_t lock;
 
 	unsigned cp_reset_cnt;
 };

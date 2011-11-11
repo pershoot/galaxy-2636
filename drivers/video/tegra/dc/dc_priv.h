@@ -24,6 +24,7 @@
 #include <linux/wait.h>
 #include <linux/switch.h>
 #include "../host/dev.h"
+#include "edid.h"
 
 #define WIN_IS_TILED(win)	((win)->flags & TEGRA_WIN_FLAG_TILED)
 #define WIN_IS_ENABLED(win)	((win)->flags & TEGRA_WIN_FLAG_ENABLED)
@@ -121,6 +122,30 @@ struct tegra_dc {
 	struct switch_dev		modeset_switch;
 };
 
+struct tegra_dc_hdmi_data {
+        struct tegra_dc                 *dc;
+        struct tegra_edid               *edid;
+        struct tegra_edid_hdmi_eld              eld;
+        struct tegra_nvhdcp             *nvhdcp;
+        struct delayed_work             work;
+
+        struct resource                 *base_res;
+        void __iomem                    *base;
+        struct clk                      *clk;
+
+        struct clk                      *disp1_clk;
+        struct clk                      *disp2_clk;
+
+        struct switch_dev               hpd_switch;
+
+        spinlock_t                      suspend_lock;
+        bool                            suspended;
+        bool                            hpd_pending;
+
+        bool                            dvi;
+        bool                            eld_retrieved;
+};
+
 static inline void tegra_dc_io_start(struct tegra_dc *dc)
 {
 	nvhost_module_busy(&dc->ndev->host->mod);
@@ -179,4 +204,5 @@ extern struct tegra_dc_out_ops tegra_dc_rgb_ops;
 extern struct tegra_dc_out_ops tegra_dc_hdmi_ops;
 extern struct tegra_dc_out_ops tegra_dc_dsi_ops;
 
+void tegra_dc_schedule_reset(int dc_id);
 #endif

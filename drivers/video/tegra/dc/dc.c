@@ -729,7 +729,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 		tegra_dc_writel(dc, v_offset, DC_WINBUF_ADDR_V_OFFSET);
 #endif
 
-		if (win->flags & TEGRA_WIN_FLAG_TILED)
+		if (WIN_IS_TILED(win))
 			tegra_dc_writel(dc,
 					DC_WIN_BUFFER_ADDR_MODE_TILE |
 					DC_WIN_BUFFER_ADDR_MODE_TILE_UV,
@@ -811,8 +811,7 @@ u32 tegra_dc_incr_syncpt_max(struct tegra_dc *dc)
 	u32 max;
 
 	mutex_lock(&dc->lock);
-	max = nvhost_syncpt_incr_max(&dc->ndev->host->syncpt, dc->syncpt_id,
-								 ((dc->enabled) ? 1 : 0));	
+	max = nvhost_syncpt_incr_max(&dc->ndev->host->syncpt, dc->syncpt_id, 1);
 	dc->syncpt_max = max;
 	mutex_unlock(&dc->lock);
 
@@ -822,7 +821,7 @@ u32 tegra_dc_incr_syncpt_max(struct tegra_dc *dc)
 void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, u32 val)
 {
 	mutex_lock(&dc->lock);
-	if (dc->enabled)
+	//if (dc->enabled)
 		while (dc->syncpt_min < val) {
 			dc->syncpt_min++;
 			nvhost_syncpt_cpu_incr(&dc->ndev->host->syncpt,
@@ -1507,8 +1506,8 @@ static void tegra_dc_set_color_control(struct tegra_dc *dc)
 
 static void tegra_dc_init(struct tegra_dc *dc)
 {
-	u32 disp_syncpt;
-	u32 vblank_syncpt;
+	u32 disp_syncpt = 0;
+	u32 vblank_syncpt = 0;
 	int i;
 
 	tegra_dc_writel(dc, 0x00000100, DC_CMD_GENERAL_INCR_SYNCPT_CNTRL);
@@ -1576,12 +1575,22 @@ static void tegra_dc_init(struct tegra_dc *dc)
 		tegra_dc_program_mode(dc, &dc->mode);
 }
 
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+static bool _tegra_dc_controller_enable(struct tegra_dc *dc, bool no_reset)
+#else
 static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
+#endif
 {
 	if (dc->out->enable)
 		dc->out->enable();
 
 	tegra_dc_setup_clk(dc, dc->clk);
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+        if (!no_reset)
+                tegra_periph_reset_assert(dc->clk);
+#else
+        tegra_periph_reset_assert(dc->clk);
+#endif
 	clk_enable(dc->clk);
 	clk_enable(dc->emc_clk);
 	tegra_periph_reset_deassert(dc->clk);
@@ -1607,6 +1616,76 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 	return true;
 }
 
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+/* In samsung device, the bootloader initialize LCD and draw device logo.
+ * If dc is reset, the device logo might be disappeared on screen.
+ * In addition, CMC623 chip is not tolerant of some change on input RGB interface signals.
+ */
+static bool _tegra_dc_enable_noreset(struct tegra_dc *dc)
+{
+        if (dc->mode.pclk == 0)
+                return false;
+
+        if (!dc->out)
+                return false;
+
+        tegra_dc_io_start(dc);
+
+        return _tegra_dc_controller_enable(dc, true);
+}
+#endif
+
+static bool _tegra_dc_controller_reset_enable(struct tegra_dc *dc)
+{
+        if (dc->out->enable)
+                dc->out->enable();
+
+        tegra_dc_setup_clk(dc, dc->clk);
+        clk_enable(dc->clk);
+        clk_enable(dc->emc_clk);
+
+        if (dc->ndev->id == 0 && tegra_dcs[1] != NULL) {
+                mutex_lock(&tegra_dcs[1]->lock);
+                disable_irq(tegra_dcs[1]->irq);
+        } else if (dc->ndev->id == 1 && tegra_dcs[0] != NULL) {
+                mutex_lock(&tegra_dcs[0]->lock);
+                disable_irq(tegra_dcs[0]->irq);
+        }
+
+        msleep(5);
+        tegra_periph_reset_assert(dc->clk);
+        msleep(2);
+        tegra_periph_reset_deassert(dc->clk);
+        msleep(1);
+
+        if (dc->ndev->id == 0 && tegra_dcs[1] != NULL) {
+                enable_irq(tegra_dcs[1]->irq);
+                mutex_unlock(&tegra_dcs[1]->lock);
+        } else if (dc->ndev->id == 1 && tegra_dcs[0] != NULL) {
+                enable_irq(tegra_dcs[0]->irq);
+                mutex_unlock(&tegra_dcs[0]->lock);
+        }
+
+        enable_irq(dc->irq);
+
+        tegra_dc_init(dc);
+
+        if (dc->out_ops && dc->out_ops->enable)
+                dc->out_ops->enable(dc);
+
+        if (dc->out->out_pins)
+                tegra_dc_set_out_pin_polars(dc, dc->out->out_pins,
+                                            dc->out->n_out_pins);
+
+        if (dc->out->postpoweron)
+                dc->out->postpoweron();
+
+        /* force a full blending update */
+        dc->blend.z[0] = -1;
+
+        return true;
+}
+
 static bool _tegra_dc_enable(struct tegra_dc *dc)
 {
 	if (dc->mode.pclk == 0)
@@ -1617,7 +1696,11 @@ static bool _tegra_dc_enable(struct tegra_dc *dc)
 
 	tegra_dc_io_start(dc);
 
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+        return _tegra_dc_controller_enable(dc, false);
+#else
 	return _tegra_dc_controller_enable(dc);
+#endif
 }
 
 void tegra_dc_enable(struct tegra_dc *dc)
@@ -1676,6 +1759,16 @@ void tegra_dc_disable(struct tegra_dc *dc)
 	mutex_unlock(&dc->lock);
 }
 
+void tegra_dc_schedule_reset(int dc_id)
+{
+        if (dc_id < TEGRA_MAX_DC) {
+                dev_warn(&tegra_dcs[dc_id]->ndev->dev,
+                        "%s(%d)\n", __FUNCTION__, dc_id);
+                dump_regs(tegra_dcs[dc_id]);
+                schedule_work(&tegra_dcs[dc_id]->reset_work);
+        }
+}
+
 static void tegra_dc_reset_worker(struct work_struct *work)
 {
 	struct tegra_dc *dc =
@@ -1715,29 +1808,8 @@ static void tegra_dc_reset_worker(struct work_struct *work)
 
 	_tegra_dc_controller_disable(dc);
 
-	if (dc->ndev->id == 0 && tegra_dcs[1] != NULL) {
-		mutex_lock(&tegra_dcs[1]->lock);
-		disable_irq(tegra_dcs[1]->irq);
-	} else if (dc->ndev->id == 1 && tegra_dcs[0] != NULL) {
-		mutex_lock(&tegra_dcs[0]->lock);
-		disable_irq(tegra_dcs[0]->irq);
-	}
-
-	msleep(5);
-
-	tegra_periph_reset_assert(dc->clk);
-	msleep(2);
-
-	if (dc->ndev->id == 0 && tegra_dcs[1] != NULL) {
-		enable_irq(tegra_dcs[1]->irq);
-		mutex_unlock(&tegra_dcs[1]->lock);
-	} else if (dc->ndev->id == 1 && tegra_dcs[0] != NULL) {
-		enable_irq(tegra_dcs[0]->irq);
-		mutex_unlock(&tegra_dcs[0]->lock);
-	}
-
-	/* _tegra_dc_enable deasserts reset */
-	_tegra_dc_controller_enable(dc);
+        /* _tegra_dc_reset_enable asserts and deasserts reset */
+        _tegra_dc_controller_reset_enable(dc);
 
 	dc->enabled = true;
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
@@ -1928,8 +2000,13 @@ static int tegra_dc_probe(struct nvhost_device *ndev)
 		dev_err(&ndev->dev, "No default output specified.  Leaving output disabled.\n");
 
 	mutex_lock(&dc->lock);
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+        if (dc->enabled)
+                _tegra_dc_enable_noreset(dc);
+#else
 	if (dc->enabled)
 		_tegra_dc_enable(dc);
+#endif
 	mutex_unlock(&dc->lock);
 
 	tegra_dc_dbg_add(dc);

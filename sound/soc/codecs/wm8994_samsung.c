@@ -124,9 +124,7 @@ select_route universal_wm8994_playback_paths[] = {
 	wm8994_set_playback_speaker_headset,	/* RING_NO_MIC */
 	wm8994_set_playback_speaker_headset,	/* RING_SPK_HP */
 	wm8994_set_playback_extra_dock_speaker,	/* LINEOUT */
-#if !defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_TARGET_LOCALE_KOR)
 	wm8994_set_playback_speaker_lineout		/* SPK_LINEOUT */
-#endif	
 };
 
 select_route universal_wm8994_voicecall_paths[] = {
@@ -310,9 +308,13 @@ static const char *analog_vol_control[] = {"0", "1", "2", "3", "4", "5",
 static const char *sales_code[] = {"Default", "EUR", "NonEUR"};
 
 #ifdef WM8994_MUTE_STATE
-static const char *state_mute[] = {"OFF", "RX_MUTE", "TX_MUTE" };
+static const char *state_mute[] = {"OFF", "RX_MUTE", "TX_MUTE"};
 #endif
-     
+
+#ifdef WM8994_VOIP_BT_NREC
+static const char *state_voip_bt_nrec[] = {"OFF", "ON"};
+#endif
+
 #ifdef WM8994_MUTE_STATE
 static int wm8994_get_mute_state(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
@@ -357,6 +359,45 @@ static int wm8994_set_mute_state(struct snd_kcontrol *kcontrol,
 		#endif
 
 		break;	
+	default:
+		return -EINVAL;
+		break;
+	}    
+			
+	return 0;
+}
+#endif
+
+#ifdef WM8994_VOIP_BT_NREC
+static int wm8994_get_voip_bt_nrec_state(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct wm8994_priv *wm8994 = codec->drvdata;
+	int config_value = wm8994->voip_bt_nrec_state;
+	
+	ucontrol->value.integer.value[0] = config_value;
+	DEBUG_LOG("wm8994_get_voip_bt_nrec_state = %d", config_value);
+	return 0;
+}
+static int wm8994_set_voip_bt_nrec_state(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct wm8994_priv *wm8994 = codec->drvdata;
+	int config_value = ucontrol->value.integer.value[0];	
+
+	wm8994->voip_bt_nrec_state = config_value;
+
+	DEBUG_LOG("%s() %d\n", __func__, wm8994->voip_bt_nrec_state);	
+	
+	switch (config_value) {
+	case VOIP_BT_NREC_OFF:
+		DEBUG_LOG("%s() VOIP_BT_NREC_OFF\n", __func__);		
+		break;
+	case VOIP_BT_NREC_ON:	
+		DEBUG_LOG("%s() VOIP_BT_NREC_ON\n", __func__);
+		break;
 	default:
 		return -EINVAL;
 		break;
@@ -746,15 +787,15 @@ static int wm8994_set_headset_analog_vol(struct snd_kcontrol *kcontrol,
 	unsigned short analog_vol_table_USA[] = {0x8, 0x8, 0xB, 0xF, 0x13, 0x16,
 						0x19, 0x1C, 0x20, 0x23, 0x26, 
 						0x29, 0x2C, 0x2F, 0x32, 0x36}; 
-			
+
 	unsigned short *analog_vol_table;
-	
-	if(wm8994->target_locale == LC_EUR)
+
+	if (wm8994->target_locale == LC_EUR)
 		analog_vol_table = analog_vol_table_EUR;
-	else if(wm8994->target_locale == LC_NONEUR)
+	else if (wm8994->target_locale == LC_NONEUR)
 		analog_vol_table = analog_vol_table_USA;
 	else
-		analog_vol_table = analog_vol_table_EUR;		
+		analog_vol_table = analog_vol_table_EUR;
 #endif
 #elif defined(CONFIG_MACH_SAMSUNG_P4WIFI) 
 #if defined(CONFIG_TARGET_LOCALE_KOR)
@@ -770,12 +811,12 @@ static int wm8994_set_headset_analog_vol(struct snd_kcontrol *kcontrol,
 	unsigned short analog_vol_table_USA[] = {0x8, 0x8, 0xB, 0xF, 0x13, 0x16,
 						0x19, 0x1C, 0x20, 0x23, 0x26, 
 						0x29, 0x2C, 0x2F, 0x32, 0x36}; 
-			
+
 	unsigned short *analog_vol_table;
 	
-	if(wm8994->target_locale == LC_EUR)
+	if (wm8994->target_locale == LC_EUR)
 		analog_vol_table = analog_vol_table_EUR;
-	else if(wm8994->target_locale == LC_NONEUR)
+	else if (wm8994->target_locale == LC_NONEUR)
 		analog_vol_table = analog_vol_table_USA;
 	else
 		analog_vol_table = analog_vol_table_USA;
@@ -791,9 +832,23 @@ static int wm8994_set_headset_analog_vol(struct snd_kcontrol *kcontrol,
 						0x19, 0x1C, 0x20, 0x23, 0x26, 
 						0x29, 0x2C, 0x2F, 0x32, 0x36};	
 #else
-	unsigned short analog_vol_table[] = {0x17, 0x17, 0x17, 0x17, 0x17, 0x17,
+	/* Europe */
+	unsigned short analog_vol_table_EUR[] = {0x17, 0x17, 0x17, 0x17, 0x17, 0x17,
 						0x1A, 0x1D, 0x1F, 0x21, 0x23,
 						0x25, 0x27, 0x29, 0x2C, 0x30};
+	/* Non Europe */
+	unsigned short analog_vol_table_USA[] = {0x8, 0x8, 0xB, 0xF, 0x13, 0x16,
+						0x19, 0x1C, 0x20, 0x23, 0x26, 
+						0x29, 0x2C, 0x2F, 0x32, 0x36}; 
+
+	unsigned short *analog_vol_table;
+	
+	if (wm8994->target_locale == LC_EUR)
+		analog_vol_table = analog_vol_table_EUR;
+	else if (wm8994->target_locale == LC_NONEUR)
+		analog_vol_table = analog_vol_table_USA;
+	else
+		analog_vol_table = analog_vol_table_EUR;
 #endif
 #else
 	unsigned short analog_vol_table[] = {0x17, 0x17, 0x17, 0x17, 0x17, 0x17,
@@ -913,6 +968,9 @@ static const struct soc_enum path_control_enum[] = {
 #ifdef WM8994_MUTE_STATE
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(state_mute), state_mute),
 #endif
+#ifdef WM8994_VOIP_BT_NREC
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(state_voip_bt_nrec), state_voip_bt_nrec),
+#endif
 };
 
 static const struct snd_kcontrol_new wm8994_snd_controls[] = {
@@ -961,11 +1019,17 @@ static const struct snd_kcontrol_new wm8994_snd_controls[] = {
 		wm8994_get_loopback_path, wm8994_set_loopback_path),
 #endif
 	SOC_ENUM_EXT("Locale Code", path_control_enum[8],
-	wm8994_get_locale, wm8994_set_locale),	
+		wm8994_get_locale, wm8994_set_locale),	
 
 #ifdef WM8994_MUTE_STATE
 	SOC_ENUM_EXT("set_Codec_Mute", path_control_enum[9],
 		     wm8994_get_mute_state, wm8994_set_mute_state),
+#endif
+
+#ifdef WM8994_VOIP_BT_NREC
+	SOC_ENUM_EXT("set_Codec_NREC", path_control_enum[10],
+		     wm8994_get_voip_bt_nrec_state, 
+		     wm8994_set_voip_bt_nrec_state),
 #endif
 };
 
@@ -1559,7 +1623,7 @@ static void wm8994_shutdown(struct snd_pcm_substream *substream,
 		return;
 	}
 
-#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE)
+#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_TARGET_LOCALE_KOR)
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		wm8994->stream_state &=  ~(PCM_STREAM_CAPTURE);
 		wm8994->codec_state &= ~(CAPTURE_ACTIVE);
@@ -1619,7 +1683,7 @@ static void wm8994_shutdown(struct snd_pcm_substream *substream,
 	DEBUG_LOG("Preserve codec state = [0x%X], Stream State = [0x%X]",
 			wm8994->codec_state, wm8994->stream_state);
 
-#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE)
+#if defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_TARGET_LOCALE_KOR)
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		wm8994_disable_rec_path(codec);
 		wm8994->codec_state &= ~(CAPTURE_ACTIVE);
@@ -3346,6 +3410,10 @@ static int wm8994_init(struct wm8994_priv *wm8994,
 #ifdef WM8994_MUTE_STATE
 	wm8994->mute_state = MUTE_OFF;
 #endif
+#ifdef WM8994_VOIP_BT_NREC
+	wm8994->voip_bt_nrec_state = VOIP_BT_NREC_OFF;
+#endif
+
 	wm8994->target_locale = LC_DEFAULT;
 	
 	INIT_DELAYED_WORK(&codec->delayed_work, wm8994_reset_analog_vol_work);
@@ -3454,7 +3522,7 @@ static int wm8994_i2c_probe(struct i2c_client *i2c,
 		goto err_init;
 	}
 
-	return ret;
+	return 0;
 
 err_init:
 	gpio_free(pdata->ldo);

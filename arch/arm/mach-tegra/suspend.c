@@ -695,7 +695,6 @@ static void tegra_debug_uart_resume(void)
 #define MC_SECURITY_SIZE	0x70
 #define MC_SECURITY_CFG2	0x7c
 
-#ifdef CONFIG_MACH_SAMSUNG_P4LTE
 #define AHB_ARBITRATION_DISABLE		0x00
 #define AHB_ARBITRATION_PRIORITY_CTRL	0x04
 #define AHB_GIZMO_AHB_MEM		0x0c
@@ -803,7 +802,7 @@ void tegra_ahbgizmo_resume(void)
 	gizmo_writel(ahb_gizmo[27],AHB_MEM_PREFETCH_CFG2);
 	gizmo_writel(ahb_gizmo[28],AHB_ARBITRATION_AHB_MEM_WRQUE_MST_ID);
 }
-#endif
+
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
 extern int Is_call_active(void);
 #endif
@@ -837,9 +836,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 	if (do_lp0) {
 		tegra_irq_suspend();
 		tegra_dma_suspend();
-#ifdef CONFIG_MACH_SAMSUNG_P4LTE
 		tegra_ahbgizmo_suspend();
-#endif
 		tegra_debug_uart_suspend();
 		tegra_pinmux_suspend();
 		tegra_timer_suspend();
@@ -892,9 +889,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		tegra_timer_resume();
 		tegra_pinmux_resume();
 		tegra_debug_uart_resume();
-#ifdef CONFIG_MACH_SAMSUNG_P4LTE
 		tegra_ahbgizmo_resume();
-#endif
 		tegra_dma_resume();
 		tegra_irq_resume();
 	}

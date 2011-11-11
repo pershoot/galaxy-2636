@@ -15,6 +15,11 @@
 
 #include "power.h"
 
+#ifdef CONFIG_DVFS_LIMIT
+extern void tegra_cpu_lock_speed(int min_rate, int timeout_ms);
+extern void tegra_cpu_unlock_speed(void);
+#endif
+
 DEFINE_MUTEX(pm_mutex);
 
 unsigned int pm_flags;
@@ -309,6 +314,69 @@ pm_trace_store(struct kobject *kobj, struct kobj_attribute *attr,
 power_attr(pm_trace);
 #endif /* CONFIG_PM_TRACE */
 
+#ifdef CONFIG_DVFS_LIMIT
+static int dvfs_ctrl;
+
+static ssize_t dvfslock_ctrl(const char *buf, size_t count)
+{
+	unsigned int ret = -EINVAL;
+	int dlevel;
+	int dtime_msec;
+
+	ret = sscanf(buf, "%u", &dvfs_ctrl);
+	if (ret != 1)
+		return -EINVAL;
+
+	switch(dvfs_ctrl)
+	{
+	case 200:
+		tegra_cpu_lock_speed(216000, 0);
+		break;
+	case 300:
+		tegra_cpu_lock_speed(312000, 0);
+		break;
+	case 400:
+		tegra_cpu_lock_speed(456000, 0);
+		break;
+	case 600:
+		tegra_cpu_lock_speed(608000, 0);
+		break;
+	case 700:
+		tegra_cpu_lock_speed(760000, 0);
+		break;
+	case 800:
+		tegra_cpu_lock_speed(816000, 0);
+		break;
+	case 900:
+		tegra_cpu_lock_speed(912000, 0);
+		break;
+	case 1000:
+		tegra_cpu_lock_speed(1000000, 0);
+		break;
+	default:
+		tegra_cpu_unlock_speed();
+		break;
+	}
+
+	return 0;
+}
+
+static ssize_t dvfslock_ctrl_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "0x%08x\n", dvfs_ctrl);
+}
+
+static ssize_t dvfslock_ctrl_store(struct kobject *kobj, struct kobj_attribute *attr,
+					const char *buf, size_t n)
+{
+	dvfslock_ctrl(buf, 0);
+	return n;
+}
+
+power_attr(dvfslock_ctrl);
+#endif
+
 #ifdef CONFIG_USER_WAKELOCK
 power_attr(wake_lock);
 power_attr(wake_unlock);
@@ -329,6 +397,9 @@ static struct attribute * g[] = {
 	&wake_lock_attr.attr,
 	&wake_unlock_attr.attr,
 #endif
+#endif
+#ifdef CONFIG_DVFS_LIMIT
+	&dvfslock_ctrl_attr.attr,
 #endif
 	NULL,
 };

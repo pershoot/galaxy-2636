@@ -59,6 +59,13 @@ static int cpufreq_stats_update(unsigned int cpu)
 	cur_time = get_jiffies_64();
 	spin_lock(&cpufreq_stats_lock);
 	stat = per_cpu(cpufreq_stats_table, cpu);
+#if defined (CONFIG_MACH_SAMSUNG_P5)
+	if(!stat) {
+		spin_unlock(&cpufreq_stats_lock);
+		return -1;
+	}
+#endif
+
 	if (stat->time_in_state)
 		stat->time_in_state[stat->last_index] =
 			cputime64_add(stat->time_in_state[stat->last_index],
@@ -288,7 +295,13 @@ static int cpufreq_stat_notifier_trans(struct notifier_block *nb,
 	old_index = stat->last_index;
 	new_index = freq_table_get_index(stat, freq->new);
 
+#if defined (CONFIG_MACH_SAMSUNG_P5)
+	if(cpufreq_stats_update(freq->cpu) < 0)
+		return 0;
+#else
 	cpufreq_stats_update(freq->cpu);
+#endif
+
 	if (old_index == new_index)
 		return 0;
 

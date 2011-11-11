@@ -2880,6 +2880,7 @@ void wm8994_set_playback_speaker_headset(struct snd_soc_codec *codec)
 
 void wm8994_set_playback_bluetooth(struct snd_soc_codec *codec)
 {
+	struct wm8994_priv *wm8994 = codec->drvdata;
 #if 0
 	u16 val;
 
@@ -2985,6 +2986,15 @@ void wm8994_set_playback_bluetooth(struct snd_soc_codec *codec)
 
 	wm8994_write(codec, 0x200, 0x0001); /* AIF1 Enable, AIF1CLK = MCLK1 */
 	wm8994_write(codec, 0x204, 0x0019); /* AIF2 Enable, AIF2CLK = FLL2 */
+
+#if !defined(CONFIG_TARGET_LOCALE_KOR)
+	if (wm8994->voip_call_active) {
+		/* Tx Gain setting */
+		wm8994_write(codec, WM8994_AIF2_DAC_LEFT_VOLUME, 0x1b0);
+		/* Rx Gain setting */
+		wm8994_write(codec, WM8994_AIF2_ADC_LEFT_VOLUME, 0x1c0);
+	}
+#endif
 
 	/* Tx Path Configuration */
 	wm8994_write(codec, 0x606, 0x0001);

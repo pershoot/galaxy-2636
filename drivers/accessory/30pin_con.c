@@ -18,6 +18,11 @@
 #include <asm/irq.h>
 #include <linux/mfd/tps6586x.h>
 
+#if defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+#include <mach/gpio-p5.h>
+#define	__SAMSUNG_HDMI_FLAG_WORKAROUND__
+#endif
+
 #define SUBJECT "CONNECTOR_DRIVER"
 
 #define ACC_CONDEV_DBG(format, ...) \
@@ -68,6 +73,12 @@ struct acc_con_info {
 };
 
 extern	s16 stmpe811_adc_get_value(u8 channel);
+extern void HotPlugService(void);
+extern void OnHdmiCableDisconnected(void);
+
+#ifdef	__SAMSUNG_HDMI_FLAG_WORKAROUND__
+	extern	void tegra_dc_set_hdmi_flag(int flag);
+#endif
 
 #ifdef CONFIG_MHL_SII9234
 #include "sii9234.h"
@@ -183,11 +194,15 @@ static void acc_con_early_suspend(struct early_suspend *early_sus)
 		struct acc_con_info, early_suspend);
 
 	printk(KERN_ERR "%s\n", __func__);
+/*
 	if (acc->mhl_pwr_state) {
 	printk(KERN_ERR "%s2\n", __func__);
 		MHD_HW_Off();
 		acc->mhl_pwr_state = false;
 	}
+*/
+	if (acc->mhl_pwr_state)
+		OnHdmiCableDisconnected();
 }
 
 static void acc_con_late_resume(struct early_suspend *early_sus)
@@ -196,12 +211,41 @@ static void acc_con_late_resume(struct early_suspend *early_sus)
 		struct acc_con_info, early_suspend);
 
 	printk(KERN_ERR "%s\n", __func__);
+/*
 	schedule_delayed_work(&acc->acc_con_work,
 			msecs_to_jiffies(500));
-
+*/
+	if (acc->mhl_pwr_state)
+		HotPlugService();
 }
 #endif
 
+#if defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+void hpd_force_low(void)
+{
+
+#ifdef	__SAMSUNG_HDMI_FLAG_WORKAROUND__
+	tegra_dc_set_hdmi_flag(0);
+#endif
+
+	if (system_rev >= 6) {
+		tegra_gpio_enable(GPIO_HDMI_HPD);
+		gpio_request(GPIO_HDMI_HPD, "hdmi_hpd");
+		gpio_direction_output(GPIO_HDMI_HPD, 0);
+		msleep(20);
+		gpio_direction_input(GPIO_HDMI_HPD);
+		gpio_free(GPIO_HDMI_HPD);
+	} else {
+		tegra_gpio_enable(GPEX_GPIO_P1);
+		gpio_request(GPEX_GPIO_P1, "hdmi_hpd");
+		gpio_direction_output(GPEX_GPIO_P1, 0);
+		msleep(20);
+		gpio_direction_input(GPEX_GPIO_P1);
+		gpio_free(GPEX_GPIO_P1);
+	}
+
+}
+#endif
 
 #ifdef CONFIG_SEC_KEYBOARD_DOCK
 extern int check_keyboard_dock(bool);
@@ -253,6 +297,9 @@ irqreturn_t acc_con_interrupt(int irq, void *ptr)
 		/*call MHL deinit */
 		if (acc->mhl_pwr_state) {
 			MHD_HW_Off();
+#if defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+			hpd_force_low();
+#endif
 			acc->mhl_pwr_state = false;
 		}
 #endif
@@ -293,6 +340,9 @@ irqreturn_t acc_con_interrupt(int irq, void *ptr)
 		}
 		mutex_lock(&acc->lock);
 		if (!acc->mhl_pwr_state) {
+#ifdef	__SAMSUNG_HDMI_FLAG_WORKAROUND__
+			tegra_dc_set_hdmi_flag(1);
+#endif
 			sii9234_tpi_init();
 			acc->mhl_pwr_state = true;
 		}
@@ -343,7 +393,7 @@ void acc_notified(struct acc_con_info *acc, int acc_adc)
 			env_ptr = "ACCESSORY=lineout";
 			acc->current_accessory = ACCESSORY_LINEOUT;
 			switch_set_state(&acc->ear_jack_switch, 1);
-		} else if ((1700 < acc_adc) && (2300 > acc_adc)) { /* for nonideal adc value when insert earjeck */
+		} else if ((1600 < acc_adc) && (2300 > acc_adc)) { /* for nonideal adc value when insert earjeck */
 			env_ptr = "ACCESSORY=lineout";
 			acc->current_accessory = ACCESSORY_LINEOUT;
 			switch_set_state(&acc->ear_jack_switch, 1);
@@ -577,7 +627,7 @@ static int acc_con_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_SEC_KEYBOARD_DOCK
 	INIT_DELAYED_WORK(&acc->dwork, delay_worker);
-	schedule_delayed_work(&acc->dwork, msecs_to_jiffies(10000));
+	schedule_delayed_work(&acc->dwork, msecs_to_jiffies(25000));
 #else
 	retval = acc_con_interrupt_init(acc);
 	if (retval != 0)
@@ -645,14 +695,22 @@ static int acc_con_remove(struct platform_device *pdev)
 
 static int acc_con_suspend(struct platform_device *pdev, pm_message_t state)
 {
+	struct acc_con_info *acc = platform_get_drvdata(pdev);
+
 	ACC_CONDEV_DBG("");
+	disable_irq(acc->dock_irq);
+	disable_irq(acc->accessory_irq);
 
 	return 0;
 }
 
 static int acc_con_resume(struct platform_device *pdev)
 {
+	struct acc_con_info *acc = platform_get_drvdata(pdev);
+
 	ACC_CONDEV_DBG("");
+	enable_irq(acc->dock_irq);
+	enable_irq(acc->accessory_irq);
 
 	return 0;
 }

@@ -47,7 +47,7 @@
 
 #define res_size(res)	((res)->end - (res)->start + 1)
 
-#define SEC_DEBUG 1
+#define SEC_DEBUG 0
 
 struct tegra_kbc {
 	void __iomem *mmio;

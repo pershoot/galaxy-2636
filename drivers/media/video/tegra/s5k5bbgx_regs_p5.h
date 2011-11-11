@@ -851,7 +851,7 @@ static const u32 mode_sensor_init[] = {
 0x0F120001, //0001	//REG_1TC_PCFG_uClockInd						2	700001A6
 0x0F120002, //0000	//REG_1TC_PCFG_usFrTimeType 					2	700001A8  0: dynamic 1:fix not accurate 2: fixed_Accurate
 0x0F120001, //0001	//REG_1TC_PCFG_FrRateQualityType				2	700001AA  
-0x0F120535, //01A0	//REG_1TC_PCFG_usMaxFrTimeMsecMult10			2	700001AC  max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a 
+0x0F12029A, //01A0	//REG_1TC_PCFG_usMaxFrTimeMsecMult10			2	700001AC  max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a 
 0x0F120000, //014D	//REG_1TC_PCFG_usMinFrTimeMsecMult10			2	700001AE  max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a 
 0x0F120000, //0000	//REG_1TC_PCFG_bSmearOutput 					2	700001B0
 0x0F120000, //0000	//REG_1TC_PCFG_sSaturation						2	700001B2
@@ -2535,6 +2535,34 @@ static const u32 mode_preview_640x480[] = {
 static const u32 mode_return_camera_preview[] = {
 0xFCFCD000,
 0x00287000,
+
+//======================================================================================================================
+0x002A065C,
+0x0F12003F, //#afit_uNoiseIndInDoor_0_
+0x0F120041, //#afit_uNoiseIndInDoor_1_
+0x0F1200CB, //#afit_uNoiseIndInDoor_2_
+
+0x002A0740,
+0x0F120003,	//#AfitBaseVals_0__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]
+0x0F121E00,	//#AfitBaseVals_0__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]
+
+0x002A0810,
+0x0F120003,	//#AfitBaseVals_1__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]
+0x0F120A02,	//#AfitBaseVals_1__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]
+
+0x002A08E0,
+0x0F122A03,	//#AfitBaseVals_2__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]
+0x0F120A02,	//#AfitBaseVals_2__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]
+
+0x002A09B0,
+0x0F122003,	//#AfitBaseVals_3__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]
+0x0F120A02,	//#AfitBaseVals_3__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]
+
+0x002A0A80,
+0x0F122304,	//#AfitBaseVals_4__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]
+0x0F120A08,	//#AfitBaseVals_4__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]
+//======================================================================================================================
+
 0x002A0156,
 0x0F120000,
 0x002A015E,
@@ -2558,6 +2586,68 @@ static const u32 mode_preview_800x600_fixframe[] = {
 // 30 frame
 0xFCFCD000,
 0x00287000,
+
+0x002A01FC,
+0x0F120190, 	//REG_3TC_PCFG_usMaxFrTimeMsecMult10			2	700001FC	max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a
+0x0F120000, 	//REG_3TC_PCFG_usMinFrTimeMsecMult10			2	700001FE	max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a
+
+//======================================================================================================================
+0x002A065C,
+0x0F120014, //#afit_uNoiseIndInDoor_0_
+0x0F12001e, //#afit_uNoiseIndInDoor_1_
+0x0F120118, //#afit_uNoiseIndInDoor_2_
+
+0x002A0740,
+0x0F120003,	//0003	//#AfitBaseVals_0__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]                      
+0x0F120F00,	//1E00	//#AfitBaseVals_0__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]                    
+
+0x002A0810,
+0x0F120003,	//0003	//#AfitBaseVals_1__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]                      
+0x0F120502,	//0A02	//#AfitBaseVals_1__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]                    
+
+0x002A08E0,
+0x0F121503,	//2A03	//#AfitBaseVals_2__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]                      
+0x0F120502,	//0A02	//#AfitBaseVals_2__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]                    
+
+0x002A09B0,
+0x0F121003,	//2003	//#AfitBaseVals_3__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]                      
+0x0F120502,	//0A02	//#AfitBaseVals_3__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]                    
+
+0x002A0A80,
+0x0F120C04,	//2304	//#AfitBaseVals_4__66_	 AFIT8_Demosaicing_iEdgeDesatLimit[7:0],  AFIT8_Demosaicing_iDemSharpenLow [15:8]                      
+0x0F120508,	//0A08	//#AfitBaseVals_4__67_	 AFIT8_Demosaicing_iDemSharpenHigh[7:0],   AFIT8_Demosaicing_iDemSharpThresh [15:8]                    
+//======================================================================================================================
+
+
+
+0x002A0156,
+0x0F120003,
+0x002A015E,
+0x0F120000,
+0x002A015A,
+0x0F120001,
+0x002A0142,
+0x0F120001,
+0x002A0158,
+0x0F120001,
+0x002A0160,
+0x0F120001,
+0x002A013A,
+0x0F120001,
+0x002A013C,
+0x0F120001,
+0xFFFFFFFF,
+};
+
+static const u32 mode_preview_800x600_fixframe_15fps[] = {
+// 15 frame
+0xFCFCD000,
+0x00287000,
+
+0x002A01FC,
+0x0F12029A, 	//REG_3TC_PCFG_usMaxFrTimeMsecMult10			2	700001FC	max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a
+0x0F120000, 	//REG_3TC_PCFG_usMinFrTimeMsecMult10			2	700001FE	max frame time : 30fps:014D 15fps:029a 7.5fps:0535 3.75fps:a6a
+
 0x002A0156,
 0x0F120003,
 0x002A015E,

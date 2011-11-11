@@ -22,7 +22,9 @@ static const struct Cmc623RegisterSet cmc623_init2[] = {
 
 	/* A stage configuration */
 	{0x08, 0x0060},  /*added*/
-
+#if !defined(CONFIG_MACH_SAMSUNG_P5WIFI)        
+    {0x16, 0x1500},
+#endif        
 	{CMC623_REG_DNRHDTROVE, 0x0030},
 	{CMC623_REG_DITHEROFF, 0x0000},
 	/*{CMC623_REG_CLKCONT, 0x0012},*/
@@ -75,6 +77,74 @@ static const struct Cmc623RegisterSet cmc623_init2[] = {
 	{CMC623_REG_RGBIFEN, 0x0001},  /* enable RGB IF*/
 };
 
+static const struct Cmc623RegisterSet cmc623f_init2[] = {
+	/* select SFR Bank0 */
+	{CMC623_REG_SELBANK, 0x0000},
+
+	/* A stage configuration */
+	/* {0x08, 0x0060},  /*added*/ 
+
+	{0x0C, 0x001F},  /*added*/	
+	{0x12, 0x0000},  /*added*/	
+	{0x16, 0x0000},  /*added*/	
+	{0x17, 0x0000},  /*added*/	
+	{0x18, 0x0000},  /*added*/	
+	{0x19, 0x0000},  /*added*/
+
+#ifndef SUPPORT_WIFI	
+    //{0x16, 0x1500},
+#endif     
+	{CMC623_REG_DNRHDTROVE, 0x0030},
+	{CMC623_REG_DITHEROFF, 0x0000},
+	{CMC623_REG_CLKCONT, 0x221A},
+	{0x0f, 0x0078},
+	{CMC623_REG_CLKGATINGOFF, 0x0000},
+	{0x0b, 0x0184},  /*added*/
+	{CMC623_REG_INPUTIFCON, 0x0001},
+	{CMC623_REG_HDRTCEOFF, 0x0000},
+	{CMC623_REG_I2C, 0x1806},  /*modified*/
+	{CMC623_REG_BSTAGE, 0x0607},  /*modified*/
+	{CMC623_REG_CABCCTRL, 0x0002},
+	{0xB3, 0xFFFF},
+
+	{CMC623_REG_PWMCTRL, 0xC000},
+
+	{CMC623_REG_1280, 0x0320},
+	{CMC623_REG_800, 0x0500},
+
+	/* select SFR Bank1 */
+	{CMC623_REG_SELBANK, 0x0001},
+
+	/* B stage image size */
+	{CMC623_REG_SCALERINPH, 0x0320},
+	{CMC623_REG_SCALERINPV, 0x0500},
+	{CMC623_REG_SCALEROUTH, 0x0320},
+	{CMC623_REG_SCALEROUTV, 0x0500},
+
+	/* EDRAM configuration */
+	/*{CMC623_REG_EDRBFOUT40, 0x0280},  */
+	/*{CMC623_REG_EDRAUTOREF, 0x0096},  /* modified*/ 
+	/*{CMC623_REG_EDRACPARAMTIM, 0x3227},  /*modified*/ 
+
+	/* Vsync Calibartion */
+	/*{CMC623_REG_CALVAL10, 0x000a},*/
+
+	/* tcon output polarity */
+	{CMC623_REG_TCONOUTPOL, 0x0080},
+
+	/* tcon RGB configuration */
+	{CMC623_REG_TCONRGB1, 0x0310}, /* VLW,HLW*/
+	{CMC623_REG_TCONRGB2, 0x0c04}, /* VBP,VFP*/
+	{CMC623_REG_TCONRGB3, 0x5a30}, /* HBP,HFP*/
+
+	/* Reg update */
+	{CMC623_REG_SELBANK, 0x0000},  /* select BANK0*/
+	{CMC623_REG_REGMASK, 0x0000},
+	{CMC623_REG_SWRESET, 0x0000},  /* SW reset*/
+	{CMC623_REG_SWRESET, 0xffff},  /* !SW reset,
+	(!note: sleep required after this)*/
+	{CMC623_REG_RGBIFEN, 0x0001},  /* enable RGB IF*/
+};
 
 static const struct Cmc623RegisterSet cmc623_bypass[] = {
 /*** start of tuning **/

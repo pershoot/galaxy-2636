@@ -41,7 +41,11 @@ obj-$(CONFIG_VMWARE_BALLOON)	+= vmw_balloon.o
 obj-$(CONFIG_ARM_CHARLCD)	+= arm-charlcd.o
 obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
 obj-$(CONFIG_APANIC)		+= apanic.o
-obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
+
+ifneq ($(CONFIG_HC_32),y)
+obj-$(CONFIG_SENSORS_AK8975)    += akm8975.o
+endif
+
 obj-$(CONFIG_BCM4329_RFKILL)	+= bcm4329_rfkill.o
 obj-$(CONFIG_BCM4330_RFKILL)	+= bcm4330_rfkill.o
 obj-$(CONFIG_SAMSUNG_JACK)	+= sec_jack.o
@@ -56,7 +60,13 @@ obj-$(CONFIG_SEC_MISC)	+= max1237.o
 obj-$(CONFIG_SEC_MISC)	+= stmpe811.o
 obj-$(CONFIG_SEC_MODEM)		+= smdctl/
 obj-$(CONFIG_SEC_MODEM)		+= smd-hsic/
-obj-y				+= mpu3050/
+
+ifeq ($(CONFIG_HC_32),y)
+obj-y += mpu3050-hc32/
+else
+obj-y += mpu3050/
+endif
+
 obj-$(CONFIG_VIBTONZ)		+= vibtonz/
 obj-$(CONFIG_SENSORS_NCT1008)	+= nct1008.o
 obj-$(CONFIG_TEGRA_CRYPTO_DEV)	+= tegra-cryptodev.o

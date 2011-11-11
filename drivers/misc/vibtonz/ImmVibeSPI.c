@@ -502,8 +502,6 @@ IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_SetSamples(VibeUInt8 nActuatorIndex
             return VIBE_E_FAIL;
     }
 
-	pr_info("[VIB] nForce :%d", nForce);
-
     if(nForce == 0)
     {
 #ifdef ISA1200_GEN_MODE

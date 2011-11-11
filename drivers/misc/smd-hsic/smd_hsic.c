@@ -76,6 +76,7 @@ struct smd_usbdev {
 	struct str_hsic *hsic;
 	void *smd_device[MAX_DEV_ID];
 	struct wake_lock tx_wlock;
+	struct wake_lock boot_wlock;
 };
 
 static struct smd_usbdev g_usbdev;
@@ -193,6 +194,7 @@ static void smdhsic_pm_runtime_start(struct work_struct *work)
 		pr_info("%s(udev:0x%p)\n", __func__, g_usbdev.usbdev);
 		pm_runtime_allow(&g_usbdev.usbdev->dev);
 	}
+	wake_unlock(&g_usbdev.boot_wlock);
 }
 
 static int smdhsic_probe(struct usb_interface *intf,
@@ -278,6 +280,7 @@ static int smdhsic_probe(struct usb_interface *intf,
 	switch (id->driver_info) {
 	case XMM6260_PSI_DOWN:
 		pr_warn("%s:XMM6260_PSI_DOWN\n", __func__);
+		wake_lock(&g_usbdev.boot_wlock);
 		intfpriv = smd_create_dev(data_intf, usbdev,
 					data_desc, DOWN_DEV_ID);
 		break;
@@ -770,8 +773,10 @@ retry:
 				g_usbdev.hsic->resume_failcnt = 0;
 				smdctl_request_connection_recover(true);
 			}
+			smdctl_request_slave_wakeup(NULL);
 			return -ETIMEDOUT;
 		}
+		smdctl_request_slave_wakeup(NULL);
 		msleep(100);
 		goto retry;
 	case RPM_SUSPENDING:
@@ -807,6 +812,18 @@ retry:
 	return 0;
 }
 EXPORT_SYMBOL_GPL(smdhsic_pm_resume_AP);
+
+bool smdhsic_pm_active(void)
+{
+	struct device *dev;
+
+	if (!g_usbdev.usbdev)
+		return false;
+
+	dev = &g_usbdev.usbdev->dev;
+	return (dev->power.runtime_status == RPM_ACTIVE);
+}
+EXPORT_SYMBOL_GPL(smdhsic_pm_active);
 
 int smdhsic_reset_resume(struct usb_interface *intf)
 {
@@ -900,6 +917,7 @@ static int __init smd_hsic_init(void)
 			g_usbdev.smd_device[i] = emu_reg_func[i]();
 
 	wake_lock_init(&g_usbdev.tx_wlock, WAKE_LOCK_SUSPEND, "smd_txlock");
+	wake_lock_init(&g_usbdev.boot_wlock, WAKE_LOCK_SUSPEND, "smd_bootlock");
 
 	register_pm_notifier(&smdhsic_pm_notifier);
 	return usb_register(&smdhsic_driver);
@@ -913,6 +931,7 @@ static void __exit smd_hsic_exit(void)
 			emu_dereg_func[i](g_usbdev.smd_device[i]);
 	usb_deregister(&smdhsic_driver);
 	wake_lock_destroy(&g_usbdev.tx_wlock);
+	wake_lock_destroy(&g_usbdev.boot_wlock);
 }
 
 module_init(smd_hsic_init);

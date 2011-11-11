@@ -39,6 +39,9 @@ extern struct snd_soc_dai wm8994_dai;
 //sungho_EF21
 #if defined(CONFIG_TARGET_LOCALE_KOR)
 #define WM8994_MUTE_STATE
+#if defined(CONFIG_MACH_SAMSUNG_P5)
+#define WM8994_VOIP_BT_NREC
+#endif
 #endif
 
 #define DEACTIVE		0x00
@@ -120,7 +123,7 @@ Codec Output Path BIT
 #if defined(CONFIG_TARGET_LOCALE_KOR)
 #define VOIPCALL_GAIN_NUM 28
 #else
-#define VOIPCALL_GAIN_NUM 26
+#define VOIPCALL_GAIN_NUM 52
 #endif
 #else
 #define PLAYBACK_GAIN_NUM 58
@@ -150,6 +153,10 @@ enum locale_code {LC_DEFAULT, LC_EUR, LC_NONEUR};
 
 #ifdef WM8994_MUTE_STATE
 enum state_mute {MUTE_OFF, RX_MUTE, TX_MUTE};
+#endif
+
+#ifdef WM8994_VOIP_BT_NREC
+enum voip_bt_nrec_states {VOIP_BT_NREC_OFF, VOIP_BT_NREC_ON};
 #endif
 
 typedef void (*select_route)(struct snd_soc_codec *);
@@ -201,6 +208,9 @@ struct wm8994_priv {
 	//sungho_EF20 
 	enum state_mute mute_state;
 #endif
+#ifdef WM8994_VOIP_BT_NREC
+	enum voip_bt_nrec_states voip_bt_nrec_state;
+#endif
 };
 
 struct gain_info_t {
@@ -239,9 +249,7 @@ void wm8994_set_playback_speaker(struct snd_soc_codec *codec);
 void wm8994_set_playback_bluetooth(struct snd_soc_codec *codec);
 void wm8994_set_playback_speaker_headset(struct snd_soc_codec *codec);
 void wm8994_set_playback_extra_dock_speaker(struct snd_soc_codec *codec);
-#if !defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_TARGET_LOCALE_KOR)
 void wm8994_set_playback_speaker_lineout(struct snd_soc_codec *codec);
-#endif
 void wm8994_set_voicecall_common_setting(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_receiver(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_headset(struct snd_soc_codec *codec);

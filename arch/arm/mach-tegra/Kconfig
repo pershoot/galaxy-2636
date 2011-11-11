@@ -55,6 +55,12 @@ config MACH_SAMSUNG_P4
        help
           Support Samsung P4 board based on Tegra 2
 
+ config MACH_SAMSUNG_P4TMO
+        bool "Samsung P4 TMO board"
+        depends on MACH_SAMSUNG_VARIATION_TEGRA
+        help
+           Support Samsung P4 board based on Tegra 2
+
 config MACH_SAMSUNG_P4WIFI
        bool "Samsung P4-WiFi only board"
        depends on MACH_SAMSUNG_VARIATION_TEGRA

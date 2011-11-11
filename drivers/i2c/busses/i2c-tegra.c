@@ -15,15 +15,11 @@
  *
  */
 
-#define __NVIDIA_PATCH_FOR_BUG845807__
-
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 #include <linux/err.h>
-#endif
 #include <linux/i2c.h>
 #include <linux/io.h>
 #include <linux/interrupt.h>
@@ -143,9 +139,7 @@ struct tegra_i2c_dev {
 	int msg_read;
 	int msg_transfer_complete;
 	struct i2c_msg *msgs;
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	int msg_add;
-#endif
 	int msgs_num;
 	bool is_suspended;
 	int bus_count;
@@ -168,7 +162,6 @@ static u32 dvc_readl(struct tegra_i2c_dev *i2c_dev, unsigned long reg)
 	return readl(i2c_dev->base + reg);
 }
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 static void dvc_i2c_mask_irq(struct tegra_i2c_dev *i2c_dev, u32 mask)
 {
 	u32 int_mask = dvc_readl(i2c_dev, DVC_CTRL_REG3);
@@ -182,7 +175,6 @@ static void dvc_i2c_unmask_irq(struct tegra_i2c_dev *i2c_dev, u32 mask)
 	int_mask |= mask;
 	dvc_writel(i2c_dev, int_mask, DVC_CTRL_REG3);
 }
-#endif
 
 /* i2c_writel and i2c_readl will offset the register if necessary to talk
  * to the I2C block inside the DVC block
@@ -303,7 +295,6 @@ static int tegra_i2c_fill_tx_fifo(struct tegra_i2c_dev *i2c_dev)
 	for (word = 0; word < words_to_transfer; word++) {
 		val = get_unaligned_le32(buf);
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		/* Update the field before writing into Tx Fifo */
 		buf += BYTES_PER_FIFO_WORD;
 		buf_remaining -= BYTES_PER_FIFO_WORD;
@@ -312,12 +303,6 @@ static int tegra_i2c_fill_tx_fifo(struct tegra_i2c_dev *i2c_dev)
 		i2c_dev->msg_buf = buf;
 
 		i2c_writel(i2c_dev, val, I2C_TX_FIFO);
-#else
-                i2c_writel(i2c_dev, val, I2C_TX_FIFO);
-                buf += BYTES_PER_FIFO_WORD;
-                buf_remaining -= BYTES_PER_FIFO_WORD;
-                tx_fifo_avail--;
-#endif
 	}
 
 	if (tx_fifo_avail > 0 && buf_remaining > 0) {
@@ -328,7 +313,6 @@ static int tegra_i2c_fill_tx_fifo(struct tegra_i2c_dev *i2c_dev)
 		for (byte = 0; byte < bytes_to_transfer; byte++)
 			val |= (*buf++) << (byte * 8);
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		/* Update the field before writing into Tx Fifo */
 		buf_remaining -= bytes_to_transfer;
 		tx_fifo_avail--;
@@ -336,11 +320,6 @@ static int tegra_i2c_fill_tx_fifo(struct tegra_i2c_dev *i2c_dev)
 		i2c_dev->msg_buf = buf;
 
 		i2c_writel(i2c_dev, val, I2C_TX_FIFO);
-#else
-                i2c_writel(i2c_dev, val, I2C_TX_FIFO);
-                buf_remaining -= bytes_to_transfer;
-                tx_fifo_avail--;
-#endif
 	}
 	BUG_ON(tx_fifo_avail > 0 && buf_remaining > 0);
 	i2c_dev->msg_buf_remaining = buf_remaining;
@@ -359,9 +338,6 @@ static void tegra_dvc_init(struct tegra_i2c_dev *i2c_dev)
 	u32 val = 0;
 	val = dvc_readl(i2c_dev, DVC_CTRL_REG3);
 	val |= DVC_CTRL_REG3_SW_PROG;
-#if !defined(__NVIDIA_PATCH_FOR_BUG845807__)
-        val |= DVC_CTRL_REG3_I2C_DONE_INTR_EN;
-#endif
 	dvc_writel(i2c_dev, val, DVC_CTRL_REG3);
 
 	val = dvc_readl(i2c_dev, DVC_CTRL_REG1);
@@ -390,11 +366,9 @@ static int tegra_i2c_init(struct tegra_i2c_dev *i2c_dev)
 
 	clk_enable(i2c_dev->clk);
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	/* Interrupt generated before sending stop signal so
 	* wait for some time so that stop signal can be send proerly */
 	mdelay(1);
-#endif
 
 	tegra_periph_reset_assert(i2c_dev->clk);
 	udelay(2);
@@ -432,22 +406,14 @@ static int tegra_i2c_init(struct tegra_i2c_dev *i2c_dev)
 static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 {
 	u32 status;
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	const u32 status_err = I2C_INT_NO_ACK | I2C_INT_ARBITRATION_LOST | I2C_INT_TX_FIFO_OVERFLOW;
-#else
-	const u32 status_err = I2C_INT_NO_ACK | I2C_INT_ARBITRATION_LOST;
-#endif
 	struct tegra_i2c_dev *i2c_dev = dev_id;
 
 	status = i2c_readl(i2c_dev, I2C_INT_STATUS);
 
 	if (status == 0) {
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		dev_err(i2c_dev->dev, "unknown interrupt Add 0x%02x\n",
 						i2c_dev->msg_add);
-#else
-		dev_warn(i2c_dev->dev, "unknown interrupt\n");
-#endif
 		i2c_dev->msg_err |= I2C_ERR_UNKNOWN_INTERRUPT;
 
 		if (!i2c_dev->irq_disabled) {
@@ -460,34 +426,23 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 	}
 
 	if (unlikely(status & status_err)) {
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		dev_err(i2c_dev->dev, "I2c error status 0x%08x\n", status);
-#endif
 		if (status & I2C_INT_NO_ACK) {
 			i2c_dev->msg_err |= I2C_ERR_NO_ACK;
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 			dev_err(i2c_dev->dev, "no acknowledge from address"
 					" 0x%x\n", i2c_dev->msg_add);
 			dev_err(i2c_dev->dev, "Packet status 0x%08x\n",
 				i2c_readl(i2c_dev, I2C_PACKET_TRANSFER_STATUS));
-#else
-			dev_warn(i2c_dev->dev, "no acknowledge\n");
-#endif
 		}
 
 		if (status & I2C_INT_ARBITRATION_LOST) {
 			i2c_dev->msg_err |= I2C_ERR_ARBITRATION_LOST;
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 			dev_err(i2c_dev->dev, "arbitration lost during "
 				" communicate to add 0x%x\n", i2c_dev->msg_add);
 			dev_err(i2c_dev->dev, "Packet status 0x%08x\n",
 				i2c_readl(i2c_dev, I2C_PACKET_TRANSFER_STATUS));
-#else
-			dev_warn(i2c_dev->dev, "arbitration lost\n");
-#endif
 		}
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		if (status & I2C_INT_TX_FIFO_OVERFLOW) {
 			i2c_dev->msg_err |= I2C_INT_TX_FIFO_OVERFLOW;
 			dev_warn(i2c_dev->dev, "Tx fifo overflow during "
@@ -495,7 +450,6 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 			dev_warn(i2c_dev->dev, "Packet status 0x%08x\n",
 				i2c_readl(i2c_dev, I2C_PACKET_TRANSFER_STATUS));
 		}
-#endif
 		complete(&i2c_dev->msg_complete);
 		goto err;
 	}
@@ -504,11 +458,7 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 				&& (status == I2C_INT_TX_FIFO_DATA_REQ)
 				&& i2c_dev->msg_read
 				&& i2c_dev->msg_buf_remaining)) {
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		dev_err(i2c_dev->dev, "unexpected status\n");
-#else
-		dev_warn(i2c_dev->dev, "unexpected status\n");
-#endif
 		i2c_dev->msg_err |= I2C_ERR_UNEXPECTED_STATUS;
 
 		if (!i2c_dev->irq_disabled) {
@@ -571,19 +521,13 @@ err:
 	/* An error occured, mask all interrupts */
 	tegra_i2c_mask_irq(i2c_dev, I2C_INT_NO_ACK | I2C_INT_ARBITRATION_LOST |
 		I2C_INT_PACKET_XFER_COMPLETE | I2C_INT_TX_FIFO_DATA_REQ |
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 		I2C_INT_RX_FIFO_DATA_REQ | I2C_INT_TX_FIFO_OVERFLOW);
-#else
-		I2C_INT_RX_FIFO_DATA_REQ);
-#endif
 
 	i2c_writel(i2c_dev, status, I2C_INT_STATUS);
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	/* An error occured, mask dvc interrupt */
 	if (i2c_dev->is_dvc)
 		dvc_i2c_mask_irq(i2c_dev, DVC_CTRL_REG3_I2C_DONE_INTR_EN);
-#endif
 
 	if (i2c_dev->is_dvc)
 		dvc_writel(i2c_dev, DVC_STATUS_I2C_DONE_INTR, DVC_STATUS);
@@ -611,9 +555,7 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_bus *i2c_bus,
 	i2c_dev->msg_transfer_complete = 0;
 	i2c_dev->msg_read = (msg->flags & I2C_M_RD);
 	INIT_COMPLETION(i2c_dev->msg_complete);
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	i2c_dev->msg_add = msg->addr;
-#endif
 
 	i2c_dev->packet_header = (0 << PACKET_HEADER0_HEADER_SIZE_SHIFT) |
 			PACKET_HEADER0_PROTOCOL_I2C |
@@ -639,16 +581,10 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_bus *i2c_bus,
 	if (!(msg->flags & I2C_M_RD))
 		tegra_i2c_fill_tx_fifo(i2c_dev);
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	if (i2c_dev->is_dvc)
 		dvc_i2c_unmask_irq(i2c_dev, DVC_CTRL_REG3_I2C_DONE_INTR_EN);
-#endif
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	int_mask = I2C_INT_NO_ACK | I2C_INT_ARBITRATION_LOST | I2C_INT_TX_FIFO_OVERFLOW;
-#else
-	int_mask = I2C_INT_NO_ACK | I2C_INT_ARBITRATION_LOST;
-#endif
 	if (msg->flags & I2C_M_RD)
 		int_mask |= I2C_INT_RX_FIFO_DATA_REQ;
 	else if (i2c_dev->msg_buf_remaining)
@@ -660,10 +596,8 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_bus *i2c_bus,
 					TEGRA_I2C_TIMEOUT);
 	tegra_i2c_mask_irq(i2c_dev, int_mask);
 
-#if defined(__NVIDIA_PATCH_FOR_BUG845807__)
 	if (i2c_dev->is_dvc)
 		dvc_i2c_mask_irq(i2c_dev, DVC_CTRL_REG3_I2C_DONE_INTR_EN);
-#endif
 
 	if (WARN_ON(ret == 0)) {
 		dev_err(i2c_dev->dev,

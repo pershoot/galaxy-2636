@@ -829,19 +829,19 @@ static const u32 mode_sensor_init[] = {
 0x0F120000, //0000	//REG_1TC_PCFG_uCaptureMirror					2	700001BC
 0x0F120000, //0000	//REG_1TC_PCFG_uRotation						2	700001BE
 0x002A01C0,
-0x0F120320, //REG_2TC_PCFG_usWidth							2	700001C0
-0x0F120258, //REG_2TC_PCFG_usHeight 						2	700001C2
-0x0F120005, //REG_2TC_PCFG_Format							2	700001C4
-0x0F12222E, //REG_2TC_PCFG_usMaxOut4KHzRate 				2	700001C6
-0x0F12222E, //REG_2TC_PCFG_usMinOut4KHzRate 				2	700001C8
-0x0F120042, //REG_2TC_PCFG_PVIMask							2	700001CA
-0x0F120010, //REG_2TC_PCFG_OIFMask							2	700001CC
-0x0F120001, //REG_2TC_PCFG_uClockInd						2	700001CE
-0x0F120000, //REG_2TC_PCFG_usFrTimeType 					2	700001D0
-0x0F120001, //REG_2TC_PCFG_FrRateQualityType				2	700001D2   1b: FR (bin) 2b: Quality (no-bin)
-0x0F1207D0, //REG_2TC_PCFG_usMaxFrTimeMsecMult10			2	700001D4   max frame time : 30fps 014D; 15fps 029a; a6a - 3.75 fps; 0535 - 7.5FPS
-0x0F12029A, //REG_2TC_PCFG_usMinFrTimeMsecMult10			2	700001D6
-0x0F120000, //REG_2TC_PCFG_bSmearOutput 					2	700001D8
+0x0F120320,	//0320, //REG_2TC_PCFG_usWidth							2	700001C0
+0x0F120258,	//0258, //REG_2TC_PCFG_usHeight 						2	700001C2
+0x0F120005,	//0005, //REG_2TC_PCFG_Format							2	700001C4
+0x0F12222E,	//222E, //REG_2TC_PCFG_usMaxOut4KHzRate 				2	700001C6
+0x0F12222E,	//222E, //REG_2TC_PCFG_usMinOut4KHzRate 				2	700001C8
+0x0F120042,	//0042, //REG_2TC_PCFG_PVIMask							2	700001CA
+0x0F120010,	//0010, //REG_2TC_PCFG_OIFMask							2	700001CC
+0x0F120001,	//0001, //REG_2TC_PCFG_uClockInd						2	700001CE
+0x0F120002,	//0000, //REG_2TC_PCFG_usFrTimeType 					2	700001D0
+0x0F120001,	//0001, //REG_2TC_PCFG_FrRateQualityType				2	700001D2   1b: FR (bin) 2b: Quality (no-bin)
+0x0F12029A,	//07D0, //REG_2TC_PCFG_usMaxFrTimeMsecMult10			2	700001D4   max frame time : 30fps 014D; 15fps 029a; a6a - 3.75 fps; 0535 - 7.5FPS
+0x0F120000,	//029A, //REG_2TC_PCFG_usMinFrTimeMsecMult10			2	700001D6
+0x0F120000,	//0000, //REG_2TC_PCFG_bSmearOutput 					2	700001D8
 0x0F120000, //REG_2TC_PCFG_sSaturation						2	700001DA
 0x0F120000, //REG_2TC_PCFG_sSharpBlur						2	700001DC
 0x0F120000, //REG_2TC_PCFG_sColorTemp						2	700001DE
@@ -3543,6 +3543,29 @@ static const u32 mode_preview_800x600_fixframe[] = {
 0xFFFE0096,
 0xFFFFFFFF,
 };
+
+
+static const u32 mode_preview_800x600_fixframe_15fps[] = {
+0xFCFCD000,
+0x00287000, 
+0x002A0156, //#REG_TC_GP_ActivePrevConfig
+0x0F120002,
+0x002A015E, //#REG_TC_GP_ActiveCapConfig
+0x0F120000,
+0x002A015A, //#REG_TC_GP_PrevOpenAfterChange
+0x0F120001,
+0x002A0142, //#REG_TC_GP_NewConfigSync
+0x0F120001,
+0x002A0158, //#REG_TC_GP_PrevConfigChanged
+0x0F120001,
+0x002A0160, //#REG_TC_GP_CapConfigChanged
+0x0F120001,
+0x002A013A, //#REG_TC_GP_EnablePreview
+0x0F120001,
+0x002A013C, //#REG_TC_GP_EnablePreviewChanged
+0x0F120001,
+};
+
 
 static const u32 mode_capture_1600x1200[] = {
 0xFCFCD000,

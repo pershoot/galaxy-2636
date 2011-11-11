@@ -43,11 +43,10 @@ enum fuse_io_param {
 	IGNORE_DEV_SEL_STRAPS, /* 1 bit long */
 	ODM_RSVD,
 	SBK_DEVKEY_STATUS,
-	MASTER_ENB,
 	_PARAMS_U32 = 0x7FFFFFFF
 };
 
-#define MAX_PARAMS ODM_RSVD
+#define MAX_PARAMS SBK_DEVKEY_STATUS
 
 /* the order of the members is pre-decided. please do not change */
 struct fuse_data {

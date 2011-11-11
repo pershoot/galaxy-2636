@@ -351,7 +351,7 @@ static int smdraw_rx_submit(struct str_smdraw *smdraw)
 	struct str_hsic *hsic = &smdraw->hsic;
 	struct str_smd_urb *rx_urb;
 
-	if (!hsic || !hsic->usb)
+	if (!hsic || !hsic->usb || !hsic->rx_urb[0].urb)
 		return -ENODEV;
 
 	tegra_ehci_txfilltuning();
@@ -682,11 +682,14 @@ static int smdraw_pdp_tx_submit(struct sk_buff *skb)
 	struct str_smdraw *smdraw = pdppriv->smdraw;
 	struct str_hsic *hsic = &smdraw->hsic;
 
+	if (!hsic || !hsic->usb)
+		return -ENODEV;
+
+	usb_mark_last_busy(hsic->usb);
+
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!urb)
 		return -ENOMEM;
-
-	usb_mark_last_busy(smdraw->hsic.usb);
 
 #if 0
 	pr_info("================= TRANSMIT RAW =================\n");
@@ -717,6 +720,8 @@ static ssize_t smdraw_write(struct file *file, const char __user * buf,
 			    size_t count, loff_t *ppos)
 {
 	int r;
+	int send_byte, byte_total;
+	int byte_sent = 0;
 	struct str_raw_dev *rawdev = file->private_data;
 	struct str_smdraw *smdraw = dev_get_drvdata(rawdev->dev);
 
@@ -727,12 +732,21 @@ static ssize_t smdraw_write(struct file *file, const char __user * buf,
 		return -ENODEV;
 	}
 
-		r = smdraw_tx_submit(buf, smdraw, rawdev->cid, count);
+	if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT)
+		return -ENODEV;
+
+	/* max packet size : 1500 byte */
+	while (count > byte_sent) {
+		send_byte = (count - byte_sent > 1500) ? 1500 : count - byte_sent;
+	
+		r = smdraw_tx_submit(buf + byte_sent , smdraw, rawdev->cid, send_byte);
 		if (r) {
 			pr_err("%s:smdraw_tx_submit() failed\n", __func__);
 			return r;
 		}
-		return count;
+		byte_sent += send_byte;
+	}
+	return count;
 }
 
 static ssize_t smdraw_read(struct file *file, char *buf, size_t count,
@@ -958,6 +972,12 @@ static void pdp_workqueue_handler(struct work_struct *work)
 	struct str_pdp_priv *pdp_priv;
 	struct str_smdraw *smdraw = container_of(work, struct str_smdraw, pdp_work.work);
 
+	if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT) {
+		cancel_delayed_work(&smdraw->pdp_work);
+		skb_queue_purge(&smdraw->pdp_txq);
+		return;
+	}
+
 	if (smdraw->tx_flow_control) {
 		cancel_delayed_work(&smdraw->pdp_work);
 		return;
@@ -980,12 +1000,27 @@ static void pdp_workqueue_handler(struct work_struct *work)
 		return;
 	}
 
-	usb_mark_last_busy(smdraw->hsic.usb);
-
 	spin_lock_irqsave(&smdraw->lock, flags);
 	skb = skb_dequeue(&smdraw->pdp_txq);
 	while (skb) {
-		usb_mark_last_busy(smdraw->hsic.usb);
+		if (!smdhsic_pm_active()) {
+			pr_err("%s: rpm is not active\n", __func__);
+			skb_queue_head(&smdraw->pdp_txq, skb);
+			queue_delayed_work(smdraw->pdp_wq, &smdraw->pdp_work,
+					msecs_to_jiffies(10));
+			spin_unlock_irqrestore(&smdraw->lock, flags);
+			return;
+		}
+
+		if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT) {
+			dev_kfree_skb_any(skb);
+			cancel_delayed_work(&smdraw->pdp_work);
+			skb_queue_purge(&smdraw->pdp_txq);
+			spin_unlock_irqrestore(&smdraw->lock, flags);
+			return;
+		} else
+			usb_mark_last_busy(smdraw->hsic.usb);
+
 		pdp_priv = netdev_priv(skb->dev);
 		/* skb destroy done by next function call */
 		tx_skb = smdraw_pdp_skb_fill_hdlc(skb, pdp_priv->cid);
@@ -997,7 +1032,6 @@ static void pdp_workqueue_handler(struct work_struct *work)
 			spin_unlock_irqrestore(&smdraw->lock, flags);
 			return;
 		}
-		usb_mark_last_busy(smdraw->hsic.usb);
 		/* tx_skb destroy done by tx complete function */
 		if (smdraw_pdp_tx_submit(tx_skb)) {
 			dev_kfree_skb_any(tx_skb);
@@ -1288,6 +1322,9 @@ void *connect_smdraw(void *smd_device, struct str_hsic *hsic)
 
 	smdraw->pm_stat = RAW_PM_STATUS_RESUME;
 
+	cancel_delayed_work(&smdraw->pdp_work);
+	skb_queue_purge(&smdraw->pdp_txq);
+
 	smdraw_rx_submit(smdraw);
 
 	for (i = 0; i < MAX_PDP_DEV; i++) {
@@ -1309,6 +1346,7 @@ void disconnect_smdraw(void *smd_device)
 		if (smdraw->pdpdev[i].pdp)
 			smd_vnet_stop(smdraw->pdpdev[i].pdp);
 
+	cancel_delayed_work(&smdraw->pdp_work);
 	skb_queue_purge(&smdraw->pdp_txq);
 
 	smdraw->pm_stat = RAW_PM_STATUS_DISCONNECT;

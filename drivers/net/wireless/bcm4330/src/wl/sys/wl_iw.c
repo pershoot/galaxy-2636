@@ -70,6 +70,14 @@ typedef const struct si_pub  si_t;
 
 #include <linux/sched.h>
 
+#ifdef BCMCCX
+#ifndef IW_AUTH_KEY_MGMT_CCKM
+#define IW_AUTH_KEY_MGMT_CCKM	0x10
+#endif
+
+#define DOT11_LEAP_AUTH		0x80	/* LEAP authentication frame payload constants */
+#endif /* BCMCCX */
+
 #define WL_IW_USE_ISCAN  1
 #define ENABLE_ACTIVE_PASSIVE_SCAN_SUPPRESS  1
 
@@ -88,6 +96,7 @@ static bool 	ap_cfg_running = FALSE;
        bool		ap_fw_loaded = FALSE;
 struct net_device *ap_net_dev = NULL;
 struct semaphore  ap_eth_sema;
+
 static int wl_iw_set_ap_security(struct net_device *dev, struct ap_profile *ap);
 static int wl_iw_softap_deassoc_stations(struct net_device *dev);
 #endif /* SOFTAP */
@@ -243,6 +252,8 @@ typedef struct iscan_info {
 	int iscan_ex_param_size;
 } iscan_info_t;
 
+void dhd_set_packet_filter(int value, dhd_pub_t *dhd);
+
 /* enable bt coex during dhcp */
 /* #define  COEX_DHCP 1 */
 #define BT_COEX_FIX
@@ -282,6 +293,7 @@ typedef struct bt_info {
 bt_info_t *g_bt = NULL;
 static void wl_iw_bt_timerfunc(ulong data);
 #endif /* COEX_DHCP */
+
 iscan_info_t *g_iscan = NULL;
 void dhd_print_buf(void *pbuf, int len, int bytes_per_line);
 static void wl_iw_timerfunc(ulong data);
@@ -844,6 +856,11 @@ wl_iw_set_btcoex_dhcp(
 		WL_TRACE(("%s: DHCP session starts\n", __FUNCTION__));
 
         dhd->dhcp_in_progress = 1;
+
+		/*disable packet filtering*/
+		if(dhd->early_suspended == 1)
+			dhd_set_packet_filter(0, dhd);
+		
 #ifdef BTC_PARAM_DHCP
 		/* Retrieve and saved orig regs value */
 		if ((saved_status == FALSE) &&
@@ -900,6 +917,9 @@ wl_iw_set_btcoex_dhcp(
 	else if (strnicmp((char *)&powermode_val, "0", strlen("0")) == 0) {
 #endif
         dhd->dhcp_in_progress = 0; 
+		/* enable packet filter */
+		if(dhd->early_suspended == 1)
+			dhd_set_packet_filter(1, dhd);
 
 		WL_TRACE(("%s: DHCP session done\n", __FUNCTION__));
 
@@ -1282,28 +1302,33 @@ wl_iw_set_pno_set(
 	char *extra
 )
 {
-	int res = -1;
+	int res = -1;	/* XXX should be valid Exxxx */
 	wlc_ssid_t ssids_local[MAX_PFN_LIST_COUNT];
 	int nssid = 0;
 	cmd_tlv_t *cmd_tlv_temp;
-	char type;
 	char *str_ptr;
 	int tlv_size_left;
 	int pno_time;
-/* #define  PNO_SET_DEBUG  1 */
+	int pno_repeat;
+	int pno_freq_expo_max;
 #ifdef PNO_SET_DEBUG
 	int i;
 	char pno_in_example[] = {
 		'P', 'N', 'O', 'S', 'E', 'T', 'U', 'P', ' ',
-							'S', 0x01, 0x00, 0x00,
-							'S',    /* SSID type */
-							0x04, /* SSID size */
+		'S', '1', '2', '0',
+		'S',
+		0x04,
 							'B', 'R', 'C', 'M',
-							'S',    /* SSID type */
-							0x04, /* SSID size */
+		'S',
+		0x04,
 							'G', 'O', 'O', 'G',
 							'T',
-							0x0A, /* time 10 sec */
+		'1', 'E',
+		'R',
+		'2',
+		'M',
+		'2',
+		0x00
 							};
 #endif /* PNO_SET_DEBUG */
 
@@ -1324,6 +1349,7 @@ wl_iw_set_pno_set(
 	}
 
 #ifdef PNO_SET_DEBUG
+	/* XXX memory leak */
 	if (!(extra = kmalloc(sizeof(pno_in_example) +100, GFP_KERNEL))) {
 		res = -ENOMEM;
 		goto exit_proc;
@@ -1346,59 +1372,69 @@ wl_iw_set_pno_set(
 
 	cmd_tlv_temp = (cmd_tlv_t *)str_ptr;
 	memset(ssids_local, 0, sizeof(ssids_local));
-
+	pno_repeat = pno_freq_expo_max = 0;
 	/* PNO TLV command must start with predefined
 	* prefixes and first paramter should be for SSID
 	*/
-	if ((cmd_tlv_temp->prefix != PNO_TLV_PREFIX) ||
-	    (cmd_tlv_temp->version != PNO_TLV_VERSION) ||
-	    (cmd_tlv_temp->subver != PNO_TLV_SUBVERSION)) {
-		WL_ERROR(("%s: wrong TLV command\n", __FUNCTION__));
-		goto exit_proc;
-	}
-
+	if ((cmd_tlv_temp->prefix == PNO_TLV_PREFIX) &&
+		(cmd_tlv_temp->version == PNO_TLV_VERSION) &&
+		(cmd_tlv_temp->subver == PNO_TLV_SUBVERSION))
+	{
 		str_ptr += sizeof(cmd_tlv_t);
 		tlv_size_left  -= sizeof(cmd_tlv_t);
 
 		/* Get SSIDs list */
 	if ((nssid = wl_iw_parse_ssid_list_tlv(&str_ptr, ssids_local,
-				MAX_PFN_LIST_COUNT, &tlv_size_left)) <= 0) {
+			MAX_PFN_LIST_COUNT,
+			&tlv_size_left)) <= 0) {
 			WL_ERROR(("SSID is not presented or corrupted ret=%d\n", nssid));
 			goto exit_proc;
 		}
+		else {
+			if ((str_ptr[0] != PNO_TLV_TYPE_TIME) || (tlv_size_left <= 1)) {
+				WL_ERROR(("%s scan duration corrupted field size %d\n",
+					__FUNCTION__, tlv_size_left));
+						goto exit_proc;
+			}
+			str_ptr++;
+			pno_time = simple_strtoul(str_ptr, &str_ptr, 16);
+			WL_ERROR(("%s: pno_time=%d\n", __FUNCTION__, pno_time));
 
-			/* Get other params */
-	while (tlv_size_left > 0) {
-				type = str_ptr[0];
-				switch (type) {
-					case PNO_TLV_TYPE_TIME:
-					/* Search for PNO time info */
-			if ((res = wl_iw_parse_data_tlv(&str_ptr,
-			                                &pno_time, sizeof(pno_time),
-			                                type, sizeof(char),
-			                                &tlv_size_left)) == -1) {
-				WL_ERROR(("%s return %d\n",
-							__FUNCTION__, res));
+			/* Optional Repeat and EXPO_MAC files are present */
+			if (str_ptr[0] != 0) {
+				if ((str_ptr[0] != PNO_TLV_FREQ_REPEAT)) {
+					WL_ERROR(("%s pno repeat : corrupted field\n",
+						__FUNCTION__));
+						goto exit_proc;
+				}
+				str_ptr++;
+				pno_repeat = simple_strtoul(str_ptr, &str_ptr, 16);
+				WL_ERROR(("%s :got pno_repeat=%d\n", __FUNCTION__, pno_repeat));
+				if (str_ptr[0] != PNO_TLV_FREQ_EXPO_MAX) {
+					WL_ERROR(("%s FREQ_EXPO_MAX corrupted field size\n",
+						__FUNCTION__));
 							goto exit_proc;
 					}
-					break;
-
-					default :
-			WL_ERROR(("%s get unkwown type %X\n",
-							__FUNCTION__, type));
+				str_ptr++;
+				pno_freq_expo_max = simple_strtoul(str_ptr, &str_ptr, 16);
+				WL_ERROR(("%s: pno_freq_expo_max=%d\n",
+					__FUNCTION__, pno_freq_expo_max));
+			}
+		}
+	}
+	else {
+		WL_ERROR(("%s get wrong TLV command\n", __FUNCTION__));
 						goto exit_proc;
-					break;
-				}
 	}
 
 	/* PNO setting execution */
-	res = dhd_dev_pno_set(dev, ssids_local, nssid, pno_time);
+	res = dhd_dev_pno_set(dev, ssids_local, nssid, pno_time, pno_repeat, pno_freq_expo_max);
 
 exit_proc:
 	net_os_wake_unlock(dev);
 	return res;
 }
-#endif /* PNO_SUPPORT */
+#endif
 
 #ifdef OKC_SUPPORT
 int wl_iw_get_associnfo(struct net_device *dev,	
@@ -1545,6 +1581,101 @@ wl_iw_get_rssi(
 	return error;
 }
 
+// MOBILE HOTSPOT for Verizon :: START
+static int iwpriv_set_max_stations(struct net_device *dev,
+        struct iw_request_info *info,
+        union iwreq_data *wrqu,
+        char *ext)
+{
+        int max_assoc, res;
+        char *extra = NULL;
+        wl_iw_t *iw;
+
+        if (!dev) {
+                WL_ERROR(("%s: dev is null\n", __FUNCTION__));
+                return -1;
+        }
+
+        iw = *(wl_iw_t **)netdev_priv(dev);
+
+        net_os_wake_lock(dev);
+        DHD_OS_MUTEX_LOCK(&wl_softap_lock);
+
+        if (wrqu->data.length != 0) {
+
+                // char *str_ptr;
+
+                if (!(extra = kmalloc(wrqu->data.length+1, GFP_KERNEL))){
+                        res = -ENOMEM;
+                        WL_ERROR(("%s fail to set maxassoc[ENOMEM]\n", __FUNCTION__));
+                        goto failed;
+                }
+
+                if (copy_from_user(extra, wrqu->data.pointer, wrqu->data.length)) {
+                        res = -EFAULT;
+                        WL_ERROR(("%s fail to set maxassoc[EFAULT]\n", __FUNCTION__));
+                        goto failed;
+                }
+
+                extra[wrqu->data.length] = 0;
+                WL_SOFTAP((" Got str param in iw_point:\n %s\n", extra));
+
+                if(max_assoc = bcm_atoi(extra)){
+
+                    if ((res = dev_wlc_intvar_set(dev, "maxassoc", max_assoc))) {
+
+                        WL_ERROR(("%s fail to set maxassoc\n", __FUNCTION__));
+                        goto failed;
+
+                    }
+
+                    WL_SOFTAP(("%s success to set maxassoc : %d\n", __FUNCTION__, max_assoc));
+
+                } else {
+                    WL_ERROR(("fail to set maxassoc = 0 \n"));
+                    res = -1;
+                    goto failed;
+                }
+
+        } else {
+
+            WL_ERROR(("IWPRIV argument len = 0 \n"));
+            res = -1;
+
+        }
+
+failed:
+
+        DHD_OS_MUTEX_UNLOCK(&wl_softap_lock);
+        net_os_wake_unlock(dev);
+
+        WL_SOFTAP(("%s exit with %d\n", __FUNCTION__, res));
+        if(extra != NULL) kfree(extra);
+        return res;
+}
+static int iwpriv_disassoc_sta(struct net_device *dev,
+    struct iw_request_info *info,
+    union iwreq_data *wrqu,
+    char *ext)
+{
+    scb_val_t scbval;
+    char sta_mac[ETHER_ADDR_LEN];
+
+    scbval.val = htod32(1);
+
+    if (copy_from_user(sta_mac, wrqu->data.pointer, ETHER_ADDR_LEN)) {
+        WL_ERROR(("%s: Error to copy mac address\n", __FUNCTION__));
+        return -EFAULT;
+    }
+
+    WL_SOFTAP(("%s: deauth STA: %02X:%02X:%02X:%02X:%02X:%02X\n", __FUNCTION__,
+        sta_mac[0], sta_mac[1], sta_mac[2], sta_mac[3], sta_mac[4], sta_mac[5]));
+
+    bcopy(sta_mac, &scbval.ea, ETHER_ADDR_LEN); // namju - add this to correct disconnect functionality
+
+    return dev_wlc_ioctl(dev, WLC_SCB_DEAUTHENTICATE_FOR_REASON, &scbval, sizeof(scb_val_t));
+}
+// MOBILE HOTSPOT for Verizon :: END
 int
 wl_iw_send_priv_event(
 	struct net_device *dev,
@@ -1594,11 +1725,38 @@ wl_control_wl_start(struct net_device *dev)
 	DHD_OS_MUTEX_LOCK(&wl_start_lock);
 
 	if (g_onoff == G_WLAN_SET_OFF) {
-
+#ifdef MOBILEAP_RELOAD		
+		if ( ap_fw_loaded == TRUE ) {			
+			dhd_dev_reset(dev, 1);
+			msleep(100);
+#if defined(BCMLXSDMMC) 		
+			sdioh_stop(NULL);
+#endif
+			dhd_customer_gpio_wlan_ctrl(WLAN_RESET_OFF);
+			msleep(300);
+			dhd_customer_gpio_wlan_ctrl(WLAN_RESET_ON);
+			msleep(100);
+#if defined(BCMLXSDMMC)
+			sdioh_start(NULL, 0);
+#endif 		
+			dhd_dev_reset(dev, 0);
+#if defined(BCMLXSDMMC)
+			sdioh_start(NULL, 1);
+#endif
+			dhd_dev_init_ioctl(dev);
+		} 
+		else {
 		dhd_deepsleep(dev, 0); /* DeepSleep Off */
 #ifdef CONFIG_HAS_EARLYSUSPEND
 		dhd_set_suspend(0, iw->pub);
 #endif
+		}
+#else /* MOBILEAP_RELOAD */
+		dhd_deepsleep(dev, 0); /* DeepSleep Off */
+#ifdef CONFIG_HAS_EARLYSUSPEND
+		dhd_set_suspend(0, iw->pub);
+#endif
+#endif /* MOBILEAP_RELOAD */
 		g_onoff = G_WLAN_SET_ON;
 	}
 	WL_TRACE(("Exited %s \n", __FUNCTION__));
@@ -1768,6 +1926,54 @@ hstr_2_buf(const char *txt, u8 *buf, int len)
 *    *********************************************************************
 */
 #ifdef SOFTAP
+
+/* soft AP SSID patch 2011.06.21 */
+
+static int
+get_ssid_from_string(
+			char **str_ptr, const char *token,
+			int param_type, void  *dst, int param_max_len)
+{
+	int parm_str_len;
+	char  *param_str_begin;
+	char  *param_str_end;
+
+	if ((*str_ptr) && !strncmp(*str_ptr, token, strlen(token))) {
+
+		strsep(str_ptr, "=,"); /* find the 1st delimiter */
+		param_str_begin = *str_ptr;
+		param_str_end = strstr(*str_ptr, "SEC="); /* find the 2nd delimiter */
+
+		if (param_str_end == NULL) {
+			WL_ERROR(("%s: 'SEC=' is not found\n", __FUNCTION__));
+			return -1;
+		} else {
+			*str_ptr = param_str_end;
+			param_str_end--;
+			*param_str_end = 0; /* Z term */
+			parm_str_len = param_str_end - param_str_begin;
+		}
+
+		WL_TRACE((" 'token:%s', len:%d, ", token, parm_str_len));
+
+		if (parm_str_len > param_max_len) {
+			WL_ERROR((" WARNING: extracted param len:%d is > MAX:%d\n",
+				parm_str_len, param_max_len));
+
+			parm_str_len = param_max_len;
+		}
+
+		memcpy(dst, param_str_begin, parm_str_len);
+		*((char *)dst + parm_str_len) = 0; /* Z term */
+		WL_ERROR((" written as a string:%s\n", (char *)dst));
+
+		return 0;
+	}
+
+	WL_ERROR(("\n %s: ERROR: can't find token:%s\n", __FUNCTION__, token));
+	return -1;
+}
+/* Soft AP SSID patch 2011.06.21 END */
 static int
 init_ap_profile_from_string(char *param_str, struct ap_profile *ap_cfg)
 {
@@ -1780,6 +1986,14 @@ init_ap_profile_from_string(char *param_str, struct ap_profile *ap_cfg)
 	/************************************************************************/
 	int i, j;
 	/************************************************************************/
+// MOBILE HOTSPOT for Verizon :: START
+#ifdef NEW_AP_INTERFACE
+        uint8 sec[SEC_LEN];
+        uint8 wepkey[KEY_LEN];
+        int enc;
+        struct mflist *maclist = 0;
+#endif
+// MOBILE HOTSPOT for Verizon :: END
 
 	memset(sub_cmd, 0, sizeof(sub_cmd));
 	memset(ap_cfg, 0, sizeof(struct ap_profile));
@@ -1796,20 +2010,16 @@ init_ap_profile_from_string(char *param_str, struct ap_profile *ap_cfg)
 
 	/*  parse the string and write extracted values into the ap_profile structure */
 	/*  NOTE this function may alter the origibal string */
-	ret = get_parameter_from_string(&str_ptr, "SSID=", PTYPE_STRING, ap_cfg->ssid, SSID_LEN);
+//	ret = get_parameter_from_string(&str_ptr, "SSID=", PTYPE_STRING, ap_cfg->ssid, SSID_LEN);
+	ret = get_ssid_from_string(&str_ptr, "SSID=", PTYPE_STRING, ap_cfg->ssid, SSID_LEN);
 
-	/************************************************************************/
-	/* Samsung patch for ssid including ',' [PLM P110518-4075] 2011.05.18   */
-	/************************************************************************/
-	j = strlen(ap_cfg->ssid);
-	for (i = 0; i < j; i++) {
-		if (ap_cfg->ssid[i] == 4) {
-			ap_cfg->ssid[i] = ',';
-		}
-	}
-	/************************************************************************/
-
+// MOBILE HOTSPOT for Verizon :: START
+#ifdef NEW_AP_INTERFACE
+	ret |= get_parameter_from_string(&str_ptr, "SEC=", PTYPE_STRING,  sec, SEC_LEN);
+#else
 	ret |= get_parameter_from_string(&str_ptr, "SEC=", PTYPE_STRING,  ap_cfg->sec, SEC_LEN);
+#endif
+// MOBILE HOTSPOT for Verizon :: END
 
 	ret |= get_parameter_from_string(&str_ptr, "KEY=", PTYPE_STRING,  ap_cfg->key, KEY_LEN);
 
@@ -1818,9 +2028,75 @@ init_ap_profile_from_string(char *param_str, struct ap_profile *ap_cfg)
 	ret |= get_parameter_from_string(&str_ptr, "PREAMBLE=", PTYPE_INTDEC, &ap_cfg->preamble, 5);
 
 	ret |= get_parameter_from_string(&str_ptr, "MAX_SCB=", PTYPE_INTDEC,  &ap_cfg->max_scb, 5);
+// MOBILE HOTSPOT for Verizon :: START
 #ifdef USE_HIDDEN_SSID
 	ret |= get_parameter_from_string(&str_ptr, "HIDE=", PTYPE_INTDEC,  &ap_cfg->hidden_ssid, 5);
 #endif
+#ifdef MOBILEAP_CERT
+	ret |= get_parameter_from_string(&str_ptr, "ENCRYPTION=", PTYPE_STRING,  &ap_cfg->enc, 10);
+#endif
+#ifdef NEW_AP_INTERFACE
+        ret |= get_parameter_from_string(&str_ptr, "GROUP_CIPHER=", PTYPE_INTDEC,  &enc, SEC_LEN);
+
+        strcpy(ap_cfg->sec, sec);
+
+        if ((enc == 0) || (enc == 1)) {
+                if (strcmp(ap_cfg->sec, "open") == 0) {
+                        /* using WEP */
+                        strcpy(ap_cfg->sec, "wep");
+                        ap_cfg->is_wep = 1;
+                } else {
+                        WL_ERROR(("%s: Invalid combo - sec=%s, enc=%d\n", __FUNCTION__, sec, enc));
+                }
+        } else if (enc == 2) {
+                /* TKIP */
+                strcpy(ap_cfg->sec, "wpa-psk");
+        }
+
+        ret |= get_parameter_from_string(&str_ptr, "802.11_MODE=", PTYPE_INTDEC,  &ap_cfg->op_mode, 5);
+
+        ret |= get_parameter_from_string(&str_ptr, "WEP_KEY_INDEX=", PTYPE_INTDEC,  &ap_cfg->key_index, 5);
+
+        ret |= get_parameter_from_string(&str_ptr, "WEP_KEY=", PTYPE_STRING,  wepkey, KEY_LEN);
+
+        if (ap_cfg->is_wep && strlen(wepkey) != 1) {
+                strcpy(ap_cfg->key, wepkey);
+        }
+
+        ret |= get_parameter_from_string(&str_ptr, "WHITELIST_MAC_COUNT=", PTYPE_INTDEC,  &ap_cfg->mac_filter.white_list.count, 5);
+
+        ret |= get_parameter_from_string(&str_ptr, "WHITELIST_MAC_LIST=", PTYPE_STR_HEX,  ap_cfg->mac_filter.white_list.ea, sizeof(ap_cfg->mac_filter.white_list.ea));
+
+        ret |= get_parameter_from_string(&str_ptr, "BLACKLIST_MAC_COUNT=", PTYPE_INTDEC,  &ap_cfg->mac_filter.black_list.count, 5);
+
+        ret |= get_parameter_from_string(&str_ptr, "BLACKLIST_MAC_LIST=", PTYPE_STR_HEX,  ap_cfg->mac_filter.black_list.ea, sizeof(ap_cfg->mac_filter.black_list.ea));
+
+		ret |= get_parameter_from_string(&str_ptr, "ALLOW_ALL_DEVICE=", PTYPE_INTDEC,  &ap_cfg->mac_filter.allow_all_device, 5);
+
+        if (ap_cfg->mac_filter.black_list.count && ap_cfg->mac_filter.black_list.count) {
+                WL_ERROR(("%s: black list & white list are mutually exclusive. black count = %d, white count = %d\n", __FUNCTION__,
+                        ap_cfg->mac_filter.black_list.count, ap_cfg->mac_filter.white_list.count));
+                return -1;
+        }
+
+        if (ap_cfg->mac_filter.black_list.count) {
+                ap_cfg->mac_filter.mode = 1;
+                maclist = &ap_cfg->mac_filter.black_list;
+        }
+        else if (ap_cfg->mac_filter.white_list.count|| !ap_cfg->mac_filter.allow_all_device) {
+                ap_cfg->mac_filter.mode = 2;
+                maclist = &ap_cfg->mac_filter.white_list;
+        }
+
+        if (maclist) {
+                for(i=0; i<maclist->count; i++) {
+                        WL_SOFTAP(("%02d: %02X:%02X:%02X:%02X:%02X:%02X\n", i+1,
+                                maclist->ea[i].octet[0], maclist->ea[i].octet[1], maclist->ea[i].octet[2],
+                                maclist->ea[i].octet[3], maclist->ea[i].octet[4], maclist->ea[i].octet[5]));
+                }
+        }
+#endif /* NEW_AP_INTERFACE */
+// MOBILE HOTSPOT for Verizon :: END
 	return ret;
 }
 #endif /* SOFTAP */
@@ -1894,6 +2170,8 @@ iwpriv_set_ap_config(struct net_device *dev,
 *   ************ get list of associated stations ********
 */
 #ifdef SOFTAP
+ 
+#ifndef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon ::
 static int
 iwpriv_get_assoc_list(struct net_device *dev,
         struct iw_request_info *info,
@@ -1955,12 +2233,163 @@ iwpriv_get_assoc_list(struct net_device *dev,
 	WL_ERROR(("Exited %s \n", __FUNCTION__));
 	return ret;
 }
+#else /* NEW_AP_INTERFACE */ // MOBILE HOTSPOT for Verizon :: START
+static int 
+iwpriv_get_assoc_list(struct net_device *dev,
+        struct iw_request_info *info,
+        union iwreq_data *p_iwrq,
+        char *extra)
+{
+        int i, ret = 0;
+        char mac_buf[512];
+        struct maclist *sta_maclist = (struct maclist *)mac_buf;
+
+        char mac_lst[512];
+        char *p_mac_str;
+
+        WL_TRACE(("\n %s: IWPRIV IOCTL: cmd:%hx, flags:%hx, extra:%p, iwp.len:%d, \
+                iwp.len:%p, iwp.flags:%x  \n", __FUNCTION__, info->cmd, info->flags, \
+                extra, p_iwrq->data.length, p_iwrq->data.pointer, p_iwrq->data.flags));
+
+        WL_SOFTAP(("extra:%s\n", extra));
+        dhd_print_buf((u8 *)p_iwrq, 16, 0);
+
+        memset(sta_maclist, 0, sizeof(mac_buf));
+
+        sta_maclist->count = 10;
+
+        WL_TRACE((" net device:%s, buf_sz:%d\n", dev->name, sizeof(mac_buf)));
+        get_assoc_sta_list(dev, mac_buf, 512);
+        WL_TRACE((" got %d stations\n", sta_maclist->count));
+
+
+        memset(mac_lst, 0, sizeof(mac_lst));
+        p_mac_str = mac_lst;
+
+        for (i = 0; i < 10; i++) {
+                struct ether_addr * id = &sta_maclist->ea[i];
+
+                WL_SOFTAP(("dhd_drv>> sta_mac[%d] :", i));
+                dhd_print_buf((unsigned char *)&sta_maclist->ea[i], 6, 0);
+
+
+                p_mac_str += snprintf(p_mac_str, MAX_WX_STRING,
+                        "Mac[%d]=%02X:%02X:%02X:%02X:%02X:%02X\n", i,
+                        id->octet[0], id->octet[1], id->octet[2],
+                        id->octet[3], id->octet[4], id->octet[5]);
+
+        }
+
+        p_iwrq->data.length = strlen(mac_lst);
+
+        WL_TRACE(("u.pointer:%p\n", p_iwrq->data.pointer));
+        WL_TRACE(("resulting str:\n%s \n len:%d\n\n", mac_lst, p_iwrq->data.length));
+
+        if (p_iwrq->data.length) {
+                if (copy_to_user(p_iwrq->data.pointer, mac_lst, p_iwrq->data.length)) {
+                        WL_ERROR(("%s: Can't copy to user\n", __FUNCTION__));
+                        return -EFAULT;
+                }
+        }
+
+        WL_ERROR(("Exited %s \n", __FUNCTION__));
+        return ret;
+}
+#endif /* NEW_AP_INTERFACE */ // MOBILE HOTSPOT for Verizon :: END
 #endif /* SOFTAP */
 
 /*
 *   ***************** set mac filters  *****************
 */
 #ifdef SOFTAP
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+#define MAC_FILT_MAX 16
+
+static int iwpriv_set_mac_filters(struct net_device *dev,
+        struct iw_request_info *info,
+        union iwreq_data *wrqu,
+        char *ext)
+{
+
+        int i, ret = -1;
+        char  * extra = NULL;
+        int mac_cnt = 0;
+        int mac_mode;
+        char sub_cmd[16];
+        struct mac_list_set mac_list_set;
+        struct maclist *mac_list;
+
+        WL_TRACE((">>> Got IWPRIV SET_MAC_FILTER IOCTL:  info->cmd:%x, \
+                        info->flags:%x, u.data:%p, u.len:%d\n",
+                        info->cmd, info->flags,
+                        wrqu->data.pointer, wrqu->data.length));
+
+        if (wrqu->data.length != 0) {
+                char *str_ptr;
+                if (!(extra = kmalloc(wrqu->data.length+1, GFP_KERNEL)))
+                        return -ENOMEM;
+                if (copy_from_user(extra, wrqu->data.pointer, wrqu->data.length)) {
+                        kfree(extra);
+                        return -EFAULT;
+                }
+                extra[wrqu->data.length] = 0;
+                WL_SOFTAP((" Got parameter string in iw_point:\n %s \n", extra));
+                memset(&mac_list_set, 0, sizeof(mac_list_set));
+                memset(sub_cmd, 0, sizeof(sub_cmd));
+                str_ptr = extra;
+                if (get_parameter_from_string(&str_ptr, "ASCII_CMD=", PTYPE_STRING, sub_cmd, 15) != 0) {
+                        goto exit_proc;
+                }
+                if (0 == strncmp(sub_cmd, "MAC_FLT_W", strlen("MAC_FLT_W"))) {
+                        mac_mode = MACLIST_MODE_ALLOW;
+                        mac_list = (struct maclist *)&mac_list_set.white_list;
+                } else if (0 == strncmp(sub_cmd, "MAC_FLT_B", strlen("MAC_FLT_B"))) {
+                        mac_mode = MACLIST_MODE_ENABLED;
+                        mac_list = (struct maclist *)&mac_list_set.black_list;
+                } else {
+                   WL_ERROR(("ERROR: sub_cmd:%s != 'MAC_FLT_W' or 'MAC_FLT_B'!\n", sub_cmd));
+                        goto exit_proc;
+                }
+                if (get_parameter_from_string(&str_ptr, "MAC_CNT=",
+                        PTYPE_INTDEC, &mac_cnt, 4) != 0) {
+                        WL_ERROR(("ERROR: MAC_CNT param is missing \n"));
+                        goto exit_proc;
+                }
+                if (mac_cnt == 0) {
+                        mac_mode = MACLIST_MODE_DISABLED;
+                } else {
+                        if (mac_cnt > MAC_FILT_MAX) {
+                                WL_ERROR(("ERROR: number of MAC filters > MAX\n"));
+                                goto exit_proc;
+                        }
+                        for (i=0; i< mac_cnt; i++) {
+                                if (get_parameter_from_string(&str_ptr, "MAC=",
+                                        PTYPE_STR_HEX, &mac_list->ea[i], 12) != 0) {
+                                        WL_ERROR(("ERROR: MAC_filter[%d] is missing !\n", i));
+                                        goto exit_proc;
+                                }
+                        }
+                        for (i = 0; i < mac_cnt; i++) {
+                           WL_SOFTAP(("MAC[%d]:", i));
+                           dhd_print_buf(&mac_list->ea[i], 6, 0);
+                        }
+                }
+
+                mac_list_set.mode = mac_mode;
+                mac_list->count = mac_cnt;
+                ret = set_ap_mac_list(dev, (char *)&mac_list_set);
+                wrqu->data.pointer = NULL;
+                wrqu->data.length = 0;
+        } else {
+          WL_ERROR(("IWPRIV argument len is 0\n"));
+          return -1;
+        }
+        exit_proc:
+        kfree(extra);
+        return ret;
+}
+#else /* NEW_AP_INTERFACE */
+// MOBILE HOTSPOT for Verizon :: END
 static int
 iwpriv_set_mac_filters(struct net_device *dev,
         struct iw_request_info *info,
@@ -2047,6 +2476,9 @@ iwpriv_set_mac_filters(struct net_device *dev,
 	kfree(extra);
 	return ret;
 }
+// MOBILE HOTSPOT for Verizon :: START
+#endif /* NEW_AP_INTERFACE */
+// MOBILE HOTSPOT for Verizon :: END
 #endif /* SOFTAP */
 
 #endif /* WIRELESS_EXT > 12 */
@@ -2231,7 +2663,6 @@ wl_iw_set_mode(
 //patch for interface down
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
 
-	printk("%s: SIOCSIWMODE MODE %d SSS \n", dev->name, uwrq);
 	if (error = dev_wlc_ioctl(dev, WLC_SET_INFRA, &infra, sizeof(infra))){
 		printk("wl_iw_set_mode: can not set WLC_SET_INFRA \n");
 		return error;
@@ -2240,10 +2671,10 @@ wl_iw_set_mode(
 	if ((error = dev_wlc_ioctl(dev, WLC_SET_INFRA, &infra, sizeof(infra))) ||
 	    (error = dev_wlc_ioctl(dev, WLC_SET_AP, &ap, sizeof(ap))))
 		return error;
+#endif
 
 	/* -EINPROGRESS: Call commit handler */
 	return -EINPROGRESS;
-#endif
 }
 
 static int
@@ -2356,7 +2787,7 @@ wl_iw_get_range(
 	}
 	rateset.count = dtoh32(rateset.count);
 	range->num_bitrates = rateset.count;
-	for (i = 0; i < rateset.count && i < IW_MAX_BITRATES; i++)
+	for (i = 0; i < rateset.count && i < WL_NUMRATES; i++)
 		range->bitrate[i] = (rateset.rates[i]& 0x7f) * 500000; /* convert to bps */
 	dev_wlc_intvar_get(dev, "nmode", &nmode);
 	dev_wlc_ioctl(dev, WLC_GET_PHYTYPE, &phytype, sizeof(phytype));
@@ -2983,6 +3414,12 @@ wl_iw_iscan_prep(wl_scan_params_t *params, wlc_ssid_t *ssid)
 	params->home_time = -1;
 #ifdef USE_INITIAL_2G_SCAN
 	if (g_first_broadcast_scan == BROADCAST_SCAN_FIRST_STARTED) {
+		/* Prevent Memory Corruption. */
+		if (g_init_scan_chan_num > 14) {
+			WL_ERROR(("%s : g_init_scan_chan_num %d\n",
+				__func__, g_init_scan_chan_num));
+			g_init_scan_chan_num = 14;
+		}
 		params->channel_num = g_init_scan_chan_num;
 		memcpy(params->channel_list, g_init_scan_chan_list, g_init_scan_chan_num*sizeof(uint16));
 		WL_SCAN(("Triggering 2.4G scan only\n"));
@@ -3664,6 +4101,14 @@ wl_iw_iscan_set_scan_broadcast_prep(struct net_device *dev, uint flag)
 				if ((0 < chan) && (chan <= 14))
 					g_init_scan_chan_num++;
 			}
+			/* Prevent Memory Corruption */
+			if (g_init_scan_chan_num > 14) {
+				WL_ERROR(("%s: channel_num %d is over(14)\n",
+					__func__, g_init_scan_chan_num));
+				WL_ERROR(("%s: list->count is returned %d\n",
+					__func__, list->count));
+				g_init_scan_chan_num = 14;
+			}
 			WL_SCAN(("%s: Trying %d channels for initial broad scan\n", __FUNCTION__, g_init_scan_chan_num));
 		}
 #endif /* USE_INITIAL_2G_SCAN */
@@ -3976,6 +4421,7 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 			wpa_snprintf_hex(buf + 10, 2+1, &(ie->len), 1);
 			wpa_snprintf_hex(buf + 12, 2*ie->len+1, ie->data, ie->len);
 			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, buf);
+			kfree(buf);
 #endif 
 			break;
 		}
@@ -4080,7 +4526,7 @@ wl_iw_get_scan_prep(
 				iwe.cmd = SIOCGIWRATE;
 				/* Those two flags are ignored... */
 				iwe.u.bitrate.fixed = iwe.u.bitrate.disabled = 0;
-				for (j = 0; j < bi->rateset.count && j < IW_MAX_BITRATES; j++) {
+				for (j = 0; j < bi->rateset.count && j < WL_NUMRATES; j++) {
 					iwe.u.bitrate.value =
 						(bi->rateset.rates[j] & 0x7f) * 500000;
 					value = IWE_STREAM_ADD_VALUE(info, event, value, end, &iwe,
@@ -4492,7 +4938,7 @@ wl_iw_iscan_get_scan(
 			iwe.cmd = SIOCGIWRATE;
 			/* Those two flags are ignored... */
 			iwe.u.bitrate.fixed = iwe.u.bitrate.disabled = 0;
-			for (j = 0; j < bi->rateset.count && j < IW_MAX_BITRATES; j++) {
+			for (j = 0; j < bi->rateset.count && j < WL_NUMRATES; j++) {
 					iwe.u.bitrate.value =
 					        (bi->rateset.rates[j] & 0x7f) * 500000;
 				value = IWE_STREAM_ADD_VALUE(info, event, value, end, &iwe,
@@ -5725,7 +6171,20 @@ wl_iw_set_wpaauth(
 				val = WPA2_AUTH_PSK;
 			else /* IW_AUTH_WPA_VERSION_DISABLED */
 				val = WPA_AUTH_DISABLED;
-		} else if (paramval & IW_AUTH_KEY_MGMT_802_1X) {
+		}
+#ifdef BCMCCX
+		else if (paramval & IW_AUTH_KEY_MGMT_CCKM) {
+			if (iw->wpaversion == IW_AUTH_WPA_VERSION_WPA) {
+				val = WPA_AUTH_CCKM;
+			}
+			else if (iw->wpaversion == IW_AUTH_WPA_VERSION_WPA2) {
+				val = WPA2_AUTH_CCKM;
+			}
+			else /* IW_AUTH_WPA_VERSION_DISABLED */
+				val = WPA_AUTH_DISABLED;			
+		} 
+#endif /*BCMCCX*/
+		else if (paramval & IW_AUTH_KEY_MGMT_802_1X) {
 			if (iw->wpaversion == IW_AUTH_WPA_VERSION_WPA)
 				val = WPA_AUTH_UNSPECIFIED;
 			else if (iw->wpaversion == IW_AUTH_WPA_VERSION_WPA2)
@@ -5758,6 +6217,10 @@ wl_iw_set_wpaauth(
 			val = 1;
 		else if (paramval == (IW_AUTH_ALG_OPEN_SYSTEM | IW_AUTH_ALG_SHARED_KEY))
 			val = 2;
+#ifdef BCMCCX
+		else if (paramval == IW_AUTH_ALG_LEAP)
+			val = DOT11_LEAP_AUTH;
+#endif /* BCMCCX */
 		else
 			error = 1;
 		if (!error && (error = dev_wlc_intvar_set(dev, "auth", val)))
@@ -5828,6 +6291,10 @@ wl_iw_set_wpaauth(
 }
 #define VAL_PSK(_val) (((_val) & WPA_AUTH_PSK) || ((_val) & WPA2_AUTH_PSK))
 
+#ifdef BCMCCX
+#define VAL_CCKM(_val) (((_val) & WPA_AUTH_CCKM) || ((_val) & WPA2_AUTH_CCKM))
+#endif /* BCMCCX */
+
 static int
 wl_iw_get_wpaauth(
 	struct net_device *dev,
@@ -5863,6 +6330,11 @@ wl_iw_get_wpaauth(
 		/* psk, 1x */
 		if ((error = dev_wlc_intvar_get(dev, "wpa_auth", &val)))
 			return error;
+#ifdef BCMCCX
+		if (VAL_CCKM(val))
+			paramval = IW_AUTH_KEY_MGMT_CCKM;
+		else
+#endif /* BCMCCX */
 		if (VAL_PSK(val))
 			paramval = IW_AUTH_KEY_MGMT_PSK;
 		else
@@ -6610,41 +7082,52 @@ get_softap_auto_channel(struct net_device *dev, struct ap_profile *ap)
 	ASSERT(iolen);
 	res |= dev_wlc_ioctl(dev, WLC_SET_VAR, buf, iolen);
 #endif
-	auto_channel_retry:
-			request.count = htod32(0);
-			ret = dev_wlc_ioctl(dev, WLC_START_CHANNEL_SEL, &request, sizeof(request));
-			if (ret < 0) {
-				WL_ERROR(("can't start auto channel scan\n"));
-				goto fail;
-			}
+		request.count = htod32(0);
+		ret = dev_wlc_ioctl(dev, WLC_START_CHANNEL_SEL, &request, sizeof(request));
+		if (ret < 0) {
+			WL_ERROR(("can't start auto channel scan, error code = %d\n", ret));
+			goto fail;
+		}
 
-	get_channel_retry:
-			bcm_mdelay(500);
+get_channel_retry:
+		bcm_mdelay(350);
 
-			ret = dev_wlc_ioctl(dev, WLC_GET_CHANNEL_SEL, &chosen, sizeof(chosen));
-			if (ret < 0 || dtoh32(chosen) == 0) {
-				if (retry++ < 3)
-					goto get_channel_retry;
-				else {
+		ret = dev_wlc_ioctl(dev, WLC_GET_CHANNEL_SEL, &chosen, sizeof(chosen));
+		if (ret < 0 || dtoh32(chosen) == 0) {
+			if (retry++ < 15) {				
+				goto get_channel_retry;
+			} else {
+				if (ret < 0) {
 					WL_ERROR(("can't get auto channel sel, err = %d, "
-					          "chosen = %d\n", ret, chosen));
+							  "chosen = 0x%04X\n", ret, (uint16)chosen));
 					goto fail;
+				} else { /* no error, just timed out */
+					ap->channel = (uint16)last_auto_channel;
+					WL_ERROR(("auto channel sel timed out. we get channel %d\n", ap->channel));
 				}
 			}
-			if ((chosen == 1) && (!rescan++))
-				goto auto_channel_retry;
-			WL_SOFTAP(("Set auto channel = %d\n", chosen));
-			ap->channel = chosen;
-			if ((res = dev_wlc_ioctl(dev, WLC_DOWN, &updown, sizeof(updown))) < 0) {
-				WL_ERROR(("%s fail to set up err =%d\n", __FUNCTION__, res));
-				goto fail;
-			}
+		}
+
+		if (chosen) {
+			ap->channel = (uint16)chosen & 0x00FF;
+			WL_SOFTAP(("Set auto channel = %d\n", ap->channel));
+		}
+
+		if ((res = dev_wlc_ioctl(dev, WLC_DOWN, &updown, sizeof(updown))) < 0) {
+			WL_ERROR(("%s fail to set up err =%d\n", __FUNCTION__, res));
+			goto fail;
+		}
 #ifndef AP_ONLY
 	if (!res)
 		last_auto_channel = ap->channel;
 #endif
 
 fail :
+	if (ret < 0) {
+		WL_TRACE(("%s: return value %d\n", __FUNCTION__, ret));
+		return ret;
+	}
+
 	return res;
 } /* ap channel autosellect */
 
@@ -6689,6 +7172,21 @@ set_ap_cfg(struct net_device *dev, struct ap_profile *ap)
 #ifdef USE_HIDDEN_SSID
 	WL_SOFTAP(("	hidden = %d\n", ap->hidden_ssid));
 #endif
+
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+        WL_SOFTAP(("    802.11 = %d\n", ap->op_mode));
+        WL_SOFTAP(("    MAC filter mode = %d\n", ap->mac_filter.mode));
+        if (ap->mac_filter.mode == 0) {
+                WL_SOFTAP(("    MAC filter disabled\n"));
+        } else {
+                WL_SOFTAP(("    MAC filter count = %d\n", ap->mac_filter.mode == 1 ? ap->mac_filter.black_list.count : ap->mac_filter.white_list.count));
+        }
+        if (ap->is_wep) {
+                WL_SOFTAP(("    WEP key index = %d\n", ap->key_index));
+        }
+#endif /* NEW_AP_INTERFACE */
+// MOBILE HOTSPOT for Verizon :: END
+
 
 #ifdef AP_ONLY
 	if (ap_cfg_running) {
@@ -6745,9 +7243,10 @@ set_ap_cfg(struct net_device *dev, struct ap_profile *ap)
 		WL_TRACE(("\n>in %s: apsta set result: %d \n", __FUNCTION__, res));
 #endif /* AP_ONLY */
 
-		/* add this line here */
+		/*  WMM and ARP offloading disable  */
 		dev_wlc_intvar_set(dev, "wme", 0);
 		dev_wlc_intvar_set(dev, "arpoe", 0);
+		dev_wlc_intvar_set(dev, "vlan_mode", 0);
 
 		updown = 1;
 		if ((res = dev_wlc_ioctl(dev, WLC_UP, &updown, sizeof(updown))) < 0) {
@@ -6867,6 +7366,22 @@ set_ap_cfg(struct net_device *dev, struct ap_profile *ap)
 			goto fail;
 		}
 
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+                WL_SOFTAP(("%s: %s closednet = %d\n", __FUNCTION__, ap_net_dev->name, my_ap.hidden_ssid));
+                iolen = wl_bssiovar_mkbuf("closednet", bsscfg_index, (char *)(&my_ap.hidden_ssid),
+                        sizeof(my_ap.hidden_ssid), buf, sizeof(buf), &mkvar_err);
+                ASSERT(iolen);
+                if ((res = dev_wlc_ioctl(ap_net_dev, WLC_SET_VAR, buf, iolen)) != 0) {
+                        WL_ERROR(("ERROR:%d in:%s, closednet failed\n", res, __FUNCTION__));
+                        goto fail;
+                }
+                if ((res = set_ap_mac_list(ap_net_dev, (char *)&my_ap.mac_filter)) != 0) {
+                        WL_ERROR(("%s: set_ap_mac_list() failed. err=%d\n", __FUNCTION__, res));
+                        goto fail;
+                }
+#endif /* NEW_AP_INTERFACE */
+// MOBILE HOTSPOT for Verizon :: END
+
 		/* kick off SOFTAP BSS */
 		if ((res = dev_iw_write_cfg1_bss_var(dev, 1)) < 0) {
 			WL_ERROR(("%s fail to set bss up\n", __FUNCTION__));
@@ -6957,8 +7472,17 @@ wl_iw_set_ap_security(struct net_device *dev, struct ap_profile *ap)
 
 		wsec_pmk_t psk;
 		size_t key_len;
-
+#ifdef MOBILEAP_CERT
+		if (strcmp(ap->enc, "AES") == 0) {
 		wsec = AES_ENABLED;
+			WL_ERROR(("%s: WPA2-PSK/AES\n", __FUNCTION__));
+		} else {
+			wsec = TKIP_ENABLED;
+			WL_ERROR(("%s: WPA2-PSK/TKIP\n", __FUNCTION__));
+		}
+#else
+		wsec = AES_ENABLED;
+#endif
 		dev_wlc_intvar_set(dev, "wsec", wsec);
 
 		key_len = strlen(ap->key);
@@ -7006,8 +7530,18 @@ wl_iw_set_ap_security(struct net_device *dev, struct ap_profile *ap)
 		/* * ========  WPA TKIP ============ * */
 		wsec_pmk_t psk;
 		size_t key_len;
-
+#ifdef MOBILEAP_CERT
+		if (strcmp(ap->enc, "AES") == 0) {
+			wsec = AES_ENABLED;
+			WL_ERROR(("%s: WPA-PSK/AES\n", __FUNCTION__));
+		} else {
+			wsec = TKIP_ENABLED;
+			WL_ERROR(("%s: WPA-PSK/TKIP\n", __FUNCTION__));
+		}
+#else
 		wsec = TKIP_ENABLED;
+#endif
+
 		res = dev_wlc_intvar_set(dev, "wsec", wsec);
 
 		key_len = strlen(ap->key);
@@ -7310,12 +7844,12 @@ iwpriv_fw_reload(struct net_device *dev,
 	union iwreq_data *wrqu,
 	char *ext)
 {
+#ifndef MOBILEAP_RELOAD
 	WL_SOFTAP(("current firmware_path[]=%s\n", fw_path));
 	ap_fw_loaded = TRUE;
 	WL_SOFTAP(("%s: FORCE APSTA FW\n", __FUNCTION__));
 	return 0;
-
-#if 0
+#else
 	int ret = -1;
 	char extra[256];
 	char *fwstr = fw_path ; /* points to current Firmware path string */
@@ -7346,7 +7880,7 @@ iwpriv_fw_reload(struct net_device *dev,
 			goto exit_proc;
 		}
 
-		if  (strstr(fwstr, "apsta") != NULL) {
+		if  (strstr(fwstr, "aps") != NULL) {
 			  WL_SOFTAP(("GOT APSTA FIRMWARE\n"));
 			  ap_fw_loaded = TRUE;
 		} else {
@@ -7358,6 +7892,11 @@ iwpriv_fw_reload(struct net_device *dev,
 		ret = 0;
 	} else {
 		WL_ERROR(("Error: ivalid param len:%d\n", wrqu->data.length));
+		WL_SOFTAP(("------------------------------------------------\n"));
+		WL_SOFTAP(("AP FIRMWARE is NOT set. YOU MUST CHANGE THE F/W.\n"));
+		WL_SOFTAP(("------------------------------------------------\n"));		
+		ap_fw_loaded = TRUE;
+		ret = 0;
 	}
 
 exit_proc:
@@ -7365,7 +7904,7 @@ exit_proc:
 #endif
 }
 
-#ifdef SOFTAP
+#if defined(SOFTAP) && !defined(HOTSPOT_VERIZON) // MOBILE HOTSPOT for Verizon :: START
 /* loop back test function only for debugging */
 static int
 iwpriv_wpasupp_loop_tst(struct net_device *dev,
@@ -7438,6 +7977,27 @@ static int
 		WL_ERROR((" %s ERROR setting SOFTAP security in :%d\n", __FUNCTION__, res));
 	}
 	else {
+
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+                int iolen = 0;
+                int bsscfg_index = 1;
+                int mkvar_err = 0;
+                char buf[WLC_IOCTL_SMLEN];
+                WL_SOFTAP(("%s: %s closednet = %d\n", __FUNCTION__, ap_net_dev->name, my_ap.hidden_ssid));
+                iolen = wl_bssiovar_mkbuf("closednet", bsscfg_index, (char *)(&my_ap.hidden_ssid),
+                        sizeof(my_ap.hidden_ssid), buf, sizeof(buf), &mkvar_err);
+                ASSERT(iolen);
+                if ((res = dev_wlc_ioctl(dev, WLC_SET_VAR, buf, iolen)) != 0) {
+                        WL_ERROR(("ERROR:%d in:%s, closednet failed\n", res, __FUNCTION__));
+                        goto done;
+        }
+                if ((res = set_ap_mac_list(dev, (char *)&my_ap.mac_filter)) != 0) {
+                        WL_ERROR(("%s: set_ap_mac_list() failed. err=%d\n", __FUNCTION__, res));
+                        goto done;
+                }
+#endif /* NEW_AP_INTERFACE */ // MOBILE HOTSPOT for Verizon :: END
+
+
 		/* kick off SoftAP BSS is UP */
 		if ((res = dev_iw_write_cfg1_bss_var(dev, 1)) < 0)
 			WL_ERROR(("%s fail to set bss up err=%d\n", __FUNCTION__, res));
@@ -7447,6 +8007,9 @@ static int
 	}
 
 #endif /* AP_ONLY */
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+done:
+#endif // MOBILE HOTSPOT for Verizon :: END
 	WL_SOFTAP(("%s done with res %d \n", __FUNCTION__, res));
 
 	DHD_OS_MUTEX_UNLOCK(&wl_softap_lock);
@@ -7470,6 +8033,109 @@ get_assoc_sta_list(struct net_device *dev, char *buf, int len)
 /*
 * ********* configure WL mac filtering function ********
 */
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+static int
+set_ap_mac_list(struct net_device *dev, char *buf)
+{
+        struct mac_list_set *mac_list_set = (struct mac_list_set *)buf;
+        struct maclist *white_maclist = (struct maclist *)&mac_list_set->white_list;
+        struct maclist *black_maclist = (struct maclist *)&mac_list_set->black_list;
+        int mac_mode = mac_list_set->mode;
+        int length;
+        int i, ret;
+
+        ap_macmode = mac_mode;
+
+        if (mac_mode == MACLIST_MODE_DISABLED) {
+                bzero(&ap_black_list, sizeof(struct mflist));
+                ret = dev_wlc_ioctl(dev, WLC_SET_MACMODE, &mac_mode, sizeof(mac_mode));
+                if (ret) return ret;
+        } else if ((mac_mode == MACLIST_MODE_ENABLED) || (mac_mode == MACLIST_MODE_ALLOW)) {
+                scb_val_t scbval;
+                char mac_buf[256] = {0};
+                struct maclist *maclist;
+                struct maclist *assoc_maclist = (struct maclist *) mac_buf;
+
+                ret = dev_wlc_ioctl(dev, WLC_SET_MACMODE, &mac_mode, sizeof(mac_mode));
+                if (ret) return ret;
+
+                if (mac_mode == MACLIST_MODE_ENABLED) {
+                        maclist = (struct maclist *)&mac_list_set->black_list;
+                } else {
+                        maclist = (struct maclist *)&mac_list_set->white_list;
+                }
+
+                length = sizeof(maclist->count) + maclist->count*ETHER_ADDR_LEN;
+                ret = dev_wlc_ioctl(dev, WLC_SET_MACLIST, maclist, length);
+                if (ret) return ret;
+
+                WL_SOFTAP(("White List, length %d:\n", length));
+                for (i = 0; i < maclist->count; i++)
+                        WL_SOFTAP(("mac %d: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                                i,
+                                maclist->ea[i].octet[0], maclist->ea[i].octet[1], \
+                                maclist->ea[i].octet[2], maclist->ea[i].octet[3], \
+                                maclist->ea[i].octet[4], maclist->ea[i].octet[5]));
+
+                bcopy(black_maclist, &ap_black_list, sizeof(ap_black_list));
+
+                WL_SOFTAP(("Black List, size %d:\n", sizeof(ap_black_list)));
+                for (i = 0; i < ap_black_list.count; i++)
+                        WL_SOFTAP(("mac %d: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                                i,
+                                ap_black_list.ea[i].octet[0], ap_black_list.ea[i].octet[1], \
+                                ap_black_list.ea[i].octet[2], ap_black_list.ea[i].octet[3], \
+                                ap_black_list.ea[i].octet[4], ap_black_list.ea[i].octet[5]));
+
+                dev_wlc_ioctl(dev, WLC_GET_ASSOCLIST, assoc_maclist, 256);
+                if (mac_mode == MACLIST_MODE_ALLOW) {
+                        if (assoc_maclist->count) {
+                                int j;
+                                for (i = 0; i < assoc_maclist->count; i++) {
+                                        for (j = 0; j < white_maclist->count; j++) {
+                                                if (!bcmp(&assoc_maclist->ea[i], &white_maclist->ea[j], \
+                                                        ETHER_ADDR_LEN)) {
+                                                        WL_SOFTAP(("match allow, let it be\n"));
+                                                        break;
+                                                }
+                                        }
+                                        if (j == white_maclist->count) {
+                                                WL_SOFTAP(("match black, deauth it\n"));
+                                                scbval.val = htod32(1);
+                                                bcopy(&assoc_maclist->ea[i], &scbval.ea, ETHER_ADDR_LEN);
+                                                dev_wlc_ioctl(dev, \
+                                                        WLC_SCB_DEAUTHENTICATE_FOR_REASON, &scbval,
+                                                        sizeof(scb_val_t));
+                                        }
+                                }
+                        }
+                } else if (mac_mode == MACLIST_MODE_ENABLED) {
+                        if (assoc_maclist->count) {
+                                int j;
+                                for (i = 0; i < assoc_maclist->count; i++) {
+                                        for (j = 0; j < black_maclist->count; j++) {
+                                                if (!bcmp(&assoc_maclist->ea[i], &black_maclist->ea[j], \
+                                                        ETHER_ADDR_LEN)) {
+                                                        WL_SOFTAP(("match block found\n"));
+                                                        break;
+                                                }
+                                        }
+                                        if (j < black_maclist->count) {
+                                                WL_SOFTAP(("match black, deauth it\n"));
+                                                scbval.val = htod32(1);
+                                                bcopy(&assoc_maclist->ea[i], &scbval.ea, ETHER_ADDR_LEN);
+                                                dev_wlc_ioctl(dev, \
+                                                        WLC_SCB_DEAUTHENTICATE_FOR_REASON, &scbval,
+                                                        sizeof(scb_val_t));
+                                        }
+                                }
+                        }
+                }
+        }
+
+        return 0;
+}
+#else // MOBILE HOTSPOT for Verizon :: END
 static int
 set_ap_mac_list(struct net_device *dev, char *buf)
 {
@@ -7544,6 +8210,7 @@ set_ap_mac_list(struct net_device *dev, char *buf)
 	}
 	return 0;
 }
+#endif /* NEW_AP_INTERFACE */ // MOBILE HOTSPOT for Verizon ::
 #endif /* SOFTAP */
 
 
@@ -7601,8 +8268,21 @@ wl_iw_process_private_ascii_cmd(
 #endif
 	} else if (strnicmp(sub_cmd, "ASSOC_LST", strlen("ASSOC_LST")) == 0) {
 
+#ifdef NEW_AP_INTERFACE // MOBILE HOTSPOT for Verizon :: START
+                if (ap_net_dev == NULL) {
+                         WL_SOFTAP(("\n ERROR: SOFTAP net_dev* is NULL !!!\n"));
+                } else {
+                        char mac_buf[512];
+                        get_assoc_sta_list(ap_net_dev, mac_buf, 512);
+                           if (dwrq->data.length) {
+                                if (copy_to_user(dwrq->data.pointer, mac_buf, dwrq->data.length)) {
+                                        WL_ERROR(("%s: Can't copy to user\n", __FUNCTION__));
+                                        return -EFAULT;
+                                }
+                        }
+                }
+#endif /* NEW_AP_INTERFACE */ // MOBILE HOTSPOT for Verizon :: END
 		/* TODO call iwpriv get assoc list handler  */
-
 	} else if (strnicmp(sub_cmd, "AP_BSS_STOP", strlen("AP_BSS_STOP")) == 0) {
 
 		WL_SOFTAP((" \n temp DOWN SOFTAP\n"));
@@ -7825,6 +8505,95 @@ static int wl_iw_get_roam_scan_period(
 }
 #endif
 
+#ifdef BCMCCX
+static int
+wl_iw_get_cckm_rn(
+	struct net_device *dev,
+	struct iw_request_info *info,
+	union iwreq_data *wrqu,
+	char *extra
+)
+{
+	int error, rn;
+
+	WL_TRACE(("%s: wl_iw_get_cckm_rn\n", dev->name));
+
+	if ((error = dev_wlc_intvar_get(dev, "cckm_rn", &rn)))
+	{
+		return error;
+	}
+
+	memcpy(extra, &rn, sizeof(u32));
+	wrqu->data.length = sizeof(u32);
+
+	return 0;
+}
+
+static int
+wl_iw_set_cckm_krk(
+	struct net_device *dev,
+	struct iw_request_info *info,
+	union iwreq_data *wrqu,
+	char *extra
+)
+{
+	int error;
+	u8 key[16];
+
+	WL_TRACE(("%s: wl_iw_set_cckm_krk\n", dev->name));
+
+	memcpy(key, extra+strlen("set cckm_krk")+1, 16);
+
+	if ((error = dev_wlc_bufvar_set(dev, "cckm_krk", key, sizeof(key))))
+		return error;
+
+	return 0;
+}
+
+static int
+wl_iw_get_assoc_res_ies(
+	struct net_device *dev,
+	struct iw_request_info *info,
+	union iwreq_data *wrqu,
+	char *extra
+)
+{
+	int error;
+	u8 buf[256];
+	wl_assoc_info_t assoc_info;
+	u32 resp_ies_len = 0;
+
+	WL_TRACE(("%s: wl_iw_get_assoc_res_ies\n", dev->name));
+
+	if ((error = dev_wlc_bufvar_get(dev, "assoc_info", buf, sizeof(buf))))
+		return error;
+
+	memcpy(&assoc_info, buf, sizeof(wl_assoc_info_t));
+	assoc_info.req_len = htod32(assoc_info.req_len);
+	assoc_info.resp_len = htod32(assoc_info.resp_len);
+	assoc_info.flags = htod32(assoc_info.flags);
+
+	if (assoc_info.resp_len) {
+		resp_ies_len = assoc_info.resp_len - sizeof(struct dot11_assoc_resp);
+	}
+
+	/* first 4 bytes are ie len */
+	memcpy(extra, &resp_ies_len, sizeof(u32));
+	wrqu->data.length = sizeof(u32);
+
+	/* get the association resp IE's if there are any */
+	if (resp_ies_len) {
+		if ((error = dev_wlc_bufvar_get(dev, "assoc_resp_ies", buf, sizeof(buf))))
+			return error;
+
+		memcpy(extra+sizeof(u32), buf, resp_ies_len);
+		wrqu->data.length += resp_ies_len;
+	}
+
+	return 0;
+}
+#endif /* BCMCCX */
+
 static int
 wl_iw_set_priv(
 	struct net_device *dev,
@@ -7952,6 +8721,15 @@ wl_iw_set_priv(
 			set_ap_mac_list(dev, (extra + PROFILE_OFFSET));
 	    }
 #endif /* SOFTAP */
+
+#ifdef BCMCCX
+	    else if (strnicmp(extra, "get cckm_rn", strlen("get cckm_rn")) == 0)
+			ret = wl_iw_get_cckm_rn(dev, info, (union iwreq_data *)dwrq, extra);
+	    else if (strnicmp(extra, "set cckm_krk", strlen("set cckm_krk")) == 0)
+			ret = wl_iw_set_cckm_krk(dev, info, (union iwreq_data *)dwrq, extra);
+	    else if (strnicmp(extra, "get assoc_res_ies", strlen("get assoc_res_ies")) == 0)
+			ret = wl_iw_get_assoc_res_ies(dev, info, (union iwreq_data *)dwrq, extra);
+#endif /* BCMCCX */
 
 #ifdef OKC_SUPPORT
         else if (strnicmp(extra, "SET_PMK",strlen("SET_PMK")) == 0)
@@ -8109,8 +8887,13 @@ static const iw_handler wl_iw_priv_handler[] = {
 	NOTE: wpa supplicant's 'driver_wext.c' needs to handle LPB_CMD_EVENT
 	from the driver and iimplement. driver_cmd function on struct wpa_driver_ops
 	*/
+#ifdef HOTSPOT_VERIZON // MOBILE HOTSPOT for Verizon :: START
+        NULL,
+        (iw_handler)iwpriv_disassoc_sta,
+#else
 	NULL,
 	(iw_handler)iwpriv_wpasupp_loop_tst,
+#endif // MOBILE HOTSPOT for Verizon :: END
 	/* AP_BSS_STOP Stop SOFTAP */
 	NULL,
 	(iw_handler)iwpriv_softap_stop,
@@ -8121,8 +8904,12 @@ static const iw_handler wl_iw_priv_handler[] = {
 #if defined(CSCAN)
 	/* Combined scan call */
 	NULL,
-	(iw_handler)iwpriv_set_cscan
+	(iw_handler)iwpriv_set_cscan,
 #endif 	
+#ifdef FEATURE_HOTSPOT_MAX_ASSOC // MOBILE HOTSPOT for Verizon :: START
+        NULL,
+        (iw_handler)iwpriv_set_max_stations,
+#endif // MOBILE HOTSPOT for Verizon :: END
 };
 
 static const struct iw_priv_args wl_iw_priv_args[] =
@@ -8203,12 +8990,21 @@ static const struct iw_priv_args wl_iw_priv_args[] =
 		"AP_BSS_START"
 	},
 
+#ifdef HOTSPOT_VERIZON // MOBILE HOTSPOT for Verizon :: START
+    {
+        WL_FW_DISASSOC_STA,
+        IW_PRIV_TYPE_CHAR | 256,
+        IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 0,
+        "WL_FW_DISASSOC"
+    },
+#else
 	{
 		AP_LPB_CMD,
 		IW_PRIV_TYPE_CHAR | 256,   /* set, long str cmd wpa supp loopback test   */
 		IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_FIXED | 0,    /* fixed get   */
 		"AP_LPB_CMD"
 	},
+#endif // MOBILE HOTSPOT for Verizon :: END
 
 	{ /*  STOP access point */
 		WL_AP_STOP,
@@ -8231,7 +9027,15 @@ static const struct iw_priv_args wl_iw_priv_args[] =
 		"CSCAN"
 	},
 #endif 
-	};
+#ifdef FEATURE_HOTSPOT_MAX_ASSOC // MOBILE HOTSPOT for Verizon :: START
+    {
+        WL_AP_MAX_ASSOC,
+        IW_PRIV_TYPE_CHAR | 256,
+        0,
+        "AP_MAX_ASSOC"
+    },
+#endif // MOBILE HOTSPOT for Verizon :: END
+};
 
 const struct iw_handler_def wl_iw_handler_def =
 {
@@ -8487,6 +9291,11 @@ wl_iw_check_conn_fail(wl_event_msg_t *e, char* stringBuf, uint buflen)
 #define IW_CUSTOM_MAX 256 /* size of extra buffer used for translation of events */
 #endif /* IW_CUSTOM_MAX */
 
+#ifdef BCMCCX
+/* to avoid disassoc after roaming by deauth frame from previous AP*/
+static char g_current_bssid[6] = {0, };
+#endif /* BCMCCX */
+
 void
 wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 {
@@ -8573,10 +9382,22 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 			ciq_assoc_reject_cnt++;
 		}
 #endif
+#ifdef BCMCCX
+		/* save current bssid */
+		memcpy(g_current_bssid, &e->addr, ETHER_ADDR_LEN);
+#endif /* BCMCCX */
+
 		memcpy(wrqu.addr.sa_data, &e->addr, ETHER_ADDR_LEN);
 		wrqu.addr.sa_family = ARPHRD_ETHER;
 		cmd = IWEVREGISTERED;
 		break;
+
+#ifdef BCMCCX
+	case WLC_E_REASSOC:
+		/* save current bssid */
+		memcpy(g_current_bssid, &e->addr, ETHER_ADDR_LEN);
+		break;
+#endif /* BCMCCX */
 	case WLC_E_ROAM:
 		if (status != WLC_E_STATUS_SUCCESS) {
 			roam_no_success++;
@@ -8593,12 +9414,12 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 				goto wl_iw_event_end;
 			}
 		} else {
-			WL_ASSOC(("%s: WLC_E_ROAM: success\n", __FUNCTION__));
+		  WL_ASSOC(("%s: WLC_E_ROAM: success\n", __FUNCTION__));
 #if defined(ROAM_NOT_USED)
-			roam_no_success_send = FALSE;
-			roam_no_success = 0;
+		  roam_no_success_send = FALSE;
+		  roam_no_success = 0;
 #endif
-			goto wl_iw_event_end;
+		  goto wl_iw_event_end;
 		}
 	break;
 	case WLC_E_DEAUTH_IND:
@@ -8610,6 +9431,15 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 			goto wl_iw_event_end;
 		}
 #endif 
+
+#ifdef BCMCCX
+		/* ignore deauth from previous AP after roaming */
+		if (memcmp(g_current_bssid, &e->addr, 6) != 0) {
+			WL_ERROR(("Deauth[%d] from different BSSID\n", event_type));
+		} else {
+			bzero(g_current_bssid, ETHER_ADDR_LEN);
+#endif /* BCMCCX */
+
 #ifdef CIQ_SUPPORT
 		if (event_type == WLC_E_DISASSOC_IND)
 			ciq_disassoc_cnt++;
@@ -8618,6 +9448,9 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 		bzero(wrqu.addr.sa_data, ETHER_ADDR_LEN);
 		wrqu.addr.sa_family = ARPHRD_ETHER;
 		bzero(&extra, ETHER_ADDR_LEN);
+#ifdef BCMCCX
+		}
+#endif /* BCMCCX */
 		break;
 	case WLC_E_LINK:
 	case WLC_E_NDIS_LINK:
@@ -8772,15 +9605,27 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 	/* PNO Event */
 	case WLC_E_PFN_NET_FOUND:
 	{
-		wlc_ssid_t	* ssid;
-		ssid = (wlc_ssid_t *)data;
+#ifdef PNO_SUPPORT
+		wl_pfn_net_info_t *netinfo;
+		int pno_wakelock_timeout = 10; /* 10 second */
+		
+		netinfo = (wl_pfn_net_info_t *)(data + sizeof(wl_pfn_scanresults_t) -
+		            sizeof(wl_pfn_net_info_t));
+		            
+		netinfo->pfnsubnet.SSID[netinfo->pfnsubnet.SSID_len] = '\0';		            
+		WL_ERROR(("==============================================\n"));
 		WL_ERROR(("%s Event WLC_E_PFN_NET_FOUND, send %s up : find %s len=%d\n",
-			__FUNCTION__, PNO_EVENT_UP, ssid->SSID, ssid->SSID_len));
-		net_os_wake_lock_timeout_enable(dev);
+			__FUNCTION__, PNO_EVENT_UP, netinfo->pfnsubnet.SSID,
+		   netinfo->pfnsubnet.SSID_len));
+		WL_ERROR(("==============================================\n"));
+
 		cmd = IWEVCUSTOM;
 		memset(&wrqu, 0, sizeof(wrqu));
 		strcpy(extra, PNO_EVENT_UP);
 		wrqu.data.length = strlen(extra);
+
+		net_os_wake_lock_timeout_for_pno(dev, pno_wakelock_timeout);
+#endif		
 	}
 	break;
 #ifdef CIQ_SUPPORT
@@ -9127,8 +9972,10 @@ wl_iw_attach(struct net_device *dev, void * dhdp)
 
 	/* Allocate memory for iscan extra params */
 	iscan->iscan_ex_params_p = (wl_iscan_params_t*)kmalloc(params_size, GFP_KERNEL);
-	if (!iscan->iscan_ex_params_p)
+	if (!iscan->iscan_ex_params_p) {
+		kfree(iscan);
 		return -ENOMEM;
+	}
 	iscan->iscan_ex_param_size = params_size;
 	iscan->sysioc_pid = -1;
 	/* we only care about main interface so save a global here */
@@ -9176,7 +10023,6 @@ wl_iw_attach(struct net_device *dev, void * dhdp)
 	/* initialize spec bt dhcp controller */
 	wl_iw_bt_init(dev);
 #endif /* COEX_DHCP */
-
 
 	return 0;
 }

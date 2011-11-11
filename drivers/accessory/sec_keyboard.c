@@ -24,6 +24,7 @@ struct dock_keyboard_drvdata *g_data;
 extern struct class *sec_class;
 extern void dock_keyboard_tx(u8 val);
 extern int change_console_baud_rate(unsigned int baud);
+extern void check_uart_state(void);
 #ifdef CONFIG_MACH_SAMSUNG_P4LTE
 extern void send_disconnect_uevent(void);
 #endif
@@ -36,6 +37,10 @@ static void timer_work(struct work_struct *work)
 	int error;
 	if (data->kl == UNKOWN_KEYLAYOUT ) {
 		data->acc_power(3, false);
+#if defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+		if (data->disable_wifi_uart)
+			data->disable_wifi_uart(false);
+#endif
 
 		/* Set baud rate for the keyboard uart */
 		error = change_console_baud_rate(115200);
@@ -71,16 +76,6 @@ void remapkey_timer(unsigned long _data)
 		keycode = data->keycode[data->remap_key];
 		input_report_key(data->input_dev, keycode, 1);
 		input_sync(data->input_dev);
-	} else {
-
-		if (0x48 == data->remap_key)
-			keycode = KEY_NEXTSONG;
-		else
-			keycode = KEY_PREVIOUSSONG;
-
-		input_report_key(data->input_dev, keycode, 1);
-		input_report_key(data->input_dev, keycode, 0);
-		input_sync(data->input_dev);
 	}
 	data->remap_key = 0;
 }
@@ -106,68 +101,89 @@ static void key_event_work(struct work_struct *work)
 	unsigned int keycode;
 	unsigned char scan_code;
 
-	mutex_lock(&data->mutex);
 	while (data->buf_front != data->buf_rear) {
+		mutex_lock(&data->mutex);
 		scan_code = data->key_buf[data->buf_front];
 		data->buf_front++;
 		if (data->buf_front > MAX_BUF)
 			data->buf_front = 0;
+		mutex_unlock(&data->mutex);
 
 		/* keyboard driver need the contry code*/
 		if (data->kl == UNKOWN_KEYLAYOUT) {
 			switch (scan_code) {
 			case US_KEYBOARD:
-			data->kl = US_KEYLAYOUT;
-			data->keycode[49] = KEY_BACKSLASH;
-			/* for the wakeup state*/
-			data->pre_kl = data->kl;
-			pr_info("[Keyboard] US keyboard is attacted.\n");
-			break;
+				data->kl = US_KEYLAYOUT;
+				data->keycode[49] = KEY_BACKSLASH;
+				/* for the wakeup state*/
+				data->pre_kl = data->kl;
+				pr_info("[Keyboard] US keyboard is attacted.\n");
+				break;
 
 			case UK_KEYBOARD:
-			data->kl = UK_KEYLAYOUT;
-			data->keycode[49] = KEY_NUMERIC_POUND;
-			/* for the wakeup state*/
-			data->pre_kl = data->kl;
-			pr_info("[Keyboard] UK keyboard is attacted.\n");
-			break;
+				data->kl = UK_KEYLAYOUT;
+				data->keycode[49] = KEY_NUMERIC_POUND;
+				/* for the wakeup state*/
+				data->pre_kl = data->kl;
+				pr_info("[Keyboard] UK keyboard is attacted.\n");
+				break;
 
 			default:
-
-			pr_info("[Keyboard] Unkown key layout : %x\n", scan_code);
-			break;
+				pr_info("[Keyboard] Unkown key layout : %x\n", scan_code);
+				break;
 			}
 		} else {
-			/* Caps lock led on/off */
-			if (scan_code == 0xca || scan_code == 0xcb || scan_code == 0xeb || scan_code == 0xec)
-				;/* Ignore */
-			else {
-				press = ((scan_code & 0x80) != 0x80);
+			switch(scan_code) {
+			case 0x0:
+				release_all_keys(data);
+				break;
+
+			case 0xca: /* Caps lock on */
+			case 0xcb: /* Caps lock off */
+			case 0xeb: /* US keyboard */
+			case 0xec: /* UK keyboard */
+				break; /* Ignore */
+
+			case 0x45:
+			case 0x48:
+				data->remap_key = scan_code;
+				data->pressed[scan_code] = true;
+				mod_timer(&data->key_timer, jiffies + HZ/3);
+				break;
+
+			case 0xc5:
+			case 0xc8:
 				keycode = (scan_code & 0x7f);
+				data->pressed[keycode] = false;
+				if (0 == data->remap_key) {
+					input_report_key(data->input_dev, data->keycode[keycode], 0);
+					input_sync(data->input_dev);
+				} else {
+					del_timer(&data->key_timer);
+					if (0x48 == keycode)
+						keycode = KEY_NEXTSONG;
+					else
+						keycode = KEY_PREVIOUSSONG;
+
+					input_report_key(data->input_dev, keycode, 1);
+					input_report_key(data->input_dev, keycode, 0);
+					input_sync(data->input_dev);
+				}
+				break;
+
+			default:
+				keycode = (scan_code & 0x7f);
+				press = ((scan_code & 0x80) != 0x80);
 
 				if (keycode >= KEYBOARD_MIN || keycode <= KEYBOARD_MAX) {
 					data->pressed[keycode] = press;
-
-					/* for the remap keys*/
-					if (keycode == 0x45 || keycode == 0x48) {
-						if (press) {
-							data->remap_key = keycode;
-							mod_timer(&data->key_timer, jiffies + HZ/3);
-						} else {
-							if ( 0 == data->remap_key) {
-								input_report_key(data->input_dev, data->keycode[keycode], press);
-								input_sync(data->input_dev);
-							}
-						}
-					} else {
-						input_report_key(data->input_dev, data->keycode[keycode], press);
-						input_sync(data->input_dev);
-					}
+					input_report_key(data->input_dev, data->keycode[keycode], press);
+					input_sync(data->input_dev);
 				}
+				break;
 			}
 		}
 	}
-	mutex_unlock(&data->mutex);
 }
 
 static void led_work(struct work_struct *work)
@@ -236,9 +252,12 @@ int check_keyboard_dock(bool val)
 			}
 		} else
 			data->pre_kl = UNKOWN_KEYLAYOUT;
-
+#if defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+		if (data->disable_wifi_uart)
+			data->disable_wifi_uart(true);
+#endif
 		data->acc_power(0, false);
-		msleep(200);
+		msleep(400);
 
 		/* if the uart is set as cp path, the path should be switched to ap path.*/
 		data->pre_uart_path = gpio_get_value(GPIO_UART_SEL);
@@ -256,7 +275,8 @@ int check_keyboard_dock(bool val)
 		if (error<0)
 			printk(KERN_ERR "[Keyboard] Couldn't modify the baud rate.\n");
 
-		msleep(10);
+		msleep(20);
+		check_uart_state();
 		data->acc_power(3, true);
 
 		/* try to get handshake data */
@@ -356,6 +376,9 @@ static int __devinit dock_keyboard_probe(struct platform_device *pdev)
 
 	ddata->input_dev = input;
 	ddata->acc_power = pdata->acc_power;
+#if defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+	ddata->disable_wifi_uart = pdata->disable_wifi_uart;
+#endif
 	ddata->acc_int_gpio = pdata->accessory_irq_gpio;
 	ddata->buf_front=ddata->buf_rear=0;
 	ddata->disconnected_time=0;
@@ -398,9 +421,8 @@ static int __devinit dock_keyboard_probe(struct platform_device *pdev)
 	input_set_capability(input, EV_KEY, KEY_NEXTSONG);
 	input_set_capability(input, EV_KEY, KEY_PREVIOUSSONG);
 
-#ifdef CONFIG_MACH_SAMSUNG_P4LTE
+	/* for the wakeup key */
 	input_set_capability(input, EV_KEY, KEY_WAKEUP);
-#endif
 
 	error = input_register_device(input);
 	if (error < 0) {
@@ -455,9 +477,9 @@ static int dock_keyboard_suspend(struct platform_device *pdev,
 
 	return 0;
 }
+
 static int dock_keyboard_resume(struct platform_device *pdev)
 {
-#ifdef CONFIG_MACH_SAMSUNG_P4LTE
 	struct dock_keyboard_platform_data *pdata = pdev->dev.platform_data;
 	struct dock_keyboard_drvdata *data = platform_get_drvdata(pdev);
 	int keycode = 0;
@@ -469,7 +491,6 @@ static int dock_keyboard_resume(struct platform_device *pdev)
 		input_report_key(data->input_dev, keycode, 0);
 		input_sync(data->input_dev);
 	}
-#endif
 	return 0;
 }
 

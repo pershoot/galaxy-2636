@@ -157,6 +157,15 @@ void nvhost_syncpt_incr(struct nvhost_syncpt *sp, u32 id)
 	nvhost_module_idle(&syncpt_to_dev(sp)->mod);
 }
 
+#define MAX_STUCK_CHECK_COUNT	15 /* Maximum number of loops to check for stuck
+				    * syncpoint (this is also affected by the
+				    * wait timeout defined) */
+#define STUCK_FIXUP_COUNT	5  /* Number of stuck syncpoint loops to wait before
+				    * attempting to reset module (if such support
+				    * exists; for now, only DC can be reset) */
+void tegra_dc_schedule_reset(int dc_id);
+
+static u32 nvhost_syncpt_last_min[NV_HOST1X_SYNCPT_NB_PTS];
 /**
  * Main entrypoint for syncpoint value waits.
  */
@@ -196,7 +205,6 @@ int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id,
 		err = -EAGAIN;
 		goto done;
 	}
-
 	/* schedule a wakeup when the syncpoint value is reached */
 	err = nvhost_intr_add_action(&(syncpt_to_dev(sp)->intr), id, thresh,
 				NVHOST_INTR_ACTION_WAKEUP_INTERRUPTIBLE, &wq, &ref);
@@ -223,12 +231,27 @@ int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id,
 		if (timeout != NVHOST_NO_TIMEOUT)
 			timeout -= check;
 		if (timeout) {
+			u32 min, dc_id;
 			dev_warn(&syncpt_to_dev(sp)->pdev->dev,
-				"syncpoint id %d (%s) stuck waiting %d, timeout=%d\n",
-				id, nvhost_syncpt_name(id), thresh, timeout);
+				"syncpoint id %d (%s) stuck waiting %d\n",
+				id, nvhost_syncpt_name(id), thresh);
+			if (debug_done >= STUCK_FIXUP_COUNT) {
+				switch (id) {
+				case NVSYNCPT_DISP0:
+				case NVSYNCPT_DISP1:
+					min = nvhost_syncpt_update_min(sp, id);
+					if (nvhost_syncpt_last_min[id] != 0 &&
+					    nvhost_syncpt_last_min[id] == min) {
+						dc_id = (id == NVSYNCPT_DISP0) ? 0 : 1;
+						/* Seems stuck; it probably hasn't
+						   incremented in prior loops, either */
+						tegra_dc_schedule_reset(dc_id);
+					}
+					break;
+				}
+			}
 			nvhost_syncpt_debug(sp);
-			if (debug_done > 15)
-			{
+			if (debug_done > MAX_STUCK_CHECK_COUNT) {
 				nvhost_debug_dump();
 				BUG_ON(1);
 			}
@@ -253,7 +276,7 @@ static const char *s_syncpt_names[32] = {
 
 const char *nvhost_syncpt_name(u32 id)
 {
-	BUG_ON(id > ARRAY_SIZE(s_syncpt_names));
+	BUG_ON(id >= ARRAY_SIZE(s_syncpt_names));
 	return s_syncpt_names[id];
 }
 
@@ -264,10 +287,11 @@ void nvhost_syncpt_debug(struct nvhost_syncpt *sp)
 		u32 max = nvhost_syncpt_read_max(sp, i);
 		if (!max)
 			continue;
+		nvhost_syncpt_last_min[i] = nvhost_syncpt_update_min(sp, i);
 		dev_info(&syncpt_to_dev(sp)->pdev->dev,
 			"id %d (%s) min %d max %d\n",
 			i, nvhost_syncpt_name(i),
-			nvhost_syncpt_update_min(sp, i), max);
+			nvhost_syncpt_last_min[i], max);
 
 	}
 }
@@ -305,7 +329,7 @@ int nvhost_syncpt_wait_check(struct nvmap_client *nvmap,
 	while (waitchks) {
 		u32 syncpt, override;
 
-		BUG_ON(waitp->syncpt_id > NV_HOST1X_SYNCPT_NB_PTS);
+		BUG_ON(waitp->syncpt_id >= NV_HOST1X_SYNCPT_NB_PTS);
 
 		syncpt = atomic_read(&sp->min_val[waitp->syncpt_id]);
 		if (nvhost_syncpt_wrapping_comparison(syncpt, waitp->thresh)) {

@@ -504,44 +504,32 @@ dhd_prot_dstats(dhd_pub_t *dhd)
 int
 dhd_enable_keepalive(dhd_pub_t *dhd, uint32 period)
 {
-	int						buf_len;
-	int						str_len = 10;
-	char                    buf[256];
-	
-	wl_keep_alive_pkt_t	keep_alive_pkt;
-	wl_keep_alive_pkt_t	*pkt;
+	int buf_len;
+	int str_len = 10;
+	char buf[256];
+
+	wl_keep_alive_pkt_t keep_alive_pkt;
+	wl_keep_alive_pkt_t *pkt;
 
 	memset(buf, 0, sizeof(buf));
-	
+
 	memcpy(buf, "keep_alive", str_len);
 	buf[str_len] = 0;
 
 	pkt = (wl_keep_alive_pkt_t *) (buf + str_len + 1);
 	keep_alive_pkt.period_msec = period;
-	buf_len = str_len + 1;
+	keep_alive_pkt.len_bytes = 0;
+	buf_len = str_len + 1 + sizeof(wl_keep_alive_pkt_t);
+	memcpy((char *)pkt, &keep_alive_pkt, WL_KEEP_ALIVE_FIXED_LEN);
 
 	if (0 == period) {
-		keep_alive_pkt.len_bytes = 0;
-		buf_len += sizeof(wl_keep_alive_pkt_t);
 		DHD_TRACE(("Disable Keep Alive\n"));
-		memcpy((char *)pkt, &keep_alive_pkt, WL_KEEP_ALIVE_FIXED_LEN);
 	}
 	else {
-		uint8 contents[16] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0};
-
-		keep_alive_pkt.len_bytes = 16;
-		memcpy((char *)pkt, &keep_alive_pkt, WL_KEEP_ALIVE_FIXED_LEN);
-
-		bcopy(contents, pkt->data, sizeof(contents));
-		/* source address */
-		bcopy(&dhd->mac, &pkt->data[6], 6);
-
-		buf_len += (WL_KEEP_ALIVE_FIXED_LEN + keep_alive_pkt.len_bytes);
 		DHD_TRACE(("Enable Keep Alive\n"));
 	}
 
 	return dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, buf_len, TRUE, 0);
-
 }
 #endif /* USE_KEEP_ALIVE */
 
@@ -566,9 +554,17 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	int roam_trigger[2] = {-75, WLC_BAND_ALL};
 	int roam_scan_period[2] = {10, WLC_BAND_ALL};
 	int roam_delta[2] = {10, WLC_BAND_ALL};
+#ifdef SUPPORT_KT
+	int roam_fullscan_period = 60;
+#else /* SUPPORT_KT */
 	int roam_fullscan_period = 120;
+#endif /* SUPPORT_KT */
+#else
+#ifdef BCMCCX
+	uint roamvar = 0;
 #else
 	uint roamvar = 1;
+#endif
 #endif
 #ifdef OKC_SUPPORT
 	uint32 okc = 1;
@@ -579,9 +575,11 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	uint bcn_timeout = 12;
 	int arpoe = 1;
 	int arp_ol = 0xb;
+#ifndef BCMCCX
 	int scan_assoc_time = 40;
 	int scan_unassoc_time = 80;
-	int assoc_retry = 3;
+#endif
+	int assoc_retry = 7;
 	char buf[256];
 #ifdef USE_WIFI_DIRECT
 	uint32 apsta = 1; /* Enable APSTA mode */
@@ -619,6 +617,10 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	}
 #endif /* SOFTAP */
 
+#ifdef BCMCCX
+	if(roamvar)
+		printk(" roam_off =%d BCMCCX roam_off should be 0\n",roamvar);
+#endif
 	/* Disable built-in roaming to allowed ext supplicant to take care of roaming */
 	bcm_mkiovar("roam_off", (char *)&roamvar, 4, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
@@ -698,7 +700,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	setbit(eventmask, WLC_E_NDIS_LINK);
 	setbit(eventmask, WLC_E_MIC_ERROR);
 	setbit(eventmask, WLC_E_PMKID_CACHE);
-	setbit(eventmask, WLC_E_TXFAIL);
+//	setbit(eventmask, WLC_E_TXFAIL);
 	setbit(eventmask, WLC_E_JOIN_START);
 	setbit(eventmask, WLC_E_SCAN_COMPLETE);
 #ifdef CIQ_SUPPORT
@@ -711,13 +713,24 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	setbit(eventmask, WLC_E_TRACE);
 #endif
 
+#if defined(BCMCCX) && defined(BCMDBG_EVENT)
+	setbit(eventmask, WLC_E_ADDTS_IND);
+	setbit(eventmask, WLC_E_DELTS_IND);
+#endif /* defined(BCMCCX) && (BCMDBG_EVENT) */
+
+#ifdef PNO_SUPPORT /* patch PNO */
+	setbit(eventmask, WLC_E_PFN_NET_FOUND);
+	setbit(eventmask, WLC_E_PFN_NET_LOST);
+#endif
+
 	bcm_mkiovar("event_msgs", eventmask, WL_EVENTING_MASK_LEN, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
-
+#ifndef BCMCCX
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_CHANNEL_TIME, (char *)&scan_assoc_time,
 		sizeof(scan_assoc_time), TRUE, 0);
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_UNASSOC_TIME, (char *)&scan_unassoc_time,
 		sizeof(scan_unassoc_time), TRUE, 0);
+#endif
 
 	/* Set ARP offload */
 	bcm_mkiovar("arpoe", (char *)&arpoe, 4, iovbuf, sizeof(iovbuf));
@@ -729,7 +742,13 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
 
 #if defined(USE_KEEP_ALIVE)
-	ret = dhd_enable_keepalive(dhd, 60000); /* 60 sec */
+#ifdef SUPPORT_KT
+	DHD_ERROR(("%s: KEEP Alive time is 30s \n", __FUNCTION__));
+	ret = dhd_enable_keepalive(dhd, 30000); /* 30 sec */
+#else /* SUPPORT_KT */
+	DHD_ERROR(("%s: KEEP Alive time is 45s \n", __FUNCTION__));
+	ret = dhd_enable_keepalive(dhd, 45000); /* 45 sec */
+#endif /* SUPPORT_KT */
 	if (ret) {
 		DHD_ERROR(("%s: Keepalive setting failure, error=%d\n", __FUNCTION__, ret));
 		/* For MFG mode */
@@ -779,10 +798,7 @@ dhd_prot_stop(dhd_pub_t *dhd)
 
 dhd_pub_t *dhd_get_pub(struct net_device *dev); /* dhd_linux.c */
 
-#ifdef PKT_FILTER_SUPPORT
-extern void dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg); /* dhd_common.c */
-extern void dhd_pktfilter_offload_enable(dhd_pub_t * dhd, char *arg, int enable, int master_mode); /* dhd_common.c */
-#endif /* PKT_FILTER_SUPPORT */
+void dhd_set_packet_filter(int value, dhd_pub_t *dhd);
 
 int dhd_deepsleep(struct net_device *dev, int flag) 
 {
@@ -796,19 +812,9 @@ int dhd_deepsleep(struct net_device *dev, int flag)
 			DHD_ERROR(("[WiFi] Deepsleep On\n"));
 			/* give some time to _dhd_sysioc_thread() before deepsleep */
 			msleep(200);
-
-#ifdef PKT_FILTER_SUPPORT
-	/* disable pkt filter */
-	if (dhd_pkt_filter_enable && !ap_fw_loaded) {
-		int i;
-		for (i = 0; i < dhdp->pktfilter_count; i++) {
-			dhd_pktfilter_offload_set(dhdp, dhdp->pktfilter[i]);
-			dhd_pktfilter_offload_enable(dhdp, dhdp->pktfilter[i],
-				0, dhd_master_mode);
-		}
-	}
-#endif /* PKT_FILTER_SUPPORT */
-
+			if (dhd_pkt_filter_enable && !ap_fw_loaded) {
+				dhd_set_packet_filter(0, dhdp);
+			}
 			/* Disable MPC */
 			powervar = 0;
 			bcm_mkiovar("mpc", (char *)&powervar, 4, iovbuf, sizeof(iovbuf));

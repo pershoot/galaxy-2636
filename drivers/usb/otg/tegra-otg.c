@@ -39,7 +39,7 @@
 #include <linux/wakelock.h>
 #endif
 
-#if defined(CONFIG_MACH_SAMSUNG_P5SKT) ||defined(CONFIG_MACH_SAMSUNG_P5KORWIFI) ||defined(CONFIG_MACH_SAMSUNG_P4SKT) ||defined(CONFIG_MACH_SAMSUNG_P4KORWIFI)
+#if defined(CONFIG_TARGET_LOCALE_KOR)
 #define _SEC_DM_
 #endif
 

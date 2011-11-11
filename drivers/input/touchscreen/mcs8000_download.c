@@ -28,24 +28,9 @@
 //
 //============================================================
 
-#if MELFAS_ISP_DOWNLOAD
+#include "Master_bin_V43.c"
+#include "Master_bin_V60.c"
 
-#include "Master_bin_V38.c"
-#include "Slave_bin_V38.c"
-
-#include "Master_bin_V55.c"
-#include "Slave_bin_V55.c"
-
-#else
-//#include "master_original_bin.c"		// Core & Private
-//#include "master_PublicUpdated_bin.c"	// Public
-
-#include "Core_bin_V02.c"				// Core & Private
-#include "Public_MEL_bin_V02.c"			// Melfas Public
-#include "Public_ILJ_bin_V02.c"			// Iljin Public
-
-
-#endif
 
 UINT8  ucVerifyBuffer[MELFAS_TRANSFER_LENGTH];		//	You may melloc *ucVerifyBuffer instead of this
 
@@ -74,11 +59,6 @@ static void mcsdl_read_32bits( UINT8 *pData );
 static void mcsdl_write_bits(UINT32 wordData, int nBits);
 static void mcsdl_scl_toggle_twice(void);
 
-
-//---------------------------------
-//	Delay functions
-//---------------------------------
-void mcsdl_delay(UINT32 nCount);
 
 
 //---------------------------------
@@ -119,279 +99,109 @@ int mcsdl_download_binary_data(bool touch_id)
 	int nRet = 0;
 	int retry_cnt = 0;
 	long fw1_size = 0;
-	long fw2_size = 0;
 	unsigned char *fw_data1;
-	unsigned char *fw_data2;
-#ifdef FW_FROM_FILE
-	struct file *filp;
-	loff_t  pos;
-	int     ret = 0;
-	mm_segment_t oldfs;
-	spinlock_t	lock;
-
-	oldfs = get_fs();
-	set_fs(get_ds());
-
-	filp = filp_open(MELFAS_FW1, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		pr_err("file open error:%d\n", (s32)filp);
-		return -1;
-	}
-
-	fw1_size = filp->f_path.dentry->d_inode->i_size;
-	pr_info("Size of the file : %ld(bytes)\n", fw1_size);
-
-	fw_data1 = kmalloc(fw1_size, GFP_KERNEL);
-	memset(fw_data1, 0, fw1_size);
-
-	pos = 0;
-	memset(fw_data1, 0, fw1_size);
-	ret = vfs_read(filp, (char __user *)fw_data1, fw1_size, &pos);
-
-	if(ret != fw1_size) {
-		pr_err("Failed to read file %s (ret = %d)\n", MELFAS_FW1, ret);
-		kfree(fw_data1);
-		filp_close(filp, current->files);
-		return -1;
-	}
-
-	filp_close(filp, current->files);
-
-	filp = filp_open(MELFAS_FW2, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		pr_err("file open error:%d\n", (s32)filp);
-		return -1;
-	}
-
-	fw2_size = filp->f_path.dentry->d_inode->i_size;
-	pr_info("Size of the file : %ld(bytes)\n", fw2_size);
-
-	fw_data2 = kmalloc(fw2_size, GFP_KERNEL);
-	memset(fw_data2, 0, fw2_size);
-
-	pos = 0;
-	memset(fw_data2, 0, fw2_size);
-	ret = vfs_read(filp, (char __user *)fw_data2, fw2_size, &pos);
-
-	if(ret != fw2_size) {
-		pr_err("Failed to read file %s (ret = %d)\n", MELFAS_FW2, ret);
-		kfree(fw_data2);
-		filp_close(filp, current->files);
-		return -1;
-	}
-
-	filp_close(filp, current->files);
-
-	set_fs(oldfs);
-	spin_lock_init(&lock);
-	spin_lock(&lock);
-#endif
-
-#if 0
-	#if MELFAS_USE_PROTOCOL_COMMAND_FOR_DOWNLOAD
-	melfas_send_download_enable_command();
-	mcsdl_delay(MCSDL_DELAY_100US);
-	#endif
-
-	MELFAS_DISABLE_BASEBAND_ISR();					// Disable Baseband touch interrupt ISR.
-	MELFAS_DISABLE_WATCHDOG_TIMER_RESET();			// Disable Baseband watchdog timer
-
-#endif
 
 	//------------------------
 	// Run Download
 	//------------------------
-
-#ifdef FW_FROM_FILE
-	for (retry_cnt = 0; retry_cnt < 3; retry_cnt++) {
-		pr_info("[TSP] ADB - MASTER CHIP Firmware update! try : %d",retry_cnt+1);
-		nRet = mcsdl_download( (const UINT8*) fw_data1, (const UINT16)fw1_size, 0);
-		if (nRet)
-			continue;
-#if MELFAS_2CHIP_DOWNLOAD_ENABLE
-		pr_info("[TSP] ADB - SLAVE CHIP Firmware update! try : %d",retry_cnt+1);
-		nRet = mcsdl_download( (const UINT8*) fw_data2, (const UINT16)fw2_size, 1);
-	if (nRet)
-		continue;
-#endif
-	break;	
-	}
-
-#else	//FW_FROM_FILE
-
-
-#if MELFAS_ISP_DOWNLOAD
-
 	for (retry_cnt = 0; retry_cnt < 5; retry_cnt++) {
 		if (touch_id)
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_3, (const UINT16)MELFAS_binary_nLength_3 , 0);
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_2, (const UINT16)MELFAS_binary_nLength_2, 0);
 		else
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength , 0);
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_1, (const UINT16)MELFAS_binary_nLength_1 , 0);
 
 		if (nRet)
 			continue;
 #if MELFAS_2CHIP_DOWNLOAD_ENABLE
 		if (touch_id)
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_3, (const UINT16)MELFAS_binary_nLength_3, 1); // Slave Binary data download
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_2, (const UINT16)MELFAS_binary_nLength_2, 1); // Slave Binary data download
 		else
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength, 1); // Slave Binary data download
+			nRet = mcsdl_download( (const UINT8*) MELFAS_binary_1, (const UINT16)MELFAS_binary_nLength_1, 1); // Slave Binary data download
 		if (nRet)
 			continue;
 #endif
 		break;
 	}
-
-#else	// MELFAS_ISP_DOWNLOAD
-
-
-	for (retry_cnt = 0; retry_cnt < 5; retry_cnt++) {
-		nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength , 0);
-		if (nRet)
-			continue;
-#if MELFAS_2CHIP_DOWNLOAD_ENABLE
-			nRet = mcsdl_download( (const UINT8*) MELFAS_binary, (const UINT16)MELFAS_binary_nLength, 1); // Slave Binary data download
-		if (nRet)
-			continue;
-#endif
-		break;
-	}
-
-#endif	// MELFAS_ISP_DOWNLOAD
-
-#endif	//FW_FROM_FILE
-
-	MELFAS_ROLLBACK_BASEBAND_ISR();					// Roll-back Baseband touch interrupt ISR.
-	MELFAS_ROLLBACK_WATCHDOG_TIMER_RESET();			// Roll-back Baseband watchdog timer
 
 fw_error:
 	if (nRet) {
 		mcsdl_erase_flash(0);
 		mcsdl_erase_flash(1);
 	}
-#ifdef FW_FROM_FILE
-	kfree(fw_data1);
-	kfree(fw_data2);
-	spin_unlock(&lock);
-#endif
+
 	return nRet;
 }
 
 int mcsdl_download_binary_file(void)
 {
-	int nRet;
-    int i;
+		int nRet = 0;
+		int retry_cnt = 0;
+		long fw1_size = 0;
+		unsigned char *fw_data1;
+		struct file *filp;
+		loff_t	pos;
+		int 	ret = 0;
+		mm_segment_t oldfs;
+		spinlock_t	lock;
+	
+		oldfs = get_fs();
+		set_fs(get_ds());
+	
+		filp = filp_open(MELFAS_FW1, O_RDONLY, 0);
+		if (IS_ERR(filp)) {
+			pr_err("file open error:%d\n", (s32)filp);
+			return -1;
+		}
+	
+		fw1_size = filp->f_path.dentry->d_inode->i_size;
+		pr_info("Size of the file : %ld(bytes)\n", fw1_size);
+	
+		fw_data1 = kmalloc(fw1_size, GFP_KERNEL);
+		memset(fw_data1, 0, fw1_size);
+	
+		pos = 0;
+		memset(fw_data1, 0, fw1_size);
+		ret = vfs_read(filp, (char __user *)fw_data1, fw1_size, &pos);
+	
+		if(ret != fw1_size) {
+			pr_err("Failed to read file %s (ret = %d)\n", MELFAS_FW1, ret);
+			kfree(fw_data1);
+			filp_close(filp, current->files);
+			return -1;
+		}
+	
+		filp_close(filp, current->files);
+	
+		set_fs(oldfs);
+		spin_lock_init(&lock);
+		spin_lock(&lock);
 
-	UINT8  *pBinary[2] = {NULL,NULL};
-	UINT16 nBinary_length[2] ={0,0};
-    UINT8 IdxNum = MELFAS_2CHIP_DOWNLOAD_ENABLE;
-	//==================================================
-	//
-	//	1. Read '.bin file'
-	//   2. *pBinary[0]       : Binary data(Master)
-	//       *pBinary[1]       : Binary data(Slave)
-	//	   nBinary_length[0] : Firmware size(Master)
-	//	   nBinary_length[1] : Firmware size(Slave)
-	//	3. Run mcsdl_download( pBinary[IdxNum], nBinary_length[IdxNum], IdxNum);
-    //       IdxNum : 0 (Master Chip Download)
-    //       IdxNum : 1 (2Chip Download)
-	//
-	//==================================================
-
-	#if 0
-
-		// TO DO : File Process & Get file Size(== Binary size)
-		//			This is just a simple sample
-
-		FILE *fp;
-		INT  nRead;
-
-		//------------------------------
-		// Open a file
-		//------------------------------
-
-    if (fopen(fp, "MELFAS_FIRMWARE.bin", "rb") == NULL)
-    {
-        return MCSDL_RET_FILE_ACCESS_FAILED;
-    }
-
-		//------------------------------
-		// Get Binary Size
-		//------------------------------
-
-		fseek( fp, 0, SEEK_END );
-
-		nBinary_length = (UINT16)ftell(fp);
-
-		//------------------------------
-		// Memory allocation
-		//------------------------------
-
-		pBinary = (UINT8*)malloc( (INT)nBinary_length );
-
-    if (pBinary == NULL)
-    {
-
-        return MCSDL_RET_FILE_ACCESS_FAILED;
-    }
-
-		//------------------------------
-		// Read binary file
-		//------------------------------
-
-		fseek( fp, 0, SEEK_SET );
-
-		nRead = fread( pBinary, 1, (INT)nBinary_length, fp );		// Read binary file
-
-    if (nRead != (INT)nBinary_length)
-    {
-
-        fclose(fp);												// Close file
-
-        if (pBinary != NULL)										// free memory alloced.
-            free(pBinary);
-
-        return MCSDL_RET_FILE_ACCESS_FAILED;
-    }
-
-		//------------------------------
-		// Close file
-		//------------------------------
-
-		fclose(fp);
-
-	#endif
-
-#if MELFAS_USE_PROTOCOL_COMMAND_FOR_DOWNLOAD
-    melfas_send_download_enable_command();
-    mcsdl_delay(MCSDL_DELAY_100US);
+	
+		//------------------------
+		// Run Download
+		//------------------------
+	
+		for (retry_cnt = 0; retry_cnt < 3; retry_cnt++) {
+			pr_info("[TSP] ADB - MASTER CHIP Firmware update! try : %d",retry_cnt+1);
+			nRet = mcsdl_download( (const UINT8*) fw_data1, (const UINT16)fw1_size, 0);
+			if (nRet)
+				continue;
+#if MELFAS_2CHIP_DOWNLOAD_ENABLE
+			pr_info("[TSP] ADB - SLAVE CHIP Firmware update! try : %d",retry_cnt+1);
+			nRet = mcsdl_download( (const UINT8*) fw_data1, (const UINT16)fw1_size, 1);
+		if (nRet)
+			continue;
 #endif
+		break;	
+		}
 
-    MELFAS_DISABLE_BASEBAND_ISR();                  // Disable Baseband touch interrupt ISR.
-    MELFAS_DISABLE_WATCHDOG_TIMER_RESET();          // Disable Baseband watchdog timer
-
-    for (i = 0;i <= IdxNum;i++)
-    {
-        if (pBinary[i] != NULL && nBinary_length[i] > 0 && nBinary_length[i] < 32*1024)
-        {
-            //------------------------
-            // Run Download
-            //------------------------
-            nRet = mcsdl_download((const UINT8 *)pBinary[i], (const UINT16)nBinary_length[i], i);
-        }
-        else
-        {
-            nRet = MCSDL_RET_WRONG_BINARY;
-        }
-    }
-
-    MELFAS_ROLLBACK_BASEBAND_ISR();                 // Roll-back Baseband touch interrupt ISR.
-    MELFAS_ROLLBACK_WATCHDOG_TIMER_RESET();         // Roll-back Baseband watchdog timer
-
-	#if MELFAS_ENABLE_DBG_PRINT
-	mcsdl_print_result( nRet );
-	#endif
-
-	return ( nRet == MCSDL_RET_SUCCESS );
+		if (nRet) {
+			mcsdl_erase_flash(0);
+			mcsdl_erase_flash(1);
+		}
+		kfree(fw_data1);
+		spin_unlock(&lock);
+		return nRet;
 
 }
 

@@ -362,6 +362,13 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 {
 	size_t len;
 
+#ifdef CONFIG_KERNEL_DEBUG_SEC
+	if (count > log->size - 1) {
+		pr_err(" ** invalid log count [%d]\n", count);
+		return -EFAULT;
+	}
+#endif
+
 	len = min(count, log->size - log->w_off);
 	if (len && copy_from_user(log->buffer + log->w_off, buf, len))
 		return -EFAULT;

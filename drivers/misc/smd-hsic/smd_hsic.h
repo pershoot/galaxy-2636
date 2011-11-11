@@ -120,4 +120,5 @@ extern void smdctl_reenumeration_control(void);
 
 /* work around for Tegre 2 hsic phy problem */
 extern void tegra_ehci_txfilltuning(void);
+bool smdhsic_pm_active(void);
 #endif				/*__SMD_HSIC_H__ */

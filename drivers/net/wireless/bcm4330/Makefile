@@ -1,6 +1,6 @@
 EXTRA_CFLAGS += -Dlinux -DLINUX -DBDC -DBCMDRIVER -DBCMDONGLEHOST -DDHDTHREAD \
     -DDHD_GPL -DDHD_SCHED -DBCMSDIO -DBCMLXSDMMC -DBCMPLATFORM_BUS -DDHD_BCMEVENTS \
-    -DSHOW_EVENTS -DENABLE_DEEP_SLEEP
+    -DSHOW_EVENTS -DENABLE_DEEP_SLEEP -DPNO_SUPPORT -DBCMCCX
 
 ################ OPTIONAL FEATURES ############################################################
 #TO ENALBLE OPTIONAL FEATURES UNCOMMENT THE CORRESPONDING FLAGS
@@ -42,6 +42,9 @@ EXTRA_CFLAGS += -DDHD_USE_STATIC_BUF
 
 EXTRA_CFLAGS += -DCONFIG_CONTROL_PM
 
+# For WiFi Direct and for: Beyond honeycomb 3.2 version
+EXTRA_CFLAGS += -DUSE_WIFI_DIRECT -DWIFI_DIRECT_HC32
+
 # P2P ENABLE
 #EXTRA_CFLAGS += -DWLP2P
 
@@ -58,8 +61,13 @@ EXTRA_CFLAGS += -DUSE_KEEP_ALIVE
 # Packet Filter
 EXTRA_CFLAGS += -DPKT_FILTER_SUPPORT
 
-# 2.4G only scan for the initial broad scan
+#for KT
+ifeq ($(SEC_PROJECT_REGION_OPERATOR), P5-WIFI_KOR_KT)
+EXTRA_CFLAGS += -DSUPPORT_KT
+endif
+
 ifndef CONFIG_TARGET_LOCALE_KOR
+# 2.4G only scan for the initial broad scan
 EXTRA_CFLAGS += -DUSE_INITIAL_2G_SCAN
 endif
 
@@ -81,6 +89,20 @@ endif
 # DTIM=1 (Remove here for DTIM=3)
 EXTRA_CFLAGS += -DDTIM_CNT1
 
+# Firmware RELOAD for mobile ap
+ifdef CONFIG_MACH_SAMSUNG_P4LTE
+EXTRA_CFLAGS += -DMOBILEAP_RELOAD
+
+# MOBILE AP Extensions (Verizon Requirements)
+EXTRA_CFLAGS += -DHOTSPOT_VERIZON
+endif
+
+EXTRA_CFLAGS += -DUSE_FW_TRACE
+
+ifdef CONFIG_MACH_SAMSUNG_P4TMO
+EXTRA_CFLAGS += -DMOBILEAP_CERT
+endif
+
 ###############################################################################################
 
 EXTRA_CFLAGS += -I$(src)/src/include/
@@ -92,7 +114,6 @@ EXTRA_CFLAGS += -I$(src)/src/shared/
 
 EXTRA_LDFLAGS += --strip-debug
 KBUILD_CFLAGS += -I$(LINUXDIR)/include -I$(shell pwd)
-
 
 #obj-$(CONFIG_BROADCOM_WIFI)-m	+= dhd.o
 obj-m	+= dhd.o

@@ -349,146 +349,98 @@ static void mxt_inform_charger_connection(struct mxt_callbacks *cb, int mode)
 static void mxt_ta_worker(struct work_struct *work)
 {
 	struct mxt_data *mxt = container_of(work, struct mxt_data, ta_work);
+	u8 blen = mxt->pdata->touchscreen_config.blen;
+	u8 tchthr = mxt->pdata->touchscreen_config.tchthr;
+	u8 noisethr = mxt->pdata->noise_suppression_config.noisethr;
+	u8 idlegcafdepth = mxt->pdata->cte_config.idlegcafdepth;
+	u8 freq[5] = {0,};
+	int error = 0, i = 0;
 
-	int error;
+	pr_info("[sec_touch] TA/USB is%sconnected.\n",
+		mxt->set_mode_for_ta ? " " : " dis");
+
+	for (i = 0; i < 5; i++)
+		freq[i] = mxt->pdata->noise_suppression_config.freq[i];
+
+	if (mxt->set_mode_for_ta) {
+		tchthr = mxt->pdata->tchthr_for_ta_connect;
+		noisethr = mxt->pdata->noisethr_for_ta_connect;
+		idlegcafdepth = mxt->pdata->idlegcafdepth_ta_connect;
+
+		if (mxt->pdata->fherr_cnt >= 9) {
+			blen = mxt->pdata->tch_blen_for_fherr;
+			tchthr = mxt->pdata->tchthr_for_fherr;
+			noisethr = mxt->pdata->noisethr_for_fherr;
+			for (i = 0; i < 5; i++)
+				freq[i] = mxt->pdata->freq_for_fherr3[i];
+		}else if (mxt->pdata->fherr_cnt >= 6) {
+			blen = mxt->pdata->tch_blen_for_fherr;
+			tchthr = mxt->pdata->tchthr_for_fherr;
+			noisethr = mxt->pdata->noisethr_for_fherr;
+			for (i = 0; i < 5; i++)
+				freq[i] = mxt->pdata->freq_for_fherr2[i];
+		} else if (mxt->pdata->fherr_cnt >= 3) {
+			blen = mxt->pdata->tch_blen_for_fherr;
+			tchthr = mxt->pdata->tchthr_for_fherr;
+			noisethr = mxt->pdata->noisethr_for_fherr;
+			for (i = 0; i < 5; i++)
+				freq[i] = mxt->pdata->freq_for_fherr1[i];
+		}
+	}
+
+	pr_info("[TSP] frequency table \n", freq[i]);
+	for (i = 0; i < 5; i++)
+		pr_info("[TSP] frequency[%d] : %u\n", i, freq[i]);
 
 	disable_irq(mxt->client->irq);
 
-	if (mxt->set_mode_for_ta) {
-		pr_info("[sec_touch] TA/USB is connected.\n");
+	mxt_write_byte(mxt->client,
+		MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+		+ MXT_ADR_T9_BLEN, blen);
 
-		/* change to ta_connect config*/
-		/* tchthr change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
-			+ MXT_ADR_T9_TCHTHR,
-			mxt->pdata->tchthr_for_ta_connect);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : tchthr\n",
-					__func__);
+	/* change to ta_connect config*/
+	/* tchthr change*/
+	error = mxt_write_byte(mxt->client,
+		MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+		+ MXT_ADR_T9_TCHTHR, tchthr);
+	if (error < 0)
+		pr_err("[sec_touch] error %s: write_object : tchthr\n",
+				__func__);
 
-		/* tchdi change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
-			+ MXT_ADR_T9_TCHDI,
-			mxt->pdata->tchdi_for_ta_connect);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : tchdi\n",
-					__func__);
+	/* noisethr change*/
+	error = mxt_write_byte(mxt->client,
+		MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
+		+ MXT_ADR_T22_NOISETHR,noisethr);
+	if (error < 0)
+		pr_err("[sec_touch] error %s: write_object : noisethr\n",
+				__func__);
 
-		/* noisethr change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
-			+ MXT_ADR_T22_NOISETHR,
-			mxt->pdata->noisethr_for_ta_connect);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : noisethr\n",
-					__func__);
+	/* freq change*/
+	error = mxt_write_block(mxt->client,
+		MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
+		+ MXT_ADR_T22_FREQ, 5, freq);
+	if (error < 0)
+		pr_err("[sec_touch] error %s: write_object : freq\n",
+				__func__);
 
-#if 0
-		/* freq change*/
-		error = mxt_write_block(mxt->client,
-			MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
-			+ MXT_ADR_T22_FREQ, 5,
-			(u8 *)mxt->pdata->freq_for_ta_connect);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : freq\n",
-					__func__);
-#endif
+	/* idlegcafdepth change*/
+	error = mxt_write_byte(mxt->client,
+		MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
+		+ MXT_ADR_T28_IDLEGCAFDEPTH,
+		idlegcafdepth);
+	if (error < 0)
+		pr_err("[sec_touch] error %s: write_object : idlegcafdepth\n",
+				__func__);
 
-		/* idlegcafdepth change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
-			+ MXT_ADR_T28_IDLEGCAFDEPTH,
-			mxt->pdata->idlegcafdepth_ta_connect);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : idlegcafdepth\n",
-					__func__);
+	/* mxt_calibrate : non-zero value*/
+	error = mxt_write_byte(mxt->client,
+		MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6)
+		+ MXT_ADR_T6_CALIBRATE,
+	       0x1);
+	if (error < 0)
+		pr_err("[sec_touch] error %s: mxt_calibrate\n",
+				__func__);
 
-		/* actvgcafdepth change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
-			+ MXT_ADR_T28_ACTVGCAFDEPTH,
-			mxt->pdata->actvgcafdepth_ta_connect);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : actvgcafdepth\n",
-					__func__);
-
-		/* mxt_calibrate : non-zero value*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6)
-			+ MXT_ADR_T6_CALIBRATE,
-		       0x1);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: mxt_calibrate\n",
-					__func__);
-
-	} else {
-		pr_info("[sec_touch] TA/USB is disconnected.\n");
-		/* return to original config value*/
-		/* tchthr change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
-			+ MXT_ADR_T9_TCHTHR,
-			mxt->pdata->touchscreen_config.tchthr);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : tchthr\n",
-					__func__);
-
-		/* tchdi change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
-			+ MXT_ADR_T9_TCHDI,
-			mxt->pdata->touchscreen_config.tchdi);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : tchdi\n",
-					__func__);
-
-		/* noisethr change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
-			+ MXT_ADR_T22_NOISETHR,
-			mxt->pdata->noise_suppression_config.noisethr);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : noisethr\n",
-					__func__);
-#if 0
-		/* freq change*/
-		error = mxt_write_block(mxt->client,
-			MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
-			+ MXT_ADR_T22_FREQ, 5,
-			(u8 *)mxt->pdata->noise_suppression_config.freq);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : freq\n",
-					__func__);
-#endif
-		/* idlegcafdepth change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
-			+ MXT_ADR_T28_IDLEGCAFDEPTH,
-			mxt->pdata->cte_config.idlegcafdepth);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : idlegcafdepth\n",
-					__func__);
-
-		/* actvgcafdepth change*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
-			+ MXT_ADR_T28_ACTVGCAFDEPTH,
-			mxt->pdata->cte_config.actvgcafdepth);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: write_object : actvgcafdepth\n",
-					__func__);
-
-		/* mxt_calibrate : non-zero value*/
-		error = mxt_write_byte(mxt->client,
-			MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6)
-			+ MXT_ADR_T6_CALIBRATE,
-		       0x1);
-		if (error < 0)
-			pr_err("[sec_touch] error %s: mxt_calibrate\n",
-					__func__);
-	}
 	enable_irq(mxt->client->irq);
 }
 
@@ -870,14 +822,7 @@ static void process_T9_message(struct mxt_data *mxt, u8 *message)
 				&mtouch_info[touch_id].x,
 				&mtouch_info[touch_id].y);
 #endif
-#if 0//def CONFIG_KERNEL_DEBUG_SEC
-			pr_info("[TSP] P [F=%d, X=%d, Y=%d, S=%d]\n", touch_id,
-				mtouch_info[touch_id].x,
-				mtouch_info[touch_id].y,
-				mtouch_info[touch_id].size);
-//#else
-			pr_info("[TSP] P [F=%d]\n", touch_id);
-#endif
+			pr_info("mxt %d p\n", touch_id);
 		} else if (status & MXT_MSGB_T9_MOVE) {
 #if defined(MXT_DRIVER_FILTER)
 			equalize_coordinate(0, touch_id,
@@ -893,14 +838,7 @@ static void process_T9_message(struct mxt_data *mxt, u8 *message)
 	} else if (status & MXT_MSGB_T9_RELEASE) {  /* case 2: released */
 		pressed_or_released = 1;
 		mtouch_info[touch_id].pressure = 0;
-#if 0//def CONFIG_KERNEL_DEBUG_SEC
-		pr_info("[TSP] R [F=%d, X=%d, Y=%d, S=%d]\n", touch_id,
-			mtouch_info[touch_id].x,
-			mtouch_info[touch_id].y,
-			mtouch_info[touch_id].size);
-//#else
-			pr_info("[TSP] R [F=%d]\n", touch_id);
-#endif
+		pr_info("mxt %d r\n", touch_id);
 	} else if (status & MXT_MSGB_T9_SUPPRESS) {  /* case 3: suppressed */
 		/*
 		 * Atmel's recommendation:
@@ -1077,6 +1015,14 @@ int process_message(struct mxt_data *mxt, u8 *message, u8 object)
 				dev_info(&client->dev,
 					"maXTouch: Freq changed - "
 					"Noise level too high\n");
+
+			mxt->pdata->fherr_cnt++;
+			if (12 == mxt->pdata->fherr_cnt)
+				mxt->pdata->fherr_cnt = 1;
+			if (0 == (mxt->pdata->fherr_cnt%3)) {
+				if (!work_pending(&mxt->ta_work))
+					schedule_work(&mxt->ta_work);
+			}
 
 		}
 		break;
@@ -1307,6 +1253,9 @@ static ssize_t get_config(struct device *dev,
 
 	pr_warning("Reading %d bytes from current ap\n",
 		mxt->bytes_to_read);
+		
+	if (0 == mxt->bytes_to_read)
+		return 0;
 
 	i = mxt_read_block_wo_addr(client, mxt->bytes_to_read, (u8 *) buf);
 
@@ -2084,7 +2033,7 @@ static uint8_t read_uint16_t(u16 Address, u16 *Data, struct mxt_data *mxt)
 
 static int  read_all_data(struct mxt_data *mxt)
 {
-	int status = 0;
+	int status = -1;
 	int try_cnt = 0;
 	u8 mode = 0;
 	u8 read_page = 0;
@@ -2104,9 +2053,9 @@ static int  read_all_data(struct mxt_data *mxt)
 
 	/*Page Num Clear*/
 	mxt_write_byte(mxt->client, diagnostics, MXT_CMD_T6_CTE_MODE);
-	msleep(10);
+	msleep(20);
 	mxt_write_byte(mxt->client, diagnostics, MXT_CMD_T6_REFERENCES_MODE);
-	msleep(10);
+	msleep(20);
 
 	/* check the mode */
 	do {
@@ -2114,7 +2063,7 @@ static int  read_all_data(struct mxt_data *mxt)
 		if (MXT_CMD_T6_REFERENCES_MODE == mode )
 			break;
 		try_cnt++;
-		msleep(10);
+		msleep(20);
 	}while (try_cnt < 5);
 
 	max_page = MAX_CHANNEL / 64;
@@ -2129,7 +2078,7 @@ static int  read_all_data(struct mxt_data *mxt)
 		else {
 			read_page++;
 			mxt_write_byte(mxt->client, diagnostics, MXT_CMD_T6_PAGE_UP);
-			msleep(10);
+			msleep(20);
 			continue;
 		}
 
@@ -2142,6 +2091,7 @@ static int  read_all_data(struct mxt_data *mxt)
 					//pr_info("[TSP] page : %u, node : %u, ref : %u\n",
 						//mode, read_point, ref_val);
 					status = 1;
+					goto eof;
 				}
 				if (ref_val > max_val)
 					max_val = ref_val;
@@ -2149,21 +2099,24 @@ static int  read_all_data(struct mxt_data *mxt)
 					min_val = ref_val;
 			}
 
-			if (read_page == max_page)
-				break;
+			if (read_page == max_page) {
+				status = 0;
+				goto eof;
+			}
 
 			read_page++;
 			mxt_write_byte(mxt->client, diagnostics, MXT_CMD_T6_PAGE_UP);
-			msleep(10);
+			msleep(20);
 
 		} else {
 			//pr_info("[TSP] page : %u, try_cnt : %d\n", read_page, try_cnt);
 			try_cnt++;
-			msleep(10);
+			msleep(50);
 		}
 	}while (try_cnt<10);
-
+eof:
 	pr_info("[TSP] diff %d\n", max_val - min_val);
+	pr_info("[TSP] diff %d\n", status);
 
 	return status;
 }
@@ -2172,10 +2125,19 @@ static ssize_t all_refer_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	int status = 0;
 	struct mxt_data *mxt = dev_get_drvdata(dev);
+	int status = 0;
+	int try_cnt = 0;
 
-	status = read_all_data(mxt);
+	do {
+		status = read_all_data(mxt);
+		if (-1 != status)
+			break;
+		try_cnt++;
+	} while (try_cnt < 5);
+
+	if (-1 == status)
+		status = 1;
 
 	return sprintf(buf, "%u\n", status);
 }
@@ -2527,7 +2489,7 @@ static ssize_t set_suppression_store(struct device *dev,
 				MXT_BASE_ADDR(MXT_PROCI_PALMSUPPRESSION_T41),
 				mxt->pdata->palmsupression_config.ctrl);
 			pr_info("[TSP] the palm suppression field is on\n");
-		
+
 }
 	} else {
 		pr_info("[TSP] sysfs write error\n");
@@ -2900,7 +2862,6 @@ u8 mxt_valid_interrupt(void)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void mxt_early_suspend(struct early_suspend *h)
 {
-	int i = 0;
 #ifndef MXT_SLEEP_POWEROFF
 	u8 cmd_sleep[2] = {0};
 	u16 addr;
@@ -2939,9 +2900,7 @@ static void mxt_early_suspend(struct early_suspend *h)
 				addr, cmd_sleep[0], cmd_sleep[1]);
 	mxt_write_block(mxt->client, addr, 2, (u8 *)cmd_sleep);
 #endif
-	for (i = 0; i < MXT_MAX_NUM_TOUCHES; i++)
-		mtouch_info[i].pressure = -1;
-
+	mxt_forced_release(mxt);
 }
 
 static void mxt_late_resume(struct early_suspend *h)
@@ -2971,6 +2930,7 @@ static void mxt_late_resume(struct early_suspend *h)
 	if (mxt->set_mode_for_ta && !work_pending(&mxt->ta_work))
 		schedule_work(&mxt->ta_work);
 	mxt->enabled = true;
+	mxt->pdata->fherr_cnt = 0;
 	enable_irq(mxt->client->irq);
 #ifdef MXT_CALIBRATE_WORKAROUND
 	schedule_delayed_work(&mxt->calibrate_dwork, msecs_to_jiffies(4000));

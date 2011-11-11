@@ -954,6 +954,9 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 	uint32 type, status, reason, datalen;
 	uint16 flags;
 	int evlen;
+#ifdef WIFI_DIRECT_HC32
+    char *cp;
+#endif	
 
 	if (bcmp(BRCM_OUI, &pvt_data->bcm_hdr.oui[0], DOT11_OUI_LEN)) {
 		DHD_ERROR(("%s: mismatched OUI, bailing\n", __FUNCTION__));
@@ -988,8 +991,17 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 			if (ap_fw_loaded == FALSE) {
 #endif			 	
                 if (strncmp(pvt_data->event.ifname,"wl",2) == 0) {
-                     memmove(&(pvt_data->event.ifname[1]),&(pvt_data->event.ifname[0]),6);
-                     memcpy(pvt_data->event.ifname,P2P_INTERFACE_NAME,strlen(P2P_INTERFACE_NAME));
+                     memmove(&(pvt_data->event.ifname[1]),
+					 &(pvt_data->event.ifname[0]),6);
+                     memcpy(pvt_data->event.ifname,
+					 P2P_INTERFACE_NAME,strlen(P2P_INTERFACE_NAME));
+#ifdef WIFI_DIRECT_HC32
+                     if ((cp = strchr(pvt_data->event.ifname, '.'))
+					 	!= NULL) {
+                     	*cp++ = '\0';
+                     	*cp = '\0';
+                     }
+#endif
 					 memcpy(event, &pvt_data->event, sizeof(wl_event_msg_t));
                 }
 #ifdef SOFTAP
@@ -1028,6 +1040,82 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 		       sizeof(pvt_data->event.event_type));
 	}
 		/* These are what external supplicant/authenticator wants */
+#if defined(BCMCCX) && defined(BCMDBG_EVENT)
+		case WLC_E_PRUNE:
+			{
+#define WLC_E_PRUNE_CCXFAST_PREVAP	11	/* CCX FAST ROAM: prune previous AP */
+#define WLC_E_PRUNE_CCXFAST_DROAM	14	/* CCX FAST ROAM: prune unqualified AP */
+#define WLC_E_PRUNE_QBSS_LOAD		16	/* QBSS LOAD - AAC is too low */
+#define WLC_E_PRUNE_AP_BLOCKED		18	/* prune blocked AP */
+#define WLC_E_PRUNE_NO_DIAG_SUPPORT	19	/* prune due to diagnostic mode not supported */
+				uint reason;
+				char eabuf[ETHER_ADDR_STR_LEN];
+				reason = ntoh32_ua((void *)&event->reason);
+				sprintf(eabuf, "%02x:%02x:%02x:%02x:%02x:%02x",
+				        (uchar)event->addr.octet[0]&0xff,
+				        (uchar)event->addr.octet[1]&0xff,
+				        (uchar)event->addr.octet[2]&0xff,
+				        (uchar)event->addr.octet[3]&0xff,
+				        (uchar)event->addr.octet[4]&0xff,
+				        (uchar)event->addr.octet[5]&0xff);
+
+				switch(reason) {
+					case WLC_E_PRUNE_CCXFAST_PREVAP:
+						DHD_ERROR(("PRUNE %s: PRUNE: WLC_E_PRUNE_CCXFAST_PREVAP\n", eabuf));
+						break;
+					case WLC_E_PRUNE_CCXFAST_DROAM:
+						DHD_ERROR(("PRUNE %s: PRUNE: WLC_E_PRUNE_CCXFAST_DROAM\n", eabuf));
+						break;
+					case WLC_E_PRUNE_QBSS_LOAD:
+						DHD_ERROR(("PRUNE %s: PRUNE: WLC_E_PRUNE_QBSS_LOAD\n", eabuf));
+						break;
+					case WLC_E_PRUNE_AP_BLOCKED:
+						DHD_ERROR(("PRUNE %s: PRUNE: WLC_E_PRUNE_AP_BLOCKED\n", eabuf));
+						break;
+					case WLC_E_PRUNE_NO_DIAG_SUPPORT:
+						DHD_ERROR(("PRUNE %s: PRUNE: WLC_E_PRUNE_NO_DIAG_SUPPORT\n", eabuf));
+						break;
+					default:
+						DHD_ERROR(("PRUNE %s: status %d, reason %d\n",
+						           eabuf, status, reason));
+						break;
+				}
+				break;
+			}
+		case WLC_E_ADDTS_IND:
+			{
+				uint reason;
+				char eabuf[ETHER_ADDR_STR_LEN];
+				reason = ntoh32_ua((void *)&event->reason);
+				sprintf(eabuf, "%02x:%02x:%02x:%02x:%02x:%02x",
+				        (uchar)event->addr.octet[0]&0xff,
+				        (uchar)event->addr.octet[1]&0xff,
+				        (uchar)event->addr.octet[2]&0xff,
+				        (uchar)event->addr.octet[3]&0xff,
+				        (uchar)event->addr.octet[4]&0xff,
+				        (uchar)event->addr.octet[5]&0xff);
+				DHD_ERROR(("Junlim WLC_E_ADDTS_IND %s: status %d, reason %d\n",
+				           eabuf, status, reason));
+			}
+			break;
+		case WLC_E_DELTS_IND:
+			{
+				uint reason;
+				char eabuf[ETHER_ADDR_STR_LEN];
+				reason = ntoh32_ua((void *)&event->reason);
+				sprintf(eabuf, "%02x:%02x:%02x:%02x:%02x:%02x",
+				        (uchar)event->addr.octet[0]&0xff,
+				        (uchar)event->addr.octet[1]&0xff,
+				        (uchar)event->addr.octet[2]&0xff,
+				        (uchar)event->addr.octet[3]&0xff,
+				        (uchar)event->addr.octet[4]&0xff,
+				        (uchar)event->addr.octet[5]&0xff);
+				DHD_ERROR(("Junlim WLC_E_DELTS_IND %s: status %d, reason %d\n",
+				           eabuf, status, reason));
+			}
+			break;
+#endif /* defined(BCMCCX) && defined(BCMDBG_EVENT) */
+
 		/* fall through */
 		case WLC_E_LINK:
 		case WLC_E_DEAUTH:
@@ -1684,7 +1772,7 @@ int dhd_pno_clean(dhd_pub_t *dhd)
 		}
 	}
 	else
-		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
+		DHD_ERROR(("%s pfn enable/disable failed code %d\n", __FUNCTION__, ret));
 
 	return ret;
 }
@@ -1692,6 +1780,7 @@ int dhd_pno_clean(dhd_pub_t *dhd)
 int dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled)
 {
 	char iovbuf[128];
+	uint8 bssid[6];
 	int ret = -1;
 
 	if ((!dhd) && ((pfn_enabled != 0) || (pfn_enabled != 1))) {
@@ -1699,6 +1788,18 @@ int dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled)
 		return ret;
 	}
 
+	memset(iovbuf, 0, sizeof(iovbuf));
+	/* Check if disassoc to enable pno */
+	if ((pfn_enabled) &&
+		((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_BSSID,
+		(char *)&bssid, ETHER_ADDR_LEN, TRUE, 0)) == BCME_NOTASSOCIATED)) {
+			DHD_TRACE(("%s pno enable called in disassoc mode\n", __FUNCTION__));
+	}
+	else if (pfn_enabled) {
+			DHD_ERROR(("%s pno enable called in assoc mode ret=%d\n",
+				__FUNCTION__, ret));
+			return ret;
+	}
 	/* Enable/disable PNO */
 	if ((ret = bcm_mkiovar("pfn", (char *)&pfn_enabled, 4, iovbuf, sizeof(iovbuf))) > 0) {
 		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
@@ -1718,13 +1819,15 @@ int dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled)
 
 /* Function to execute combined scan */
 int
-dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, uchar scan_fr)
+dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, ushort scan_fr,
+	int pno_repeat, int pno_freq_expo_max)
 {
 	int err = -1;
 	char iovbuf[128];
 	int k, i;
 	wl_pfn_param_t pfn_param;
 	wl_pfn_t	pfn_element;
+	uint len = 0;
 
 	DHD_TRACE(("%s nssid=%d nchan=%d\n", __FUNCTION__, nssid, scan_fr));
 
@@ -1763,17 +1866,32 @@ dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, uchar scan_fr)
 	pfn_param.version = htod32(PFN_VERSION);
 	pfn_param.flags = htod16((PFN_LIST_ORDER << SORT_CRITERIA_BIT));
 
+	/* check and set extra pno params */
+	if ((pno_repeat != 0) || (pno_freq_expo_max != 0)) {
+		pfn_param.flags |= htod16(ENABLE << ENABLE_ADAPTSCAN_BIT);
+		pfn_param.repeat = htod32(pno_repeat);
+		pfn_param.exp = htod32(pno_freq_expo_max);
+	}
 	/* set up pno scan fr */
 	if (scan_fr  != 0)
 		pfn_param.scan_freq = htod32(scan_fr);
 
-	bcm_mkiovar("pfn_set", (char *)&pfn_param, sizeof(pfn_param), iovbuf, sizeof(iovbuf));
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+	if (pfn_param.scan_freq > PNO_SCAN_MAX_FW_SEC) {
+		DHD_ERROR(("%s pno freq above %d sec\n", __FUNCTION__, PNO_SCAN_MAX_FW_SEC));
+		return err;
+	}
+	if (pfn_param.scan_freq < PNO_SCAN_MIN_FW_SEC) {
+		DHD_ERROR(("%s pno freq less %d sec\n", __FUNCTION__, PNO_SCAN_MIN_FW_SEC));
+		return err;
+	}
+	len = bcm_mkiovar("pfn_set", (char *)&pfn_param, sizeof(pfn_param), iovbuf, sizeof(iovbuf));
+	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, len, TRUE, 0);
 
 	/* set all pfn ssid */
 	for (i = 0; i < nssid; i++) {
 
-		pfn_element.bss_type = htod32(DOT11_BSSTYPE_INFRASTRUCTURE);
+		/* XXX GregG infa == bss_type from rt version */
+		pfn_element.infra = htod32(DOT11_BSSTYPE_INFRASTRUCTURE);
 		pfn_element.auth = (DOT11_OPEN_SYSTEM);
 		pfn_element.wpa_auth = htod32(WPA_AUTH_PFN_ANY);
 		pfn_element.wsec = htod32(0);
@@ -1782,15 +1900,19 @@ dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, uchar scan_fr)
 		memcpy((char *)pfn_element.ssid.SSID, ssids_local[i].SSID, ssids_local[i].SSID_len);
 		pfn_element.ssid.SSID_len = ssids_local[i].SSID_len;
 
-		if ((err =
+		if ((len =
 		bcm_mkiovar("pfn_add", (char *)&pfn_element,
 			sizeof(pfn_element), iovbuf, sizeof(iovbuf))) > 0) {
 			if ((err =
-			dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0) {
+			dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, len, TRUE, 0)) < 0) {
 				DHD_ERROR(("%s failed for i=%d error=%d\n",
 					__FUNCTION__, i, err));
 				return err;
 			}
+			else
+				DHD_ERROR(("%s set OK with PNO time=%d repeat=%d max_adjust=%d\n",
+					__FUNCTION__, pfn_param.scan_freq,
+					pfn_param.repeat, pfn_param.exp));
 		}
 		else DHD_ERROR(("%s failed err=%d\n", __FUNCTION__, err));
 	}

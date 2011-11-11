@@ -56,6 +56,14 @@
 /*#define NVSYNCPT_2D_TINYBLT_WAR		     (30)*/
 /*#define NVSYNCPT_2D_TINYBLT_RESTORE_CLASS_ID (30)*/
 
+#define NVSYNCPTS_VALID_MASK ( \
+	BIT(NVSYNCPT_GRAPHICS_HOST) | BIT(NVSYNCPT_VI_ISP_0) | BIT(NVSYNCPT_VI_ISP_1) | \
+	BIT(NVSYNCPT_VI_ISP_2) | BIT(NVSYNCPT_VI_ISP_3) | BIT(NVSYNCPT_VI_ISP_4) | \
+	BIT(NVSYNCPT_VI_ISP_5) | BIT(NVSYNCPT_2D_0) | BIT(NVSYNCPT_2D_1) | \
+	BIT(NVSYNCPT_3D) | BIT(NVSYNCPT_MPE) | BIT(NVSYNCPT_DISP0) | \
+	BIT(NVSYNCPT_DISP1) | BIT(NVSYNCPT_VBLANK0) | BIT(NVSYNCPT_VBLANK1) | \
+	BIT(NVSYNCPT_MPE_EBM_EOF) | BIT(NVSYNCPT_MPE_WR_SAFE) | BIT(NVSYNCPT_DSI))
+
 /* sync points that are wholly managed by the client */
 #define NVSYNCPTS_CLIENT_MANAGED ( \
 	BIT(NVSYNCPT_DISP0) | BIT(NVSYNCPT_DISP1) | BIT(NVSYNCPT_DSI) | \
@@ -64,13 +72,8 @@
 	BIT(NVSYNCPT_MPE_EBM_EOF) | BIT(NVSYNCPT_MPE_WR_SAFE) | \
 	BIT(NVSYNCPT_2D_1))
 
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
-/* sync points that are managed by host */
-#define NVSYNCPTS_HOST_MANAGED ( \
-	BIT(NVSYNCPT_GRAPHICS_HOST) | BIT(NVSYNCPT_2D_0) | \
-	BIT(NVSYNCPT_3D) | BIT(NVSYNCPT_MPE) | BIT(NVSYNCPT_VBLANK0) | \
-	BIT(NVSYNCPT_VBLANK1) | BIT(NVSYNCPT_DSI))
-#endif
+/* Non-client-managed syncpoints */
+#define NVSYNCPTS_HOST_MANAGED (NVSYNCPTS_VALID_MASK & ~(NVSYNCPTS_CLIENT_MANAGED))
 
 #define NVWAITBASE_2D_0 (1)
 #define NVWAITBASE_2D_1 (2)
@@ -90,6 +93,12 @@ static inline u32 nvhost_syncpt_incr_max(struct nvhost_syncpt *sp,
 					u32 id, u32 incrs)
 {
 	return (u32)atomic_add_return(incrs, &sp->max_val[id]);
+}
+
+static inline u32 nvhost_syncpt_incr_min(struct nvhost_syncpt *sp,
+					u32 id, u32 incrs)
+{
+	return (u32)atomic_add_return(incrs, &sp->min_val[id]);
 }
 
 /**
@@ -114,14 +123,6 @@ static inline u32 nvhost_syncpt_read_min(struct nvhost_syncpt *sp, u32 id)
 	smp_rmb();
 	return (u32)atomic_read(&sp->min_val[id]);
 }
-
-/**
-* Updates the value sent to hardware.
-*/
-static inline u32 nvhost_syncpt_incr_min(struct nvhost_syncpt *sp, u32 id, u32 incrs)
-{
-	return (u32)atomic_add_return(incrs, &sp->min_val[id]);
-} 
 
 /**
  * Returns true if syncpoint has reached threshold

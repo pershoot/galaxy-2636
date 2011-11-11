@@ -73,7 +73,7 @@ static int pin_locked(struct nvmap_client *client, struct nvmap_handle *h)
 	nvmap_mru_lock(client->share);
 	if (atomic_inc_return(&h->pin) == 1) {
 		if (h->heap_pgalloc && !h->pgalloc.contig) {
-			area = nvmap_handle_iovmm(client, h);
+			area = nvmap_handle_iovmm_locked(client, h);
 			if (!area) {
 				/* no race here, inside the pin mutex */
 				atomic_dec(&h->pin);
@@ -95,7 +95,6 @@ static int handle_unpin(struct nvmap_client *client,
 		struct nvmap_handle *h, int free_vm)
 {
 	int ret = 0;
-
 	nvmap_mru_lock(client->share);
 
 	if (atomic_read(&h->pin) == 0) {
@@ -125,7 +124,6 @@ static int handle_unpin(struct nvmap_client *client,
 	}
 
 	nvmap_mru_unlock(client->share);
-
 	nvmap_handle_put(h);
 	return ret;
 }
@@ -571,7 +569,6 @@ int nvmap_pin_array(struct nvmap_client *client, struct nvmap_handle *gather,
 	if (WARN_ON(ret)) {
 		for (i = 0; i < count; i++)
 			nvmap_handle_put(unique_arr[i]);
-
 		return ret;
 	} else {
 		for (i = 0; i < count; i++) {

@@ -26,7 +26,7 @@
 #include <linux/workqueue.h>
 #include <linux/gpio.h>
 
-#define SEC_DEBUG 1
+#define SEC_DEBUG 0
 
 struct gpio_button_data {
 	struct gpio_keys_button *button;
@@ -684,9 +684,29 @@ static const struct dev_pm_ops gpio_keys_pm_ops = {
 };
 #endif
 
+#ifdef CONFIG_SAMSUNG_INPUT
+static void gpio_keys_shutdown(struct platform_device *pdev)
+{
+	struct gpio_keys_drvdata *ddata = platform_get_drvdata(pdev);
+	struct gpio_keys_platform_data *pdata = pdev->dev.platform_data;
+	int i;
+
+	for (i = 0; i < pdata->nbuttons; i++) {
+		struct gpio_keys_button *button = &pdata->buttons[i];
+		int irq = gpio_to_irq(button->gpio);
+		disable_irq(irq);
+		free_irq(irq, &ddata->data[i]);
+		gpio_free(button->gpio);
+	}
+}
+#endif
+
 static struct platform_driver gpio_keys_device_driver = {
 	.probe		= gpio_keys_probe,
 	.remove		= __devexit_p(gpio_keys_remove),
+#ifdef CONFIG_SAMSUNG_INPUT
+	.shutdown	= gpio_keys_shutdown,
+#endif
 	.driver		= {
 		.name	= "gpio-keys",
 		.owner	= THIS_MODULE,

@@ -22,10 +22,15 @@
 #include <linux/string.h>
 #include <media/s5k5bbgx.h>
 #include <media/tegra_camera.h>
+
+#ifndef CONFIG_MACH_SAMSUNG_P5W_KT
 #ifdef CONFIG_MACH_SAMSUNG_P5
 #include "s5k5bbgx_regs_p5.h"
 #else
 #include "s5k5bbgx_regs.h"
+#endif
+#else //homepad
+#include "s5k5bbgx_regs_p5_kt.h"
 #endif
 
 #define DEBUG_PRINTS 0
@@ -83,10 +88,20 @@ static s5k5bbgx_dtp_test dtpTest = S5K5BBGX_DTP_TEST_OFF;
 #define S5K5BBGX_READ_STATUS_RETRIES 50
 
 enum {
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	S5K5BBGX_MODE_SENSOR_INIT,
+	S5K5BBGX_MODE_PREVIEW_176x144,
+	S5K5BBGX_MODE_PREVIEW_352x288,
+	S5K5BBGX_MODE_PREVIEW_640x480,
+	S5K5BBGX_MODE_PREVIEW_704x576,
+	S5K5BBGX_MODE_PREVIEW_800x600,
+	S5K5BBGX_MODE_CAPTURE_1600x1200,
+#else
 	S5K5BBGX_MODE_SENSOR_INIT,
 	S5K5BBGX_MODE_PREVIEW_640x480,
 	S5K5BBGX_MODE_PREVIEW_800x600,
 	S5K5BBGX_MODE_CAPTURE_1600x1200,
+#endif
 #ifdef FACTORY_TEST
 	S5K5BBGX_MODE_TEST_PATTERN,
 	S5K5BBGX_MODE_TEST_PATTERN_OFF,
@@ -94,10 +109,20 @@ enum {
 };
 
 static const u32 *mode_table[] = {
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	[S5K5BBGX_MODE_SENSOR_INIT] = mode_sensor_init,
+	[S5K5BBGX_MODE_PREVIEW_176x144] = mode_preview_176x144,
+	[S5K5BBGX_MODE_PREVIEW_352x288] = mode_preview_352x288,
+	[S5K5BBGX_MODE_PREVIEW_640x480] = mode_preview_640x480,
+	[S5K5BBGX_MODE_PREVIEW_704x576] = mode_preview_704x576,
+	[S5K5BBGX_MODE_PREVIEW_800x600] = mode_preview_800x600,
+	[S5K5BBGX_MODE_CAPTURE_1600x1200] = mode_capture_1600x1200,
+#else
 	[S5K5BBGX_MODE_SENSOR_INIT] = mode_sensor_init,
 	[S5K5BBGX_MODE_PREVIEW_640x480] = mode_preview_640x480,
 	[S5K5BBGX_MODE_PREVIEW_800x600] = mode_preview_800x600,
 	[S5K5BBGX_MODE_CAPTURE_1600x1200] = mode_capture_1600x1200,
+#endif
 #ifdef FACTORY_TEST
 	[S5K5BBGX_MODE_TEST_PATTERN] = mode_test_pattern,
 	[S5K5BBGX_MODE_TEST_PATTERN_OFF] = mode_test_pattern_off,
@@ -582,7 +607,16 @@ static int s5k5bbgx_set_mode(struct s5k5bbgx_info *info, struct s5k5bbgx_mode *m
 		else
 	#endif
 		sensor_mode = S5K5BBGX_MODE_PREVIEW_640x480;
-	} else if (mode->xres == 1600 && mode->yres == 1200)
+	} 
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+	else if (mode->xres == 176 && mode->yres == 144)
+		sensor_mode = S5K5BBGX_MODE_PREVIEW_176x144;
+	else if (mode->xres == 352 && mode->yres == 288)
+		sensor_mode = S5K5BBGX_MODE_PREVIEW_352x288;
+	else if (mode->xres == 704 && mode->yres == 576)
+		sensor_mode = S5K5BBGX_MODE_PREVIEW_704x576;
+#endif
+	else if (mode->xres == 1600 && mode->yres == 1200)
 		sensor_mode = S5K5BBGX_MODE_CAPTURE_1600x1200;
 	else {
 		pr_err("%s: invalid resolution supplied to set mode %d %d\n",
@@ -859,7 +893,11 @@ static int s5k5bbgx_set_recording_frame(struct s5k5bbgx_info *info, enum s5k5bbg
 		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_preview_800x600_fixframe");
 		pr_info("s5k5bbgx_set_recording_frame - fix(tuning)   err(%d)!!!\n", err);
 #else
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_fixframe_30fps);
+#else
 		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_800x600_fixframe);
+#endif
 #endif
 		break;
 
@@ -877,6 +915,69 @@ static int s5k5bbgx_set_recording_frame(struct s5k5bbgx_info *info, enum s5k5bbg
 		pr_err("%s: Invalid recording frame Value, %d\n", __func__, arg);
 		return 0;
 		break;
+	}
+
+	if (err < 0)
+		pr_err("%s: s5k5bbgx_write_table() returned error, %d, %d\n", __func__, arg, err);
+
+	return err;
+}
+
+static int s5k5bbgx_set_frame_rate(struct s5k5bbgx_info *info, enum s5k5bbgx_cam_mode arg)
+{
+	FUNC_ENTR;
+
+	int err;
+
+	pr_debug("test recording frame!!!\n");
+	switch (arg) {
+	case FRONT_CAMMODE_CAMCORDER:
+	{
+	pr_debug("test recording frame - fix!!!\n");
+#ifdef CONFIG_LOAD_FILE
+		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_preview_800x600_fixframe");
+		pr_info("s5k5bbgx_set_recording_frame - fix(tuning)   err(%d)!!!\n", err);
+#else
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_fixframe_30fps);
+#else
+		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_800x600_fixframe);
+#endif
+#endif
+		break;
+	}
+	case FRONT_CAMMODE_CAMERA:
+	{
+	pr_debug("test recording frame - variable!!!\n");	
+#ifdef CONFIG_LOAD_FILE
+		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_return_camera_preview");
+		pr_info("s5k5bbgx_set_recording_frame - variable(tuning)    err(%d)!!!\n", err);
+#else	
+		err = s5k5bbgx_write_table(info->i2c_client, mode_return_camera_preview);
+#endif
+		break;
+	}
+	case FRONT_CAMMODE_MMS_CAMCORDER:
+   	{
+#ifdef CONFIG_LOAD_FILE
+		err = s5k5bbgx_write_tuningmode(info->i2c_client, "mode_preview_800x600_fixframe_15fps");
+		pr_info("s5k5bbgx_set_recording_frame - fix(tuning)   err(%d)!!!\n", err);
+#else
+#ifdef CONFIG_MACH_SAMSUNG_P5W_KT	// homepad
+		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_fixframe_15fps);
+#else
+		err = s5k5bbgx_write_table(info->i2c_client, mode_preview_800x600_fixframe_15fps);
+#endif
+#endif
+		break;
+   	}
+	default:
+	{
+		pr_info("==================================test recording frame - DEFAULT DEFAULT DEFAULT !!!\n");	
+		pr_err("%s: Invalid recording frame Value, %d\n", __func__, arg);
+		return 0;
+		break;
+	}
 	}
 
 	if (err < 0)
@@ -938,7 +1039,9 @@ static long s5k5bbgx_ioctl(struct file *file,
 		return s5k5bbgx_set_esd_reset(info, (enum s5k5bbgx_esd_reset) arg);
 
 	case S5K5BBGX_IOCTL_RECORDING_FRAME:
+	{
 		return s5k5bbgx_set_recording_frame(info, (enum s5k5bbgx_recording_frame) arg);
+	}
 
 	case S5K5BBGX_IOCTL_EXIF_INFO:
 	{
@@ -948,7 +1051,10 @@ static long s5k5bbgx_ioctl(struct file *file,
 		}
 		break;
 	}
-
+       case S5K5BBGX_IOCTL_CAMMODE:
+	{
+	   	return s5k5bbgx_set_frame_rate(info, (enum s5k5bbgx_cam_mode) arg);
+   	}
 	default:
 		return -EINVAL;
 	}

@@ -321,7 +321,7 @@ static int interpret_urb_result(struct us_data *us, unsigned int pipe,
 	/* the catch-all error case */
 	default:
 		US_DEBUGP("-- unknown error\n");
-		printk("usb storage -- unknown error\n");
+		printk("usb storage -- unknown error %d\n", result);		
 		return USB_STOR_XFER_ERROR;
 	}
 }

@@ -396,11 +396,9 @@ void input_event(struct input_dev *dev,
 	}
 #endif
 
-#if defined(CONFIG_MACH_SAMSUNG_P5) || defined(CONFIG_MACH_SAMSUNG_P5WIFI)
 	if ((type == EV_KEY)&&((dev->name == "sec_key")||
 		(dev->name == "sec_power_key")||(dev->name == "sec_keyboard")))
-		pr_info("[Key] %d %s\n", code, value ? "P" : "R");
-#endif
+		pr_info("[%s] %s\n", dev->name, value ? "P" : "R");
 
 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
 

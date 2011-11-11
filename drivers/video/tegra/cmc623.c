@@ -120,6 +120,8 @@ struct cmc623_state_type{
     struct str_sub_unit *sub_tune;
     struct str_main_unit *main_tune;
     struct cmc623_gpio gpio;
+    unsigned int suspending;
+    unsigned int resuming; 
 };
 
 static struct cmc623_state_type cmc623_state = {
@@ -132,6 +134,8 @@ static struct cmc623_state_type cmc623_state = {
     .ove = OUTDOOR_OFF_MODE,
     .sub_tune = NULL,
     .main_tune = NULL,
+    .suspending = 0,
+    .resuming = 0,
 };
 
 
@@ -149,6 +153,14 @@ static unsigned long last_cmc623_Bank = 0xffff;
 
 unsigned long last_cmc623_Algorithm = 0xffff;
 
+static int cmc623_current_type = 0;
+
+typedef enum
+{
+	cmc623_type_none = 0,
+	cmc623_type_lsi,
+	cmc623_type_fujitsu,
+}CMC623_type;
 #if 0 
 static int set_mdnie_scenario_mode(unsigned int mode); 
 #endif
@@ -455,19 +467,36 @@ static bool __cmc623_set_init(void)
 {
     int i;
 	int ret = 0;
-	int num = ARRAY_SIZE(cmc623_init2);
+	int num = 0;
     mutex_lock(&tuning_mutex);    
 
-	for (i = 0; i < num; i++) {
-		if (cmc623_I2cWrite16(cmc623_init2[i].RegAddr, cmc623_init2[i].Data) != 0) {
-			pr_err("why return false??!!!\n");
-            mutex_unlock(&tuning_mutex);    
-			return FALSE;
+	if (cmc623_current_type == cmc623_type_fujitsu){
+		num =ARRAY_SIZE(cmc623f_init2);
+		for (i = 0; i < num; i++) {
+			if (cmc623_I2cWrite16(cmc623f_init2[i].RegAddr, cmc623f_init2[i].Data) != 0) {
+				pr_err("why return false??!!!\n");
+	            mutex_unlock(&tuning_mutex);    
+				return FALSE;
+			}
+			if (cmc623f_init2[i].RegAddr == CMC623_REG_SWRESET && 
+	                cmc623f_init2[i].Data == 0xffff)
+				usleep_range(2000, 2100);
 		}
-		if (cmc623_init2[i].RegAddr == CMC623_REG_SWRESET && 
-                cmc623_init2[i].Data == 0xffff)
-			usleep_range(2000, 2100);
 	}
+	else{
+		num =ARRAY_SIZE(cmc623_init2);
+		for (i = 0; i < num; i++) {
+			if (cmc623_I2cWrite16(cmc623_init2[i].RegAddr, cmc623_init2[i].Data) != 0) {
+				pr_err("why return false??!!!\n");
+	            mutex_unlock(&tuning_mutex);    
+				return FALSE;
+			}
+			if (cmc623_init2[i].RegAddr == CMC623_REG_SWRESET && 
+	                cmc623_init2[i].Data == 0xffff)
+				usleep_range(2000, 2100);
+		}
+	}
+	
     mutex_unlock(&tuning_mutex);    
 	return TRUE;
 }
@@ -798,8 +827,12 @@ cleanup:
 #ifdef CONFIG_HAS_EARLYSUSPEND
 void cmc623_suspend(struct early_suspend *h)
 {
+    if(cmc623_state.suspending == 1)
+        return; 
+    
 	printk("+ %s\n",__func__);
-
+    
+    cmc623_state.suspending = 1;
 	cmc623_state.suspended = TRUE;
 	lcdonoff = FALSE;
     
@@ -819,7 +852,7 @@ void cmc623_suspend(struct early_suspend *h)
 
 	/* lcd_backlight_reset low*/
 	gpio_set_value(cmc623_state.gpio.bl_reset, 0);
-#if defined (CONFIG_MACH_SAMSUNG_P5)    
+#if defined(CONFIG_MACH_SAMSUNG_P5)    
     msleep(200);
 #else
     msleep(100);
@@ -854,6 +887,7 @@ void cmc623_suspend(struct early_suspend *h)
 
 	msleep(200);
 	/*cmc623_state.suspended = TRUE;*/
+    cmc623_state.suspending = 0;
     printk("- %s\n",__func__);
 }
 EXPORT_SYMBOL(cmc623_suspend);
@@ -899,18 +933,33 @@ void __cmc623_resume(struct early_suspend *h)
     printk("+ %s\n",__func__);
 	cmc623_pre_resume();
 
-	usleep_range(1000, 2000);
-	/* FAILSAFEB <= HIGH */
-	gpio_set_value(cmc623_state.gpio.ima_pwren , GPIO_LEVEL_HIGH);
-	usleep_range(1000, 2000);
+	if (cmc623_current_type == cmc623_type_fujitsu){
+		usleep_range(1000, 2000);
+		/* BYPASSB <= HIGH*/
+		gpio_set_value(cmc623_state.gpio.ima_bypass, GPIO_LEVEL_HIGH);
+		usleep_range(1000, 2000);
+		
+		/* SLEEPB <= HIGH*/
+		gpio_set_value(cmc623_state.gpio.ima_sleep, GPIO_LEVEL_HIGH);
+		usleep_range(5000, 6000);
 
-	/* BYPASSB <= HIGH*/
-	gpio_set_value(cmc623_state.gpio.ima_bypass, GPIO_LEVEL_HIGH);
-	usleep_range(1000, 2000);
+		/* FAILSAFEB <= HIGH */
+		gpio_set_value(cmc623_state.gpio.ima_pwren , GPIO_LEVEL_HIGH);
+		usleep_range(5000, 6000);
+	}else{
+		usleep_range(1000, 2000);
+		/* FAILSAFEB <= HIGH */
+		gpio_set_value(cmc623_state.gpio.ima_pwren , GPIO_LEVEL_HIGH);
+		usleep_range(1000, 2000);
 
-	/* SLEEPB <= HIGH*/
-	gpio_set_value(cmc623_state.gpio.ima_sleep, GPIO_LEVEL_HIGH);
-	usleep_range(1000, 2000);
+		/* BYPASSB <= HIGH*/
+		gpio_set_value(cmc623_state.gpio.ima_bypass, GPIO_LEVEL_HIGH);
+		usleep_range(1000, 2000);
+
+		/* SLEEPB <= HIGH*/
+		gpio_set_value(cmc623_state.gpio.ima_sleep, GPIO_LEVEL_HIGH);
+		usleep_range(1000, 2000);
+	}
 
 	/* RESETB <= LOW*/
 	gpio_set_value(cmc623_state.gpio.ima_n_rst, GPIO_LEVEL_LOW);
@@ -989,7 +1038,12 @@ void cmc623_resume(struct early_suspend *h)
     camera_resume_flag = 1;
     add_timer(&camera_timer);
 #endif
+    if(cmc623_state.resuming == 1)
+        return; 
+
+    cmc623_state.resuming = 1; 
     __cmc623_resume(h);
+    cmc623_state.resuming = 0;
 }
 EXPORT_SYMBOL(cmc623_resume);
 #endif
@@ -2293,7 +2347,7 @@ static int alloc_cmc623_gpio(void)
         cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON;
     else 
         cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON_REV05;
-#elif defined(CONFIG_MACH_SAMSUNG_P5)
+#elif defined(CONFIG_MACH_SAMSUNG_P5)  
     cmc623_state.gpio.bl_reset = GPIO_BL_RESET;
     cmc623_state.gpio.mlcd_on = GPIO_MLCD_ON;
     if (system_rev < 6)
@@ -2318,6 +2372,7 @@ struct device *tune_cmc623_dev;
 static int __devinit cmc623_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+	u16 data=0;
 
 	printk("[CMC623:INFO] : + %s \n",__func__);
 
@@ -2413,6 +2468,14 @@ static int __devinit cmc623_probe(struct platform_device *pdev)
 #endif    
 
 	ret = i2c_add_driver(&cmc623_i2c_driver);
+
+	cmc623_I2cRead16(0x1A, &data);
+	if( data == 0x623F)
+		cmc623_current_type = cmc623_type_fujitsu;	
+	else
+		cmc623_current_type = cmc623_type_lsi;
+
+	printk("[CMC623:LCD_TYEP] LCD_TYEP(%d) \n", cmc623_current_type);
 
 #ifdef __BYPASS_TEST_ENABLE
     bypass_onoff_ctrl(TRUE);

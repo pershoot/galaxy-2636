@@ -166,6 +166,8 @@ static void samsung_enable_function(int mode);
 #ifdef CONFIG_TEGRA_CPU_FREQ_LOCK
 extern void tegra_cpu_lock_speed(int min_rate, int timeout_ms);
 extern void tegra_cpu_unlock_speed(void);
+extern void fsl_udc_lock_sclk(uint rate);
+extern void fsl_udc_unlock_sclk(void);
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */
 
 
@@ -604,6 +606,7 @@ void android_enable_function(struct usb_function *f, int enable)
 #ifdef CONFIG_TEGRA_CPU_FREQ_LOCK
 			if (!clk_lock_status) {
 				tegra_cpu_lock_speed(912000, 0);
+				fsl_udc_lock_sclk(240000000);	
 				clk_lock_status = true;
 			}
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */
@@ -624,6 +627,7 @@ void android_enable_function(struct usb_function *f, int enable)
 #ifdef CONFIG_TEGRA_CPU_FREQ_LOCK
 			if (clk_lock_status) {
 				tegra_cpu_unlock_speed();
+				fsl_udc_unlock_sclk();				
 				clk_lock_status = false;
 			}
 #endif /* CONFIG_TEGRA_CPU_FREQ_LOCK */

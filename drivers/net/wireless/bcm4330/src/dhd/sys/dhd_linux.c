@@ -413,7 +413,14 @@ uint dhd_pkt_filter_init = 0;
 module_param(dhd_pkt_filter_init, uint, 0);
 
 /* Pkt filter mode control */
+
+#ifndef WHITELIST_PKT_FILTER
 uint dhd_master_mode = FALSE;
+#else
+char pkt_filter_cmd1[64];
+char pkt_filter_cmd2[64];
+uint dhd_master_mode = TRUE;
+#endif
 module_param(dhd_master_mode, uint, 1);
 
 #ifdef DHDTHREAD
@@ -597,7 +604,7 @@ extern int register_pm_notifier(struct notifier_block *nb);
 extern int unregister_pm_notifier(struct notifier_block *nb);
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP) */
 	/* && defined(DHD_GPL) */
-static void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
+void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
 {
 #ifdef PKT_FILTER_SUPPORT
 	DHD_TRACE(("%s: %d\n", __FUNCTION__, value));
@@ -671,7 +678,9 @@ int dhd_set_suspend(int value, dhd_pub_t *dhd)
 					iovbuf, sizeof(iovbuf));
 				dhdcdc_set_ioctl(dhd, 0, WLC_SET_VAR, iovbuf, sizeof(iovbuf), 1);
 #endif /* CONFIG_MACH_MAHIMAHI */
+				dhd->early_suspended = 1;
 			} else {
+				dhd->early_suspended = 0;
 
 				/* Kernel resumed  */
 				DHD_TRACE(("%s: Remove extra suspend setting \n", __FUNCTION__));
@@ -2570,6 +2579,9 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 #if (defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA) || defined(CONFIG_MACH_N1)) && defined(CONFIG_HAS_WAKELOCK)
 	wake_lock_init(&dhd->pub.wow_wakelock, WAKE_LOCK_SUSPEND, "wow_wake_lock");
+#ifdef PNO_SUPPORT
+	wake_lock_init(&dhd->pub.pno_wakelock, WAKE_LOCK_SUSPEND, "pno_wake_lock");
+#endif
 #endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -2620,6 +2632,10 @@ dhd_bus_start(dhd_pub_t *dhdp)
 #ifdef EMBEDDED_PLATFORM
 	char iovbuf[WL_EVENTING_MASK_LEN + 12];	/*  Room for "event_msgs" + '\0' + bitvec  */
 #endif /* EMBEDDED_PLATFORM */
+
+#ifdef WHITELIST_PKT_FILTER
+	uint8 pf_offset=0;
+#endif
 
 	ASSERT(dhd);
 
@@ -2705,9 +2721,11 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	setbit(dhdp->eventmask, WLC_E_ROAM);
 #endif /* EMBEDDED_PLATFORM */
 
+#ifndef WHITELIST_PKT_FILTER
 	dhdp->pktfilter_count = 1;
 	/* Setup filter to deny broadcast packets */
 	dhdp->pktfilter[0] = "100 0 0 0 0xffffff 0xffffff";
+#endif
 
 #ifdef USE_CID_CHECK
     check_module_cid(dhdp);
@@ -2728,6 +2746,30 @@ dhd_bus_start(dhd_pub_t *dhdp)
 #elif (defined(WRITE_MACADDR) || defined(CONFIG_MACH_SAMSUNG_P4LTE))
 	Write_Macaddr(&dhd->pub.mac);
 #endif
+
+#ifdef WHITELIST_PKT_FILTER
+		bzero(pkt_filter_cmd1, 64);
+		bzero(pkt_filter_cmd2, 64);
+
+		strcpy(pkt_filter_cmd1, "100 0 0 0 0xffffffffffff ");
+		pf_offset=strlen(pkt_filter_cmd1);
+		sprintf(&pkt_filter_cmd1[pf_offset], "0x%02x%02x%02x%02x%02x%02x"
+			, dhdp->mac.octet[0], dhdp->mac.octet[1], dhdp->mac.octet[2], dhdp->mac.octet[3], dhdp->mac.octet[4], dhdp->mac.octet[5]);
+
+		strcpy(pkt_filter_cmd2, "101 0 0 0 0xffffffffffff ");
+		pf_offset=strlen(pkt_filter_cmd2);
+		sprintf(&pkt_filter_cmd2[pf_offset], "0x%02x%02x%02x%02x%02x%02x"
+			, dhdp->mac.octet[0]|0x02, dhdp->mac.octet[1], dhdp->mac.octet[2], dhdp->mac.octet[3], dhdp->mac.octet[4]^0x80, dhdp->mac.octet[5]);
+
+		dhdp->pktfilter_count = 5;
+		/* Setup filter to pass the following packets */
+		dhdp->pktfilter[0] = pkt_filter_cmd1;				//eth0 unicast packets
+		dhdp->pktfilter[1] = pkt_filter_cmd2;				//p2p0.1 unicast packets			
+		dhdp->pktfilter[2] = "104 0 0 12 0xffff 0x0806";	//arp packets
+		dhdp->pktfilter[3] = "106 0 0 0 0xffffff 0x01005e";	//ipv4 multicast packets
+		dhdp->pktfilter[4] = "108 0 0 0 0xffff 0x3333";	//ipv6 multicast packets
+#endif
+
 
 	return 0;
 }
@@ -3068,6 +3110,9 @@ dhd_detach(dhd_pub_t *dhdp)
 
 #if (defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA) || defined(CONFIG_MACH_N1)) && defined(CONFIG_HAS_WAKELOCK)
 		wake_lock_destroy(&dhdp->wow_wakelock);
+#ifdef PNO_SUPPORT
+		wake_lock_destroy(&dhdp->pno_wakelock);
+#endif
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP)
@@ -3776,6 +3821,9 @@ void
 dhd_dev_init_ioctl(struct net_device *dev)
 {
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	/*Writing STA's MAC ID to the Dongle for SOFTAP*/ 
+	if( _dhd_set_mac_address(dhd,0,&dhd->pub.mac) == 0)
+		DHD_INFO(("dhd_bus_start: MAC ID is overwritten\n"));
 
 	dhd_preinit_ioctls(&dhd->pub);
 }
@@ -3803,11 +3851,12 @@ dhd_dev_pno_enable(struct net_device *dev,  int pfn_enabled)
 
 /* Linux wrapper to call common dhd_pno_set */
 int
-dhd_dev_pno_set(struct net_device *dev, wlc_ssid_t* ssids_local, int nssid, uchar  scan_fr)
+dhd_dev_pno_set(struct net_device *dev, wlc_ssid_t* ssids_local, int nssid,
+	ushort  scan_fr, int pno_repeat, int pno_freq_expo_max)
 {
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
-	return (dhd_pno_set(&dhd->pub, ssids_local, nssid, scan_fr));
+	return (dhd_pno_set(&dhd->pub, ssids_local, nssid, scan_fr, pno_repeat, pno_freq_expo_max));
 }
 
 /* Linux wrapper to get  pno status */
@@ -3901,7 +3950,7 @@ int dhd_os_wake_lock_timeout(dhd_pub_t *pub)
 		ret = dhd->wakelock_timeout_enable;
 #ifdef CONFIG_HAS_WAKELOCK
 		if (dhd->wakelock_timeout_enable)
-			wake_lock_timeout(&dhd->wl_rxwake, HZ);
+			wake_lock_timeout(&dhd->wl_rxwake, 6*HZ/10);
 #endif
 		dhd->wakelock_timeout_enable = 0;
 		spin_unlock_irqrestore(&dhd->wakelock_spinlock, flags);
@@ -3918,6 +3967,24 @@ int net_os_wake_lock_timeout(struct net_device *dev)
 		ret = dhd_os_wake_lock_timeout(&dhd->pub);
 	return ret;
 }
+
+#ifdef PNO_SUPPORT
+int net_os_wake_lock_timeout_for_pno(struct net_device *dev, int sec)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	int ret = 0;
+	unsigned long flags;
+
+	if (dhd) {
+		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
+#ifdef CONFIG_HAS_WAKELOCK
+		wake_lock_timeout(&dhd->pub.pno_wakelock, HZ * sec);
+#endif
+		spin_unlock_irqrestore(&dhd->wakelock_spinlock, flags);
+	}
+	return 0;
+}
+#endif
 
 int dhd_os_wake_lock_timeout_enable(dhd_pub_t *pub)
 {

@@ -34,7 +34,14 @@
 #define LUX_MIN_VALUE		0
 #define LUX_MAX_VALUE		65528
 
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+#if defined(CONFIG_MACH_SAMSUNG_P4TMO)
+#define LIGHT_UPWORD_BUFFER     5
+#define LIGHT_DOWNWORD_BUFFER   20
+#else
+#define LIGHT_BUFFER_NUM        5
+#endif
+
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100) || !defined(CONFIG_MACH_SAMSUNG_P4TMO)
 #define ALS_BUFFER_NUM	10
 #endif
 
@@ -56,6 +63,14 @@ static const u8 commands[] = {
 	0x13, /* Continuously L-Resolution Mode */
 };
 
+static const int adc_table[5] = {
+        21,
+        150,
+        1600,
+        16000,
+        65000,
+};
+
 struct bh1721fvc_data {
 	int (*reset)(void);
 	
@@ -75,17 +90,22 @@ struct bh1721fvc_data {
 	ktime_t light_poll_delay;
 	enum BH1721FVC_STATE state;
 	u8 measure_mode;
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+        int light_count;
+        int light_buffer;
+#if defined(CONFIG_MACH_SAMSUNG_P4TMO)
+        int light_buffer_cnt;
+        int light_level_state;
+#elif !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	bool als_buf_initialized;
 	int als_value_buf[ALS_BUFFER_NUM];
 	int als_index_count;
-	
+#else
+	u16 previous_lux;
+#endif
+
 #ifdef FACTORY_TEST
 	struct class *factory_class;
 	struct device *factory_dev;
-#endif
-#else
-	u16 previous_lux;
 #endif
 };
 
@@ -173,6 +193,14 @@ static int bh1721fvc_write_byte(struct i2c_client *client, u8 value)
 static int bh1721fvc_enable(struct bh1721fvc_data *bh1721fvc)
 {
 	int err;
+
+        bh1721fvc->light_buffer = 0;
+        bh1721fvc->light_count = 0;
+#if defined(CONFIG_MACH_SAMSUNG_P4TMO)
+        bh1721fvc->light_level_state = 0;
+        bh1721fvc->light_buffer_cnt = LIGHT_UPWORD_BUFFER;
+#endif
+
 #if defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	u16 lux;
 #endif
@@ -324,7 +352,10 @@ static ssize_t bh1721fvc_light_enable_store(struct device *dev,
 			pr_err("%s: couldn't enable", __func__);
 			bh1721fvc->state = POWER_DOWN;
 		}
+#if !defined(CONFIG_MACH_SAMSUNG_P4TMO)
 		bh1721fvc->als_buf_initialized = false;
+#endif
+
 #else
 		if (!err)
 			bh1721fvc->state = bh1721fvc->measure_mode;
@@ -457,9 +488,11 @@ static ssize_t factory_file_illuminance_show(struct device *dev,
 		printk("I2C read failed.. retry %d\n", retry);
 		goto err_exit;
 	}
-
-	result = (lux * 10) / 12;
-	result = result * 139 / 13;
+        /*
+        *       result = (lux * 10) / 12;
+        *       result = result * 139 / 13;
+        */
+        result = (lux * 89) / 10;
 
 	if(bh1721fvc->state == POWER_DOWN)
 	{
@@ -485,13 +518,6 @@ static DEVICE_ATTR(lightsensor_file_illuminance, S_IRUGO,
 static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 *value)
 {
 	int retry;
-	int i = 0;
-	int j = 0;
-	unsigned int als_total = 0;
-	unsigned int als_index = 0;
-	unsigned int als_max = 0;
-	unsigned int als_min = 0;
-	u8 als_high, als_low;
 	
 	for (retry = 0; retry < 10; retry++)
 	{
@@ -507,33 +533,6 @@ static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 *value)
 		return -EIO;
 	}
 		
-	als_index = (bh1721fvc->als_index_count++) % ALS_BUFFER_NUM;
-
-	/*ALS buffer initialize (light sensor off ---> light sensor on) */
-	if (!bh1721fvc->als_buf_initialized) {
-		bh1721fvc->als_buf_initialized = true;
-		for (j = 0; j < ALS_BUFFER_NUM; j++)
-			bh1721fvc->als_value_buf[j] = *value;
-	} else
-		bh1721fvc->als_value_buf[als_index] = *value;
-
-	als_max = bh1721fvc->als_value_buf[0];
-	als_min = bh1721fvc->als_value_buf[0];
-
-	for (i = 0; i < ALS_BUFFER_NUM; i++) {
-		als_total += bh1721fvc->als_value_buf[i];
-
-		if (als_max < bh1721fvc->als_value_buf[i])
-			als_max = bh1721fvc->als_value_buf[i];
-
-		if (als_min > bh1721fvc->als_value_buf[i])
-			als_min = bh1721fvc->als_value_buf[i];
-	}
-	*value = (als_total-(als_max+als_min))/(ALS_BUFFER_NUM-2);
-
-	if (bh1721fvc->als_index_count >= ALS_BUFFER_NUM)
-		bh1721fvc->als_index_count = 0;
-	
 	return 0;
 }
 #endif
@@ -541,24 +540,69 @@ static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 *value)
 
 static void bh1721fvc_work_func_light(struct work_struct *work)
 {
+	int i;
 	int err;
 	u16 lux;
 	static int cnt = 0;
-	unsigned int result;
+	unsigned int result = 0;
 	
 	struct bh1721fvc_data *bh1721fvc = container_of(work,
 					struct bh1721fvc_data, work_light);
 
 #if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	err = bh1721fvc_get_luxvalue(bh1721fvc, &lux);
-	if (!err) {
-		result = (lux * 10) / 12;
-		result = result * 139 / 13;
-		if(result > 65000) result = 65000;
-			
-		bh1721fvc_dbmsg("lux 0x%0X (%d)\n", result, result);
-		input_report_abs(bh1721fvc->input_dev, ABS_MISC, result);
-		input_sync(bh1721fvc->input_dev);
+
+        /*
+        *       result = (lux * 10) / 12;
+        *       result = result * 139 / 13;
+        */
+        result = (lux * 89) / 10;
+
+        if(result > 60000) result = 60000;
+
+        for (i = 0; ARRAY_SIZE(adc_table); i++)
+                if (result <= adc_table[i])
+                        break;
+#if defined(CONFIG_MACH_SAMSUNG_P4TMO)
+        if (bh1721fvc->light_buffer == i)
+        {
+                if (bh1721fvc->light_count++ >= bh1721fvc->light_buffer_cnt)
+                {
+                        bh1721fvc_dbmsg("lux 0x%0X (%d)\n", result, result);
+                        input_report_abs(bh1721fvc->input_dev,
+                                                        ABS_MISC, result+1);
+                        input_sync(bh1721fvc->input_dev);
+                        bh1721fvc->light_level_state = i;
+                        bh1721fvc->light_count = 0;
+                }
+                else;
+        }
+        else
+        {
+                bh1721fvc->light_buffer = i;
+                bh1721fvc->light_count = 0;
+
+                if(bh1721fvc->light_level_state >= i)
+                        bh1721fvc->light_buffer_cnt = LIGHT_DOWNWORD_BUFFER;
+                else
+                        bh1721fvc->light_buffer_cnt = LIGHT_UPWORD_BUFFER;
+        }
+#else
+        if (bh1721fvc->light_buffer == i) {
+                if (bh1721fvc->light_count++ == LIGHT_BUFFER_NUM) {
+                        bh1721fvc_dbmsg("lux 0x%0X (%d)\n", result, result);
+                        input_report_abs(bh1721fvc->input_dev,
+                                                        ABS_MISC, result+1);
+                        input_sync(bh1721fvc->input_dev);
+                        bh1721fvc->light_count = 0;
+                }
+        }
+        else {
+                bh1721fvc->light_buffer = i;
+                bh1721fvc->light_count = 0;
+        }
+#endif
+
 #else
 	err = bh1721fvc_get_luxvalue(bh1721fvc->client, &lux);
 	if (!err) {
@@ -566,10 +610,10 @@ static void bh1721fvc_work_func_light(struct work_struct *work)
 		input_report_abs(bh1721fvc->input_dev, ABS_MISC, lux);
 		input_sync(bh1721fvc->input_dev);
 		bh1721fvc->previous_lux = lux;
+        } else {
+                pr_err("%s: read word failed! (errno=%d)\n", __func__, err);
+        }
 #endif
-	} else {
-		pr_err("%s: read word failed! (errno=%d)\n", __func__, err);
-	}
 
 #if defined(CONFIG_MACH_SAMSUNG_P5)
 	if(result == 0) cnt++;
@@ -578,7 +622,7 @@ static void bh1721fvc_work_func_light(struct work_struct *work)
 	if(cnt > 25)
 	{
 		cnt = 0;
-		printk("Lux Value : 0 during 5 sec...\n");
+		printk("Lux Value is 0 during 5 sec...\n");
 		bh1721fvc_reset(bh1721fvc);
 	}
 #endif

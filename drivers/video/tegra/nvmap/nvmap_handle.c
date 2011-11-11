@@ -341,7 +341,9 @@ int nvmap_alloc_handle_id(struct nvmap_client *client,
 	}
 #endif
 
-	/* can't do greater than page size alignment with page alloc */
+	/* This restriction is deprecated as alignments greater than
+	   PAGE_SIZE are now correctly handled, but it is retained for
+	   AP20 compatibility. */
 	if (align > PAGE_SIZE)
 		heap_mask &= NVMAP_HEAP_CARVEOUT_MASK;
 
@@ -389,6 +391,8 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 	struct nvmap_handle_ref *ref;
 	struct nvmap_handle *h;
 	int pins;
+#define MY_CLIENT "mediaserver"
+	bool is_media_server = !strncmp(MY_CLIENT, current->group_leader->comm, strlen(MY_CLIENT) - 1);
 
 	nvmap_ref_lock(client);
 
@@ -410,6 +414,19 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 	pins = atomic_read(&ref->pin);
 	rb_erase(&ref->node, &client->handle_refs);
 
+	if (is_media_server && pins)
+	{
+		u32 phys_addr;
+		if (h->alloc && h->heap_pgalloc && h->pgalloc.contig) {
+			phys_addr = page_to_phys(h->pgalloc.pages[0]);
+			nvmap_err(client, "%s freeing SYSMEM buf %p at %08x\n", current->group_leader->comm, h, phys_addr);
+		}
+		else if (h->alloc && h->carveout->base) {
+			phys_addr = h->carveout->base;
+			nvmap_err(client, "%s freeing CARVEOUT buf %p at %08x\n", current->group_leader->comm, h, phys_addr);
+		}
+	}
+	
 	if (h->alloc && h->heap_pgalloc && !h->pgalloc.contig)
 		atomic_sub(h->size, &client->iovm_commit);
 

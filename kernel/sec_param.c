@@ -20,6 +20,10 @@
 #define SEC_MISC_FILE_SIZE	0x200000		/* 2MB */
 #define SEC_MISC_FILE_OFFSET	(0x200000 - 4096)	/* 2MB */
 
+/* for indication of RECOVERY mode */
+#define REBOOT_MODE_RECOVERY            4
+int reboot_mode = NULL;
+
 /* single global instance */
 sec_param_data *param_data = NULL;
 
@@ -67,7 +71,8 @@ bool sec_open_param(void)
 	int offset = SEC_MISC_FILE_OFFSET;
 
 	if (param_data != NULL)
-		return true;
+		if (reboot_mode != REBOOT_MODE_RECOVERY)
+			return true;
 
 	param_data = kmalloc(sizeof(sec_param_data), GFP_KERNEL);
 	

@@ -74,6 +74,7 @@ struct battery_info {
 	u32 charging_enabled;	/* 0: Disable, 1: Enable */
 	u32 batt_health;	/* Battery Health (Authority) */
 	u32 batt_is_full;       /* 0 : Not full 1: Full */
+	u32 abstimer_is_active;       /* 0 : Not active 1: Active */
 	u32 batt_is_recharging; /* 0 : Not recharging 1: Recharging */
 	u32 batt_improper_ta; /* 1: improper ta */
 };
@@ -439,8 +440,9 @@ static int p3_get_bat_level(struct power_supply *bat_ps)
 		battery->info.force_usb_charging)) &&
 		battery->info.batt_improper_ta == 0) {
 		if (is_over_abs_time(battery)) {
-			fg_soc = 100;
-			battery->info.batt_is_full = 1;
+			//fg_soc = 100;
+			//battery->info.batt_is_full = 1;
+			battery->info.abstimer_is_active = 1;
 			pr_info("%s: charging time is over", __func__);
 			pr_info("%s: fg_vcell = %d, fg_soc = %d,"
 				" is_full = %d\n",
@@ -450,12 +452,21 @@ static int p3_get_bat_level(struct power_supply *bat_ps)
 			goto __end__;
 		}
 	}
+        else
+        {
+                if(battery->info.abstimer_is_active)
+                {
+                        battery->info.abstimer_is_active = 0;
+                        pr_info("[battery] abs timer become inactive \n");
+                }
+        }
 
 	if (fg_vcell <= battery->pdata->recharge_voltage) {
-		if (battery->info.batt_is_full &&
+
+		if ((battery->info.batt_is_full || battery->info.abstimer_is_active) &&
 			!battery->info.charging_enabled) {
 			if (++battery->recharging_cnt > 1) {
-				pr_info("recharging(under full)");
+				pr_info("recharging(under full) \n");
 				battery->info.batt_is_recharging = 1;
 				p3_set_chg_en(battery, 1);
 				battery->recharging_cnt = 0;
@@ -1489,6 +1500,7 @@ static int __devinit p3_bat_probe(struct platform_device *pdev)
 	battery->info.level = 100;
 	battery->info.charging_source = CHARGER_BATTERY;
 	battery->info.batt_health = POWER_SUPPLY_HEALTH_GOOD;
+	battery->info.abstimer_is_active = 0;
 #if !defined(CONFIG_MACH_SAMSUNG_P4) || !defined(CONFIG_MACH_SAMSUNG_P4WIFI) || !defined(CONFIG_MACH_SAMSUNG_P4LTE)
 	battery->is_first_check = true;
 #endif

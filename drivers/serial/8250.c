@@ -1417,19 +1417,13 @@ receive_chars(struct uart_8250_port *up, unsigned int *status)
 	char flag;
 
 	do {
-#if defined(CONFIG_SEC_KEYBOARD_DOCK)
 		if (likely(lsr & UART_LSR_DR)) {
 			ch = serial_inp(up, UART_RX);
-			if (g_keyboard && (up == cons_uart)) {
-				//pr_info("[Keyboard] key_code : %x\n", ch);
-				send_keyevent(ch);
-			}
-		} else
-#else
-		if (likely(lsr & UART_LSR_DR))
-			ch = serial_inp(up, UART_RX);
-		else
+#if defined(CONFIG_SEC_KEYBOARD_DOCK)
+			if (g_keyboard && (up == cons_uart))
+				send_keyevent(ch);	
 #endif
+		} else
 			/*
 			 * Intel 82571 has a Serial Over Lan device that will
 			 * set UART_LSR_BI without setting UART_LSR_DR when
@@ -1482,14 +1476,23 @@ receive_chars(struct uart_8250_port *up, unsigned int *status)
 		}
 		if (uart_handle_sysrq_char(&up->port, ch))
 			goto ignore_char;
-
+#if defined(CONFIG_SEC_KEYBOARD_DOCK)
+		if (!g_keyboard || (up != cons_uart)) 
+			uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, flag);
+#else
 		uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, flag);
+#endif
 
 ignore_char:
 		lsr = serial_inp(up, UART_LSR);
 	} while ((lsr & (UART_LSR_DR | UART_LSR_BI)) && (max_count-- > 0));
 	spin_unlock(&up->port.lock);
+#if defined(CONFIG_SEC_KEYBOARD_DOCK)
+	if (!g_keyboard || (up != cons_uart)) 
+		tty_flip_buffer_push(tty);	
+#else
 	tty_flip_buffer_push(tty);
+#endif
 	spin_lock(&up->port.lock);
 	*status = lsr;
 }
@@ -1988,10 +1991,8 @@ static int serial8250_startup(struct uart_port *port)
 	int retval;
 
 #if defined(CONFIG_SEC_KEYBOARD_DOCK)
-	if (up == cons_uart) {
+	if (up == cons_uart)
 		g_uart_ready = true;
-		pr_info("[Keyboard] %s\n", __func__);
-	}
 #endif
 
 	up->capabilities = uart_config[up->port.type].flags;
@@ -2226,7 +2227,8 @@ static void serial8250_shutdown(struct uart_port *port)
 #if defined(CONFIG_SEC_KEYBOARD_DOCK)
 	if (up == cons_uart) {
 		g_uart_ready = false;
-		pr_info("[Keyboard] %s\n", __func__);
+		if (g_keyboard)
+			send_keyevent(0);
 	}
 #endif
 
@@ -2297,23 +2299,17 @@ int change_console_baud_rate(int baud)
 {
 	struct irq_desc *desc = irq_to_desc(cons_uart->port.irq);
 	int quot = 0;
-	unsigned long flags = 0;
 
 	quot = serial8250_get_divisor(&cons_uart->port, baud);
 
 	pr_info("[Keyboard] baud : %d, quot: %d", baud, quot);
 
-	if(baud == 9600) {
+	if(baud == 9600)
 		g_keyboard = true;
-		if (g_uart_ready) {
-			if (desc->status & (IRQ_DISABLED | IRQ_SPURIOUS_DISABLED)) {
-				serial8250_shutdown(&cons_uart->port);
-				serial8250_startup(&cons_uart->port);
-			}
-		}
-	} else
+	else
 		g_keyboard = false;
-	spin_lock_irqsave(&cons_uart->port.lock, flags);
+
+	disable_irq(cons_uart->port.irq);
 
 	serial8250_stop_tx(&cons_uart->port);
 	serial8250_stop_rx(&cons_uart->port);
@@ -2323,15 +2319,29 @@ int change_console_baud_rate(int baud)
 	serial_dl_write(cons_uart, quot);
 	serial_outp(cons_uart, UART_LCR, cons_uart->lcr);
 
-	spin_unlock_irqrestore(&cons_uart->port.lock, flags);
-
+	enable_irq(cons_uart->port.irq);
 	return 0;
 }
 EXPORT_SYMBOL(change_console_baud_rate);
 
+void check_uart_state(void)
+{
+	struct irq_desc *desc = irq_to_desc(cons_uart->port.irq);
+
+	if (g_uart_ready) {
+		if (desc->status & (IRQ_DISABLED | IRQ_SPURIOUS_DISABLED)) {
+			serial8250_shutdown(&cons_uart->port);
+			serial8250_startup(&cons_uart->port);
+		}
+	} else
+		pr_err("\n\n\n[Keyboard] the uart is not ready!!!\n");
+}
+EXPORT_SYMBOL(check_uart_state);
+
 void dock_keyboard_tx(u8 val)
 {
-	serial_out(cons_uart, UART_TX, val);
+	if (cons_uart)
+		serial_out(cons_uart, UART_TX, val);
 }
 EXPORT_SYMBOL(dock_keyboard_tx);
 #endif

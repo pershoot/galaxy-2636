@@ -28,16 +28,12 @@
 #include <linux/device.h>
 #include <mach/powergate.h>
 #include <mach/clk.h>
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 #include "nvhost_syncpt.h"
-#endif
 
 #include "dev.h"
 
 #define ACM_TIMEOUT_MSEC 25
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
-#define SUSPEND_TIMEOUT 6*HZ // As per __device_suspend timer.expires
-#endif
+#define SUSPEND_TIMEOUT 6*HZ /* As per __device_suspend timer.expires */
 
 #define DISABLE_MPE_POWERGATING
 
@@ -45,15 +41,13 @@ void nvhost_module_busy(struct nvhost_module *mod)
 {
 	mutex_lock(&mod->lock);
 	cancel_delayed_work(&mod->powerdown);
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
-	if (mod->force_suspend)
-	{
-		printk("tegra_grhost: module_busy despite %s force_suspend!\n",
+
+	if (mod->force_suspend) {
+		pr_warn("tegra_grhost: module_busy despite %s force_suspend!\n",
 			mod->name);
-		dump_stack();
-		// WARN_ON(1); // dump stack
+		WARN_ON(1);
 	}	
-#endif
+
 	if ((atomic_inc_return(&mod->refcount) == 1) && !mod->powered) {
 		if (mod->parent)
 			nvhost_module_busy(mod->parent);
@@ -76,17 +70,12 @@ void nvhost_module_busy(struct nvhost_module *mod)
 static void powerdown_handler(struct work_struct *work)
 {
 	struct nvhost_module *mod;
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 	int refcount;	
-#endif
+
 	mod = container_of(to_delayed_work(work), struct nvhost_module, powerdown);
 	mutex_lock(&mod->lock);
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 	refcount = atomic_read(&mod->refcount);
 	if ((refcount == 0) && mod->powered) {
-#else
-	if ((atomic_read(&mod->refcount) == 0) && mod->powered) {
-#endif
 		int i;
 		if (mod->func)
 			mod->func(mod, NVHOST_POWER_ACTION_OFF);
@@ -101,14 +90,12 @@ static void powerdown_handler(struct work_struct *work)
 		if (mod->parent)
 			nvhost_module_idle(mod->parent);
 	}
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 	else if (mod->force_suspend) {
-		printk("tegra_grhost: module %s (refcnt %d)"
+		pr_warn("tegra_grhost: module %s (refcnt %d)"
 			" force_suspend powerdown skipped!\n",
 			mod->name, refcount);
 	}
 	mod->force_suspend = false;	
-#endif
 	mutex_unlock(&mod->lock);
 }
 
@@ -294,9 +281,7 @@ int nvhost_module_init(struct nvhost_module *mod, const char *name,
 	mod->parent = parent;
 	mod->powered = false;
 	mod->powergate_id = get_module_powergate_id(name);
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 	mod->force_suspend = false;
-#endif
 
 #if CONFIG_DISABLE_3D_POWERGATING
 	/*
@@ -350,27 +335,25 @@ static void debug_not_idle(struct nvhost_module *mod)
 	for (i = 0; i < NVHOST_NUMCHANNELS; i++) {
 		struct nvhost_module *m = &dev->channels[i].mod;
 		if (m->name)
-			printk("tegra_grhost: %s: refcnt %d\n",
+			pr_warn("tegra_grhost: %s: refcnt %d\n",
 				m->name, atomic_read(&m->refcount));
 	}
 
 	for (i = 0; i < NV_HOST1X_SYNC_MLOCK_NUM; i++) {
 		int c = atomic_read(&dev->cpuaccess.lock_counts[i]);
 		if (c) {
-			printk("tegra_grhost: lock id %d: refcnt %d\n", i, c);
+			pr_warn("tegra_grhost: lock id %d: refcnt %d\n", i, c);
 			lock_released = false;
 		}
 	}
 	if (lock_released)
-		printk("tegra_grhost: all locks released\n");
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
+		pr_warn("tegra_grhost: all locks released\n");
+
 	nvhost_debug_dump();
-#endif
 }
 
 int nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 {
-#if defined(CONFIG_MACH_SAMSUNG_P4LTE) || defined(CONFIG_MACH_SAMSUNG_P4) || defined(CONFIG_MACH_SAMSUNG_P4WIFI) || defined(CONFIG_MACH_SAMSUNG_P5)
 	int i = 0, idle_timeout;
 	struct nvhost_master *dev;
 
@@ -379,64 +362,53 @@ int nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 		dev = container_of(mod, struct nvhost_master, mod);
 	}
 	else {
-		idle_timeout = ACM_TIMEOUT_MSEC;
+		idle_timeout = msecs_to_jiffies(ACM_TIMEOUT_MSEC + 500);
 		dev = container_of(mod, struct nvhost_channel, mod)->dev;
 	}
 
-	if (!wait_event_timeout(mod->idle, is_module_idle(mod),
-				 idle_timeout)) {
-		// Timeout occurred: clear refcnt forcibly
+	if (!wait_event_timeout(mod->idle, is_module_idle(mod), idle_timeout)) {
+		/* Timeout occurred: clear refcnt forcibly */
 		mod->force_suspend = true;		
 		for (i = 0; i < NVHOST_NUMCHANNELS; i++) {
 			struct nvhost_module *m = &dev->channels[i].mod;
 			if (m->name) {
 				int refcount = atomic_read(&m->refcount);
 				if (refcount != 0) {	
-					printk("tegra_grhost: %s: force refcnt %d to zero\n",
+					pr_warn("tegra_grhost: %s: force refcnt %d to zero\n",
 						m->name, refcount);
 					nvhost_module_idle_mult(m, refcount);
 					flush_delayed_work(&m->powerdown);
 				}
 			}
 		}
-		wait_event(mod->idle, is_module_idle(mod)); // no timeout: failure fatal
-
+		wait_event(mod->idle, is_module_idle(mod)); /* no timeout: failure fatal */
 	}
 
 	if (system_suspend) {
-		// Ensure that syncpoints are not stuck
+		/* Ensure that syncpoints are not stuck
+		 *
+		 * (In theory this check should apply even in the ACM case (i.e., when
+		 * !system_suspend) due to module_idle, but at such times there have
+		 * occasionally been shown to be a huge number of syncpoint fixups needed,
+		 * bogging everything down.  Since this is not fatal, until this is
+		 * investigated further, we limit to system_suspend for now.) */
 		for (i = 0; i < NV_HOST1X_SYNCPT_NB_PTS; i++) {
-			if (BIT(i) & ~NVSYNCPTS_HOST_MANAGED)
+			if (BIT(i) & ~(NVSYNCPTS_HOST_MANAGED))
 				continue;
 			while (!nvhost_syncpt_min_eq_max(&dev->syncpt, i)) {
-				printk("tegra_grhost: force syncpt id %d (%s) = %d + 1 : %d\n",
+				pr_warn("tegra_grhost: force syncpt id %d (%s) = %d + 1\n",
 					i, nvhost_syncpt_name(i),
-					nvhost_syncpt_read_min(&dev->syncpt, i),
-					nvhost_syncpt_read_max(&dev->syncpt, i));
+					nvhost_syncpt_read_min(&dev->syncpt, i));
 				nvhost_syncpt_incr_min(&dev->syncpt, i, 1);
 			}
 		}
 
 		if (!is_module_idle(mod))
 			debug_not_idle(mod);
-		printk("tegra_grhost: entered idle\n");
+		else
+			pr_info("tegra_grhost: entered idle\n");
 	}
 	
-#else
-	int ret;
-
-	if (system_suspend && (!is_module_idle(mod)))
-		debug_not_idle(mod);
-
-	ret = wait_event_timeout(mod->idle, is_module_idle(mod),
-			   msecs_to_jiffies(ACM_TIMEOUT_MSEC + 500));
-	if (ret == 0)
-		nvhost_debug_dump();
-
-	if (system_suspend)
-		printk("tegra_grhost: entered idle\n");
-
-#endif
 	flush_delayed_work(&mod->powerdown);
 	if (system_suspend) {
 		printk("tegra_grhost: flushed delayed work\n");

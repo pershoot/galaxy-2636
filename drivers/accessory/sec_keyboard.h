@@ -7,7 +7,7 @@
 #define UK_KEYBOARD     0xec
 
 #define KEYBOARD_MIN   0x4
-#define KEYBOARD_MAX   0x7f
+#define KEYBOARD_MAX   0x80
 
 #define MAX_BUF     64
 
@@ -50,6 +50,9 @@ struct dock_keyboard_drvdata
 	struct work_struct work_timer;
 	void	(*register_cb)(struct kbd_callbacks *);
 	void	(*acc_power)(u8 token, bool active);
+#if defined(CONFIG_MACH_SAMSUNG_P5WIFI)
+	void (*disable_wifi_uart)(bool en);
+#endif
 	bool led_on;
 	bool dockconnected;
 	bool pre_connected;

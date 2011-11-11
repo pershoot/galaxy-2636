@@ -70,6 +70,12 @@ static int bcm4330_bt_rfkill_set_power(void *data, bool blocked)
 		if (bcm4330_rfkill->bt_32k_clk)
 			clk_enable(bcm4330_rfkill->bt_32k_clk);
 		gpio_direction_output(bcm4330_rfkill->gpio_shutdown, 1);
+		
+// BEGIN SS_BLUEZ_BT +dykim 2011.07.11.
+// to strengthen BT power on-off routine
+		msleep(50);
+// END SS_BLUEZ_BT
+		
 		gpio_direction_output(bcm4330_rfkill->gpio_reset, 1);
 
 		ret = enable_irq_wake(bcm4330_rfkill->irq);

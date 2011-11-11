@@ -65,6 +65,12 @@ config SENSORS_MPU_KXSD9
     help
       This enables support for the Kionix KXSD9 accelerometer
 
+config SENSORS_MPU_KXUD9
+    bool "Kionix KXUD9"
+    depends on SENSORS_MPU3050 && HC_32
+    help
+      This enables support for the Kionix KXUD9 accelerometer
+
 config SENSORS_MPU_KXTF9
     bool "Kionix KXTF9"
     depends on SENSORS_MPU3050
@@ -76,6 +82,12 @@ config SENSORS_MPU_LIS331DLH
     depends on SENSORS_MPU3050
     help
       This enables support for the ST lis331dlh accelerometer
+
+config SENSORS_MPU_LIS3DH
+    bool "ST lis3dh"
+    depends on SENSORS_MPU3050 && HC_32
+    help
+      This enables support for the ST lis3dh accelerometer
 
 config SENSORS_MPU_LSM303DLHA
     bool "ST lsm303dlh"
@@ -91,9 +103,15 @@ config SENSORS_MPU_MMA8450
 
 config SENSORS_MPU_MMA8451
     bool "Freescale mma8451"
-    depends on SENSORS_MPU3050
+    depends on SENSORS_MPU3050 && !HC_32
     help
       This enables support for the Freescale mma8451 accelerometer
+
+config SENSORS_MPU_MMA845X
+    bool "Freescale mma8451/8452/8453"
+    depends on SENSORS_MPU3050 && HC_32
+    help
+      This enables support for the Freescale mma8451/8452/8453 accelerometer
 
 endchoice
 
@@ -119,6 +137,12 @@ config SENSORS_MPU_MMC314X
     depends on SENSORS_MPU3050
     help
       This enables support for the MEMSIC mmc314x compass
+
+config SENSORS_MPU_MMC328X
+    bool "MEMSIC mmc328x"
+    depends on SENSORS_MPU3050 && HC_32
+    help
+      This enables support for the MEMSIC mmc328x compass
 
 config SENSORS_MPU_AMI30X
     bool "Aichi Steel ami30X"
@@ -150,11 +174,23 @@ config SENSORS_MPU_YAS529
     help
       This enables support for the Yamaha yas529 compass
 
+config SENSORS_MPU_HSCDTD002B
+    bool "Alps hscdtd002b"
+    depends on SENSORS_MPU3050 && HC_32
+    help
+      This enables support for the Alps hscdtd002b compass
+
 config SENSORS_MPU_HSCDTD00XX
     bool "Alps hscdtd00xx"
-    depends on SENSORS_MPU3050
+    depends on SENSORS_MPU3050 && !HC_32
     help
       This enables support for the Alps hscdtd002b/hscdtd004a compass
+
+config MPU_SENSORS_HSCDTD004A
+    bool "Alps hscdtd004a"
+    depends on SENSORS_MPU3050 && HC_32
+    help
+      This enables support for the Alps hscdtd004a compass
 
 endchoice
 
@@ -177,9 +213,18 @@ config SENSORS_MPU_BMA085
 
 endchoice
 
+config SENSORS_MPU_TIMERIRQ
+    tristate "Timer IRQ"
+    depends on HC_32
+    help
+      If you say yes here you get access to the timerirq device handle which
+      can be used to select on.  This can be used instead of IRQ's, sleeping,
+      or timer threads.  Reading from this device returns the same type of
+      information as reading from the MPU and slave IRQ's.
+
 config SENSORS_MPU_DEBUG
     bool "MPU debug"
-    depends on SENSORS_MPU3050 || SENSORS_MPU6000
+    depends on SENSORS_MPU3050 || SENSORS_MPU6000 || SENSORS_MPU_TIMERIRQ
     help
       If you say yes here you get extra debug messages from the MPU3050
       and other slave sensors.

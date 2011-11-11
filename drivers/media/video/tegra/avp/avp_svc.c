@@ -629,56 +629,49 @@ static int dispatch_svc_message(struct avp_svc_info *avp_svc,
 	return ret;
 }
 
-#define _BUGGY_FIX_
-#if defined(_BUGGY_FIX_)
-static bool avp_svc_thread_running = false;
-#endif
-
 static int avp_svc_thread(void *data)
 {
 	struct avp_svc_info *avp_svc = data;
 	u8 buf[TEGRA_RPC_MAX_MSG_LEN];
 	struct svc_msg *msg = (struct svc_msg *)buf;
 	int ret;
+	long timeout;
 
 	BUG_ON(!avp_svc->cpu_ep);
 
 	ret = trpc_wait_peer(avp_svc->cpu_ep, -1);
 	if (ret) {
-		/* XXX: teardown?! */
 		pr_err("%s: no connection from AVP (%d)\n", __func__, ret);
 		goto err;
 	}
 
 	pr_info("%s: got remote peer\n", __func__);
-#if defined(_BUGGY_FIX_)
-	avp_svc_thread_running = true;
-#endif
 
 	while (!kthread_should_stop()) {
 		DBG(AVP_DBG_TRACE_SVC, "%s: waiting for message\n", __func__);
 		ret = trpc_recv_msg(avp_svc->rpc_node, avp_svc->cpu_ep, buf,
 				    TEGRA_RPC_MAX_MSG_LEN, -1);
 		DBG(AVP_DBG_TRACE_SVC, "%s: got message\n", __func__);
-		if (ret < 0) {
-			pr_err("%s: couldn't receive msg\n", __func__);
-			/* XXX: port got closed? we should exit? */
-			goto err;
-			//pr_info("%s: wait kthread stop\n", __func__);
-			//usleep_range(1000,5000);
-			//continue;
-		} else if (!ret) {
-			pr_err("%s: received msg of len 0?!\n", __func__);
-			continue;
-		}
+
+                if (ret == -ECONNRESET || ret == -ENOTCONN) {
+                        pr_info("%s: AVP seems to be down; "
+                                "wait for kthread_stop\n", __func__);
+                        timeout = msecs_to_jiffies(100);
+                        timeout = schedule_timeout_interruptible(timeout);
+                        if (timeout == 0)
+                                pr_err("%s: timed out while waiting for "
+                                        "kthread_stop\n", __func__);
+                        continue;
+                } else if (ret <= 0) {
+                        pr_err("%s: couldn't receive msg (ret=%d)\n",
+                                __func__, ret);
+                        continue;
+                }
 		dispatch_svc_message(avp_svc, msg, ret);
 	}
 
 err:
 	trpc_put(avp_svc->cpu_ep);
-#if defined(_BUGGY_FIX_)
-	avp_svc_thread_running = false;
-#endif
 	pr_info("%s: done\n", __func__);
 	return ret;
 }
@@ -733,35 +726,12 @@ void avp_svc_stop(struct avp_svc_info *avp_svc)
 	int ret;
 	int i;
 
-#if defined(_BUGGY_FIX_)
-	if (!avp_svc) {
-		pr_err("%s: avp_svc is NULL", __func__);
-		return;
-	}
-	trpc_close(avp_svc->cpu_ep);
-
-	if (!avp_svc->svc_thread) {
-		pr_err("%s: avp_svc->svc_thread is NULL", __func__);
-		return;
-	}
-	if (avp_svc_thread_running) {
-		ret = kthread_stop(avp_svc->svc_thread);
-		if (ret == -EINTR) {
-			/* the thread never started, drop it's extra reference */
-			trpc_put(avp_svc->cpu_ep);
-		}
-	}
-	else {
-		pr_info("%s: avp_svc_thread is already terminated\n", __func__);
-	}
-#else
 	trpc_close(avp_svc->cpu_ep);
 	ret = kthread_stop(avp_svc->svc_thread);
 	if (ret == -EINTR) {
 		/* the thread never started, drop it's extra reference */
 		trpc_put(avp_svc->cpu_ep);
 	}
-#endif
 	avp_svc->cpu_ep = NULL;
 
 	nvmap_client_put(avp_svc->nvmap_remote);

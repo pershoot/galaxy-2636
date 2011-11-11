@@ -717,6 +717,12 @@ typedef struct {
 #define WPA_AUTH_UNSPECIFIED	0x0002	/* over 802.1x */
 #define WPA_AUTH_PSK		0x0004	/* Pre-shared key */
 /* #define WPA_AUTH_8021X 0x0020 */	/* 802.1x, reserved */
+
+#ifdef BCMCCX
+#define WPA_AUTH_CCKM		0x0008	/* CCKM */
+#define WPA2_AUTH_CCKM		0x0010	/* CCKM2 */
+#endif /* BCMCCX */
+
 #define WPA2_AUTH_UNSPECIFIED	0x0040	/* over 802.1x */
 #define WPA2_AUTH_PSK		0x0080	/* Pre-shared key */
 #ifndef LINUX_POSTMOGRIFY_REMOVAL
@@ -724,6 +730,14 @@ typedef struct {
 #define BRCM_AUTH_DPT		0x0200	/* DPT PSK without group keys */
 #define WPA_AUTH_WAPI		0x0400	
 #endif /* LINUX_POSTMOGRIFY_REMOVAL */
+
+#ifdef PNO_SUPPORT /* for PNO */
+#define WL_PNO_IDLE		0
+#define WL_PNO_NETFOUND		1
+#define WL_PNO_DISABLED		2
+#define WL_PNO_ENABLE		3
+
+#endif
 
 /* pmkid */
 #define	MAXPMKID		16
@@ -748,6 +762,17 @@ typedef struct _pmkid_cand_list {
 	pmkid_cand_t	pmkid_cand[1];
 } pmkid_cand_list_t;
 
+#ifdef BCMCCX
+typedef struct wl_assoc_info {
+	uint32		req_len;
+	uint32		resp_len;
+	uint32		flags;
+	struct dot11_assoc_req req;
+	struct ether_addr reassoc_bssid;
+	struct dot11_assoc_resp resp;
+} wl_assoc_info_t;
+#endif /* BCMCCX */
+
 #ifndef LINUX_POSTMOGRIFY_REMOVAL
 typedef struct wl_led_info {
 	uint32		index;		/* led index */
@@ -755,6 +780,7 @@ typedef struct wl_led_info {
 	uint8		activehi;
 } wl_led_info_t;
 
+#if 0 /* move up to define CCX */
 typedef struct wl_assoc_info {
 	uint32		req_len;
 	uint32		resp_len;
@@ -763,6 +789,7 @@ typedef struct wl_assoc_info {
 	struct ether_addr reassoc_bssid; /* used in reassoc's */
 	struct dot11_assoc_resp resp;
 } wl_assoc_info_t;
+#endif
 
 /* flags */
 #define WLC_ASSOC_REQ_IS_REASSOC 0x01 /* assoc req was actually a reassoc */
@@ -2695,6 +2722,8 @@ typedef struct wl_chan_switch {
 #define WLC_ROAM_TRIGGER_MAX_VALUE	3 /* max. valid value */
 
 /* Preferred Network Offload (PNO, formerly PFN) defines */
+#define WPA_AUTH_PFN_ANY	0xffffffff	/* for PFN, match only ssid */
+
 enum {
 	PFN_LIST_ORDER,
 	PFN_RSSI
@@ -2705,19 +2734,60 @@ enum {
 	ENABLE
 };
 
+enum {
+	OFF_ADAPT,
+	SMART_ADAPT,
+	STRICT_ADAPT
+};
+
 #define SORT_CRITERIA_BIT		0
 #define AUTO_NET_SWITCH_BIT		1
 #define ENABLE_BKGRD_SCAN_BIT		2
 #define IMMEDIATE_SCAN_BIT		3
 #define	AUTO_CONNECT_BIT		4
+#define	ENABLE_BD_SCAN_BIT		5
+#define ENABLE_ADAPTSCAN_BIT	6
 
 #define SORT_CRITERIA_MASK		0x01
 #define AUTO_NET_SWITCH_MASK		0x02
 #define ENABLE_BKGRD_SCAN_MASK		0x04
 #define IMMEDIATE_SCAN_MASK		0x08
 #define	AUTO_CONNECT_MASK		0x10
+#define ENABLE_BD_SCAN_MASK		0x20
+#define ENABLE_ADAPTSCAN_MASK	0xc0
 
-#define PFN_VERSION			1
+#define PFN_VERSION				2
+#define PFN_SCANRESULT_VERSION	1
+#define MAX_PFN_LIST_COUNT 16
+
+#define PFN_COMPLETE			1
+#define PFN_INCOMPLETE			0
+
+#define DEFAULT_BESTN			2
+#define DEFAULT_MSCAN			0
+#define DEFAULT_REPEAT			10
+#define DEFAULT_EXP				2
+
+/* PFN network info structure */
+typedef struct wl_pfn_subnet_info {
+	struct ether_addr BSSID;
+	uint8	channel; /* channel number only */
+	uint8	SSID_len;
+	uint8	SSID[32];
+} wl_pfn_subnet_info_t;
+
+typedef struct wl_pfn_net_info {
+	wl_pfn_subnet_info_t pfnsubnet;
+	int16	RSSI; /* receive signal strength (in dBm) */
+	uint16	timestamp; /* age in seconds */
+} wl_pfn_net_info_t;
+
+typedef struct wl_pfn_scanresults {
+	uint32 version;
+	uint32 status;
+	uint32 count;
+	wl_pfn_net_info_t netinfo[1];
+} wl_pfn_scanresults_t;
 
 /* PFN data structure */
 typedef struct wl_pfn_param {
@@ -2733,22 +2803,45 @@ typedef struct wl_pfn_param {
 	int16 rssi_margin;		/* Margin to avoid jitter for choosing a
 					 * PFN based on RSSI sort criteria
 					 */
+	uint8 bestn; /* number of best networks in each scan */
+	uint8 mscan; /* number of scans recorded */
+	uint8 repeat; /* Minimum number of scan intervals
+				     *before scan frequency changes in adaptive scan
+				     */
+	uint8 exp; /* Exponent of 2 for maximum scan interval */
 } wl_pfn_param_t;
+
+typedef struct wl_pfn_bssid {
+	struct ether_addr 	macaddr;
+	/* Bit4: suppress_lost, Bit3: suppress_found */
+	uint16				flags;
+} wl_pfn_bssid_t;
+#define WL_PFN_SUPPRESSFOUND_MASK	0x08
+#define WL_PFN_SUPPRESSLOST_MASK	0x10
+
+typedef struct wl_pfn_cfg {
+	uint32				reporttype;
+	int32				channel_num;
+	uint16				channel_list[WL_NUMCHANNELS];
+} wl_pfn_cfg_t;
+#define WL_PFN_REPORT_ALLNET 	0
+#define WL_PFN_REPORT_SSIDNET 	1
+#define WL_PFN_REPORT_BSSIDNET 	2
 
 typedef struct wl_pfn {
 	wlc_ssid_t		ssid;			/* ssid name and its length */
-	int32			bss_type;		/* IBSS or infrastructure */
+	int32			flags;			/* bit2: hidden*/
 	int32			infra;			/* BSS Vs IBSS */
 	int32			auth;			/* Open Vs Closed */
 	int32			wpa_auth;		/* WPA type */
 	int32			wsec;			/* wsec value */
-#ifdef WLPFN_AUTO_CONNECT
-	union {
-		wl_wsec_key_t	sec_key;		/* Security Settings for WEP */
-		wsec_pmk_t	wpa_sec_key;		/* Security setting for WPA */
-	} pfn_security;
-#endif /* WLPFN_AUTO_CONNECT */
 } wl_pfn_t;
+#define WL_PFN_HIDDEN_BIT		2
+#define PNO_SCAN_MAX_FW		508*1000	/* max time scan time in msec */
+#define PNO_SCAN_MAX_FW_SEC	PNO_SCAN_MAX_FW/1000 /* max time scan time in SEC */
+#define PNO_SCAN_MIN_FW_SEC	10			/* min time scan time in SEC */
+#define WL_PFN_HIDDEN_MASK		0x4
+
 
 /* TCP Checksum Offload defines */
 #define TOE_TX_CSUM_OL		0x00000001

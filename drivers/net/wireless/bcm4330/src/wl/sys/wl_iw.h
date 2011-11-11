@@ -33,6 +33,11 @@
 #include <proto/ethernet.h>
 #include <wlioctl.h>
 
+#ifdef HOTSPOT_VERIZON // MOBILE HOTSPOT for Verizon :: START
+#define FEATURE_HOTSPOT_MAX_ASSOC
+#define USE_HIDDEN_SSID
+#endif // MOBILE HOTSPOT for Verizon :: END
+
 #define WL_SCAN_PARAMS_SSID_MAX 	10
 #define GET_SSID			"SSID="
 #define GET_CHANNEL			"CH="
@@ -93,6 +98,12 @@ typedef struct wl_iw_extra_params {
 #define WL_FW_RELOAD            (SIOCIWFIRSTPRIV+27)
 #define WL_COMBO_SCAN            (SIOCIWFIRSTPRIV+29)
 #define WL_AP_SPARE3            (SIOCIWFIRSTPRIV+31)
+#ifdef HOTSPOT_VERIZON // MOBILE HOTSPOT for Verizon :: START
+#define WL_FW_DISASSOC_STA      (SIOCIWFIRSTPRIV+23)
+#ifdef FEATURE_HOTSPOT_MAX_ASSOC
+#define WL_AP_MAX_ASSOC            (SIOCIWFIRSTPRIV+31)
+#endif
+#endif // MOBILE HOTSPOT for Verizon :: END
 #define 		G_SCAN_RESULTS 8*1024
 #define 		WE_ADD_EVENT_FIX	0x80
 #define          G_WLAN_SET_ON	0
@@ -147,10 +158,26 @@ typedef enum broadcast_first_scan {
 	BROADCAST_SCAN_FIRST_RESULT_CONSUMED
 } broadcast_first_scan_t;
 #ifdef SOFTAP
+
+#ifdef HOTSPOT_VERIZON // MOBILE HOTSPOT for Verizon :: START
+#define NEW_AP_INTERFACE
+#endif // MOBILE HOTSPOT for Verizon :: END
 #define SSID_LEN	32
 #define SEC_LEN		16
 #define KEY_LEN		65
 #define PROFILE_OFFSET	32
+
+struct mflist {
+	uint count;
+	struct ether_addr ea[16];
+};
+struct mac_list_set {
+	uint32	mode;
+	uint32  allow_all_device;
+	struct mflist white_list;
+	struct mflist black_list;
+};
+
 struct ap_profile {
 	uint8	ssid[SSID_LEN+1];
 	uint8	sec[SEC_LEN];
@@ -161,21 +188,24 @@ struct ap_profile {
 #ifdef USE_HIDDEN_SSID
 	uint32	hidden_ssid;
 #endif
+#ifdef MOBILEAP_CERT
+    uint8   enc[10];
+#endif
+// SecFeature P7_LTE START
+#ifdef NEW_AP_INTERFACE
+        uint32  op_mode;
+        uint32  key_index;
+        int     is_wep;
+        struct mac_list_set mac_filter;
+#endif
+// SecFeature P7_LTE END
+
 };
 
 
 #define MACLIST_MODE_DISABLED	0
 #define MACLIST_MODE_ENABLED	1
 #define MACLIST_MODE_ALLOW		2
-struct mflist {
-	uint count;
-	struct ether_addr ea[16];
-};
-struct mac_list_set {
-	uint32	mode;
-	struct mflist white_list;
-	struct mflist black_list;
-};
 #endif   /* #ifdef SOFTAP */
 
 #if WIRELESS_EXT > 12
@@ -199,6 +229,10 @@ extern int net_os_set_dtim_skip(struct net_device *dev, int val);
 extern int net_os_set_packet_filter(struct net_device *dev, int val);
 extern int net_os_send_hang_message(struct net_device *dev);
 
+#ifdef PNO_SUPPORT
+int net_os_wake_lock_timeout_for_pno(struct net_device *dev, int sec);
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
 #define IWE_STREAM_ADD_EVENT(info, stream, ends, iwe, extra) \
 	iwe_stream_add_event(info, stream, ends, iwe, extra)
@@ -215,23 +249,29 @@ extern int net_os_send_hang_message(struct net_device *dev);
 	iwe_stream_add_point(stream, ends, iwe, extra)
 #endif
 
+#ifdef PNO_SUPPORT
 extern int dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled);
 extern int dhd_pno_clean(dhd_pub_t *dhd);
-extern int dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, uchar  scan_fr);
+extern int dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid,
+                       ushort  scan_fr, int pno_repeat, int pno_freq_expo_max);
 extern int dhd_pno_get_status(dhd_pub_t *dhd);
 extern int dhd_dev_pno_reset(struct net_device *dev);
 extern int dhd_dev_pno_set(struct net_device *dev, wlc_ssid_t* ssids_local,
-				 int nssid, uchar  scan_fr);
+                           int nssid, ushort  scan_fr, int pno_repeat, int pno_freq_expo_max);
 extern int dhd_dev_pno_enable(struct net_device *dev,  int pfn_enabled);
 extern int dhd_dev_get_pno_status(struct net_device *dev);
 
 #define PNO_TLV_PREFIX			'S'
-#define PNO_TLV_VERSION			1
-#define PNO_TLV_SUBVERSION 		0
-#define PNO_TLV_RESERVED		0
+#define PNO_TLV_VERSION			'1'
+#define PNO_TLV_SUBVERSION 		'2'
+#define PNO_TLV_RESERVED		'0'
 #define PNO_TLV_TYPE_SSID_IE		'S'
 #define PNO_TLV_TYPE_TIME		'T'
+#define PNO_TLV_FREQ_REPEAT		'R'
+#define PNO_TLV_FREQ_EXPO_MAX	'M'
 #define  PNO_EVENT_UP			"PNO_EVENT"
+
+#endif
 
 typedef struct cmd_tlv {
 	char prefix;
