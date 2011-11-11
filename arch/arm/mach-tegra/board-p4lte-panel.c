@@ -25,7 +25,6 @@
 #include <asm/mach-types.h>
 #include <linux/platform_device.h>
 #include <linux/earlysuspend.h>
-#include <linux/kernel.h>
 #include <linux/pwm_backlight.h>
 #include <mach/nvhost.h>
 #include <mach/nvmap.h>
@@ -311,14 +310,16 @@ struct early_suspend p3_panel_early_suspender;
 
 static void p3_panel_early_suspend(struct early_suspend *h)
 {
-	if (num_registered_fb > 0)
-		fb_blank(registered_fb[0], FB_BLANK_POWERDOWN);
+        unsigned i;
+        for (i = 0; i < num_registered_fb; i++)
+                fb_blank(registered_fb[i], FB_BLANK_POWERDOWN);
 }
 
 static void p3_panel_late_resume(struct early_suspend *h)
 {
-	if (num_registered_fb > 0)
-		fb_blank(registered_fb[0], FB_BLANK_UNBLANK);
+        unsigned i;
+        for (i = 0; i < num_registered_fb; i++)
+                fb_blank(registered_fb[i], FB_BLANK_UNBLANK);
 }
 #endif
 

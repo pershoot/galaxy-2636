@@ -158,6 +158,9 @@ struct bootloader_message {
 static struct clk *wifi_32k_clk;
 static struct mxt_callbacks *charger_callbacks;
 
+/* to indicate REBOOT_MODE_RECOVERY */
+extern int reboot_mode;
+
 /*Check ADC value to select headset type*/
 extern s16 adc_get_value(u8 channel);
 extern s16 stmpe811_adc_get_value(u8 channel);
@@ -195,8 +198,8 @@ static int write_bootloader_message(char *cmd, int mode)
 	if (mode == REBOOT_MODE_RECOVERY) {
 		strcpy(bootmsg.command, "boot-recovery");
 #ifdef CONFIG_KERNEL_DEBUG_SEC
+		reboot_mode = REBOOT_MODE_RECOVERY;
 		kernel_sec_set_debug_level(KERNEL_SEC_DEBUG_LEVEL_LOW);
-		kernel_sec_clear_upload_magic_number();
 #endif
 	}
 	else if (mode == REBOOT_MODE_FASTBOOT)
@@ -563,7 +566,7 @@ static char *usb_functions_ums_acm_adb[] = {
 	"adb",
 };
 static char *usb_functions_diag_adb[] = {
-//	"mtp",
+	"mtp",
 	"diag",
 	"adb",
 };
@@ -1742,7 +1745,6 @@ static struct platform_device watchdog_device = {
 
 static struct platform_device *p3_devices[] __initdata = {
 	&watchdog_device,
-	&androidusb_device,
 #ifndef CONFIG_USB_ANDROID_RNDIS
 	&p3_rndis_device,
 #else
@@ -1752,7 +1754,6 @@ static struct platform_device *p3_devices[] __initdata = {
 	&tegra_uarta_device,
 	&tegra_btuart_device,
 	&pmu_device,
-	&tegra_udc_device,
 	&tegra_gart_device,
 	&tegra_aes_device,
 	&p3_keys_device,
@@ -2281,7 +2282,7 @@ static struct mxt_platform_data p3_touch_platform_data = {
 	.touchscreen_config.xpitch = 1,
 	.touchscreen_config.ypitch = 3,
 	/*noise_suppression_config*/
-	.noise_suppression_config.ctrl = 5,
+	.noise_suppression_config.ctrl = 0x87,
 	.noise_suppression_config.reserved = 0,
 	.noise_suppression_config.reserved1 = 0,
 	.noise_suppression_config.reserved2 = 0,
@@ -2322,10 +2323,32 @@ static struct mxt_platform_data p3_touch_platform_data = {
 	.palmsupression_config.supextto = 5,
 	/*config change for ta connected*/
 	.tchthr_for_ta_connect = 80,
-	.tchdi_for_ta_connect = 2,
 	.noisethr_for_ta_connect = 55,
 	.idlegcafdepth_ta_connect = 32,
-	.actvgcafdepth_ta_connect = 63,
+        .freq_for_ta_connect[0] = 45,
+        .freq_for_ta_connect[1] = 49,
+        .freq_for_ta_connect[2] = 55,
+        .freq_for_ta_connect[3] = 59,
+        .freq_for_ta_connect[4] = 63,
+        .fherr_cnt = 0,
+        .tch_blen_for_fherr = 0,
+        .tchthr_for_fherr = 35,
+        .noisethr_for_fherr = 30,
+        .freq_for_fherr1[0] = 45,
+        .freq_for_fherr1[1] = 49,
+        .freq_for_fherr1[2] = 55,
+        .freq_for_fherr1[3] = 59,
+        .freq_for_fherr1[4] = 63,
+        .freq_for_fherr2[0] = 10,
+        .freq_for_fherr2[1] = 12,
+        .freq_for_fherr2[2] = 18,
+        .freq_for_fherr2[3] = 40,
+        .freq_for_fherr2[4] = 72,
+        .freq_for_fherr3[0] = 7,
+        .freq_for_fherr3[1] = 33,
+        .freq_for_fherr3[2] = 39,
+        .freq_for_fherr3[3] = 52,
+        .freq_for_fherr3[4] = 64,
 #ifdef MXT_CALIBRATE_WORKAROUND
 	/*autocal config at idle status*/
 	.atchcalst_idle = 9,
@@ -2387,6 +2410,7 @@ static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 		.phy_config = &hsic_phy_config,
 		.operating_mode = TEGRA_USB_HOST,
 		.power_down_on_bus_suspend = 0,
+		.phy_type = TEGRA_USB_PHY_TYPE_LINK_ULPI,
 	},
 	[2] = {
 		.phy_config = &utmi_phy_config[1],
@@ -2601,6 +2625,9 @@ static void p3_usb_init(void)
 
 	platform_device_register(&tegra_otg_device);
 
+        platform_device_register(&androidusb_device);
+        platform_device_register(&tegra_udc_device);
+
 #ifdef CONFIG_SAMSUNG_LPM_MODE
 	if (!charging_mode_from_boot) {
 		tegra_ehci3_device.dev.platform_data=&tegra_ehci_pdata[2];
@@ -2662,6 +2689,27 @@ void p3_wlan_gpio_disable(void)
 
 }
 EXPORT_SYMBOL(p3_wlan_gpio_disable);
+
+void p3_wlan_reset_enable(void)
+{
+        printk(KERN_DEBUG "wlan reset enable OK\n");
+        gpio_set_value(GPIO_WLAN_EN, 1);
+        mdelay(100);
+        printk(KERN_DEBUG "wlan get value  (%d)\n",
+        gpio_get_value(GPIO_WLAN_EN));
+}
+EXPORT_SYMBOL(p3_wlan_reset_enable);
+
+void p3_wlan_reset_disable(void)
+{
+        printk(KERN_DEBUG "wlan reset disable OK\n");
+        gpio_set_value(GPIO_WLAN_EN, 0);
+        mdelay(100);
+        printk(KERN_DEBUG "wlan get value  (%d)\n",
+        gpio_get_value(GPIO_WLAN_EN));
+
+}
+EXPORT_SYMBOL(p3_wlan_reset_disable);
 
 int	is_JIG_ON_high()
 {
