@@ -30,6 +30,7 @@
 *.patch
 *.gcno
 *.str.tmp
+modules.builtin
 scripts/
 
 #
