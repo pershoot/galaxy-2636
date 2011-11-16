@@ -4,7 +4,7 @@
  * Tegra I/O VMM implementation for GART devices in Tegra and Tegra 2 series
  * systems-on-a-chip.
  *
- * Copyright (c) 2010-2011, NVIDIA Corporation.
+ * Copyright (c) 2010-2012, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -63,6 +63,22 @@ struct gart_device {
 #endif
 };
 
+#if defined(CONFIG_ICS)
+/*
+ * Any interaction between any block on PPSB and a block on APB or AHB
+ * must have these read-back to ensure the APB/AHB bus transaction is
+ * complete before initiating activity on the PPSB block.
+ */
+#define FLUSH_GART_REGS(gart)	(void)readl((gart)->regs + GART_CONFIG)
+
+static inline void gart_set_pte(struct gart_device *gart,
+				tegra_iovmm_addr_t offs, u32 pte)
+{
+	writel(offs, gart->regs + GART_ENTRY_ADDR);
+	writel(pte, gart->regs + GART_ENTRY_DATA);
+}
+#endif
+
 #if !defined(CONFIG_ICS)
 static int gart_map(struct tegra_iovmm_device *, struct tegra_iovmm_area *);
 static void gart_unmap(struct tegra_iovmm_device *,
@@ -119,7 +135,9 @@ static int gart_suspend(struct tegra_iovmm_device *dev)
 	for (i=0; i<gart->page_count; i++) {
 		writel(reg, gart->regs + GART_ENTRY_ADDR);
 		gart->savedata[i] = readl(gart->regs + GART_ENTRY_DATA);
+#if !defined(CONFIG_ICS)
 		dmb();
+#endif
 		reg += 1 << GART_PAGE_SHIFT;
 	}
 	spin_unlock(&gart->pte_lock);
@@ -135,13 +153,19 @@ static void do_gart_setup(struct gart_device *gart, const u32 *data)
 
 	reg = gart->iovmm_base;
 	for (i=0; i<gart->page_count; i++) {
+#if !defined(CONFIG_ICS)
 		writel(reg, gart->regs + GART_ENTRY_ADDR);
 		writel((data) ? data[i] : 0, gart->regs + GART_ENTRY_DATA);
 		wmb();
+#else
+		gart_set_pte(gart, reg, data ? data[i] : 0);
+#endif
 		reg += 1 << GART_PAGE_SHIFT;
 	}
 #if !defined(CONFIG_ICS)
 	wmb();
+#else
+	FLUSH_GART_REGS(gart);
 #endif
 }
 
@@ -220,7 +244,11 @@ static int gart_probe(struct platform_device *pdev)
 #endif
 	}
 
+#if !defined(CONFIG_ICS)
 	gart_regs = ioremap_wc(res->start, res->end - res->start + 1);
+#else
+	gart_regs = ioremap(res->start, res->end - res->start + 1);
+#endif
 	if (!gart_regs) {
 		pr_err(DRIVER_NAME ": failed to remap GART registers\n");
 		e = -ENXIO;
@@ -298,7 +326,11 @@ static void __exit gart_exit(void)
 #endif
 }
 
+#if !defined(CONFIG_ICS)
 #define GART_PTE(_pfn) (0x80000000ul | ((_pfn)<<PAGE_SHIFT))
+#else
+#define GART_PTE(_pfn) (0x80000000ul | ((_pfn) << PAGE_SHIFT))
+#endif
 
 
 #if !defined(CONFIG_ICS)
@@ -327,11 +359,15 @@ static int gart_map(struct tegra_iovmm_domain *domain,
 
 		spin_lock(&gart->pte_lock);
 
+#if !defined(CONFIG_ICS)
 		writel(gart_page, gart->regs + GART_ENTRY_ADDR);
 		writel(GART_PTE(pfn), gart->regs + GART_ENTRY_DATA);
 		wmb();
+#else
+		gart_set_pte(gart, gart_page, GART_PTE(pfn));
+		FLUSH_GART_REGS(gart);
+#endif
 		gart_page += 1 << GART_PAGE_SHIFT;
-
 		spin_unlock(&gart->pte_lock);
 	}
 #if !defined(CONFIG_ICS)
@@ -344,10 +380,17 @@ fail:
 	while (i--) {
 		iovma->ops->release(iovma, i<<PAGE_SHIFT);
 		gart_page -= 1 << GART_PAGE_SHIFT;
+#if !defined(CONFIG_ICS)
 		writel(gart_page, gart->regs + GART_ENTRY_ADDR);
 		writel(0, gart->regs + GART_ENTRY_DATA);
 		wmb();
+#else
+		gart_set_pte(gart, gart_page, 0);
+#endif
 	}
+#if defined(CONFIG_ICS)
+	FLUSH_GART_REGS(gart);
+#endif
 	spin_unlock(&gart->pte_lock);
 #if !defined(CONFIG_ICS)
 	wmb();
@@ -377,11 +420,18 @@ static void gart_unmap(struct tegra_iovmm_domain *domain,
 		if (iovma->ops && iovma->ops->release)
 			iovma->ops->release(iovma, i<<PAGE_SHIFT);
 
+#if !defined(CONFIG_ICS)
 		writel(gart_page, gart->regs + GART_ENTRY_ADDR);
 		writel(0, gart->regs + GART_ENTRY_DATA);
 		wmb();
+#else
+		gart_set_pte(gart, gart_page, 0);
+#endif
 		gart_page += 1 << GART_PAGE_SHIFT;
 	}
+#if defined(CONFIG_ICS)
+	FLUSH_GART_REGS(gart);
+#endif
 	spin_unlock(&gart->pte_lock);
 #if !defined(CONFIG_ICS)
 	wmb();
@@ -404,9 +454,14 @@ static void gart_map_pfn(struct tegra_iovmm_domain *domain,
 
 	BUG_ON(!pfn_valid(pfn));
 	spin_lock(&gart->pte_lock);
+#if !defined(CONFIG_ICS)
 	writel(offs, gart->regs + GART_ENTRY_ADDR);
 	writel(GART_PTE(pfn), gart->regs + GART_ENTRY_DATA);
 	wmb();
+#else
+	gart_set_pte(gart, offs, GART_PTE(pfn));
+	FLUSH_GART_REGS(gart);
+#endif
 	spin_unlock(&gart->pte_lock);
 #if !defined(CONFIG_ICS)
 	wmb();
