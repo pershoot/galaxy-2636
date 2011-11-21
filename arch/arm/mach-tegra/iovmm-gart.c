@@ -149,7 +149,9 @@ static void do_gart_setup(struct gart_device *gart, const u32 *data)
 	unsigned long reg;
 	unsigned int i;
 
+#if !defined(CONFIG_ICS)
 	writel(1, gart->regs + GART_CONFIG);
+#endif
 
 	reg = gart->iovmm_base;
 	for (i=0; i<gart->page_count; i++) {
@@ -165,6 +167,7 @@ static void do_gart_setup(struct gart_device *gart, const u32 *data)
 #if !defined(CONFIG_ICS)
 	wmb();
 #else
+	writel(1, gart->regs + GART_CONFIG);
 	FLUSH_GART_REGS(gart);
 #endif
 }
