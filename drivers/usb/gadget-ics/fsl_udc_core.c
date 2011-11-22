@@ -1218,85 +1218,80 @@ static int can_pullup(struct fsl_udc *udc)
    detects VBUS sessions */
 static int fsl_vbus_session(struct usb_gadget *gadget, int is_active)
 {
-        struct fsl_udc  *udc;
-        unsigned long   flags;
+	struct fsl_udc	*udc;
+	unsigned long	flags;
   struct usb_composite_dev *cdev;
 
-        udc = container_of(gadget, struct fsl_udc, gadget);
-        spin_lock_irqsave(&udc->lock, flags);
+	udc = container_of(gadget, struct fsl_udc, gadget);
+	spin_lock_irqsave(&udc->lock, flags);
 
-        VDBG("VBUS %s", is_active ? "on" : "off");
+	VDBG("VBUS %s", is_active ? "on" : "off");
 
-        if (udc->transceiver) {
+	if (udc->transceiver) {
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
-                if (!udc->vbus_active && !is_active) {
-                        if (fsl_readl(&usb_sys_regs->vbus_wakeup) &
-                                USB_SYS_VBUS_STATUS)
-                                udc->vbus_active = 1;
-                }
+		if (!udc->vbus_active && !is_active) {
+			if (fsl_readl(&usb_sys_regs->vbus_wakeup) &
+				USB_SYS_VBUS_STATUS)
+				udc->vbus_active = 1;
+		}
 #endif
 
-                if (udc->vbus_active && !is_active) {
+		if (udc->vbus_active && !is_active) {
       cdev = get_gadget_data(&udc->gadget);
-                        if(cdev)
-                        {
 #ifdef CONFIG_MACH_SAMSUNG_P5
-                                if(udc->driver)
-                                {
-                                        cdev->mute_switch = 0;
-                                        printk("%s : %d cdev->mute_switch is 0 and disconnect.\n", __func__, __LINE__);
-                                }
+			if(udc->driver)
+			{
+				cdev->mute_switch = 0;
+				printk("%s : %d cdev->mute_switch is 0 and disconnect.\n", __func__, __LINE__);
+			}
 #endif
 #ifndef CONFIG_MACH_SAMSUNG_P4LTE
-              cdev->bMultiConfiguration = 0;
-            cdev->MacPC = 0;
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+      cdev->bMultiConfiguration = 0;
+      cdev->MacPC = 0;
 #endif
-                        }
-      else
-                        {
-        printk("[USB] fsl_vbus_session : cdev from get_gadget_data is null .\n");
-                        }
-                        /* reset all internal Queues and inform client driver */
-                        reset_queues(udc);
-                        /* stop the controller and turn off the clocks */
-                        dr_controller_stop(udc);
-                        dr_controller_reset(udc);
-                        udc->vbus_active = 0;
-                        udc->usb_state = USB_STATE_DEFAULT;
-                        spin_unlock_irqrestore(&udc->lock, flags);
-                        fsl_udc_clk_suspend();
-                } else if (!udc->vbus_active && is_active) {
-                        spin_unlock_irqrestore(&udc->lock, flags);
-                        fsl_udc_clk_resume();
-                        /* setup the controller in the device mode */
-                        dr_controller_setup(udc);
-                        /* setup EP0 for setup packet */
-                        ep0_setup(udc);
-                        /* initialize the USB and EP states */
-                        udc->usb_state = USB_STATE_ATTACHED;
-                        udc->ep0_state = WAIT_FOR_SETUP;
-                        udc->ep0_dir = 0;
-                        udc->vbus_active = 1;
-                        /* start the controller */
-                        dr_controller_run(udc);
-                }
+#endif
+			/* reset all internal Queues and inform client driver */
+			reset_queues(udc);
+			/* stop the controller and turn off the clocks */
+			dr_controller_stop(udc);
+			dr_controller_reset(udc);
+			udc->vbus_active = 0;
+			udc->usb_state = USB_STATE_DEFAULT;
+			spin_unlock_irqrestore(&udc->lock, flags);
+			fsl_udc_clk_suspend();
+		} else if (!udc->vbus_active && is_active) {
+			spin_unlock_irqrestore(&udc->lock, flags);
+			fsl_udc_clk_resume();
+			/* setup the controller in the device mode */
+			dr_controller_setup(udc);
+			/* setup EP0 for setup packet */
+			ep0_setup(udc);
+			/* initialize the USB and EP states */
+			udc->usb_state = USB_STATE_ATTACHED;
+			udc->ep0_state = WAIT_FOR_SETUP;
+			udc->ep0_dir = 0;
+			udc->vbus_active = 1;
+			/* start the controller */
+			dr_controller_run(udc);
+		}
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
-                /* guarantee that we return with the lock released */
-                else
-                        spin_unlock_irqrestore(&udc->lock, flags);
+		/* guarantee that we return with the lock released */
+		else
+			spin_unlock_irqrestore(&udc->lock, flags);
 #endif
-                return 0;
-        }
+		return 0;
+	}
 
-        udc->vbus_active = (is_active != 0);
-        if (can_pullup(udc))
-                fsl_writel((fsl_readl(&dr_regs->usbcmd) | USB_CMD_RUN_STOP),
-                                &dr_regs->usbcmd);
-        else
-                fsl_writel((fsl_readl(&dr_regs->usbcmd) & ~USB_CMD_RUN_STOP),
-                                &dr_regs->usbcmd);
-        spin_unlock_irqrestore(&udc->lock, flags);
-        return 0;
+	udc->vbus_active = (is_active != 0);
+	if (can_pullup(udc))
+		fsl_writel((fsl_readl(&dr_regs->usbcmd) | USB_CMD_RUN_STOP),
+				&dr_regs->usbcmd);
+	else
+		fsl_writel((fsl_readl(&dr_regs->usbcmd) & ~USB_CMD_RUN_STOP),
+				&dr_regs->usbcmd);
+	spin_unlock_irqrestore(&udc->lock, flags);
+	return 0;
 }
 
 /* constrain controller's VBUS power usage
@@ -2930,12 +2925,13 @@ static int fsl_udc_resume(struct platform_device *pdev)
             /* If ID status is low means host is connected, return */
 	    return 0;
         }
-        /* check for VBUS */
+        /* enable clock and check for VBUS */
+		fsl_udc_clk_resume();		
         if (!(fsl_readl(&usb_sys_regs->vbus_wakeup) & USB_SYS_VBUS_STATUS)) {
             /* if there is no VBUS then power down the clocks and return */
+			fsl_udc_clk_suspend();
             return 0;
         } else {
-            fsl_udc_clk_resume();
             /* Detected VBUS set the transceiver state to device mode */
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
 	    udc_controller->vbus_active = 1;

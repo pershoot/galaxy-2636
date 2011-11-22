@@ -847,43 +847,43 @@ config USB_ANDROID
 
 config USB_ANDROID_ACM
 	boolean "Android gadget ACM serial function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides ACM serial function for android gadget driver.
 
 config USB_DUN_SUPPORT
 	boolean "DUN support function"
-	depends on USB_ANDROID_ACM
+	depends on USB_ANDROID_ACM && !ICS
 	help
 	  Provides USB modem serial driver.
 
 config USB_ANDROID_ADB
 	boolean "Android gadget adb function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides adb function for android gadget driver.
 
 config USB_ANDROID_MASS_STORAGE
 	boolean "Android gadget mass storage function"
-	depends on USB_ANDROID && SWITCH
+	depends on USB_ANDROID && SWITCH && !ICS
 	help
 	  Provides USB mass storage function for android gadget driver.
 
 config USB_ANDROID_MTP
 	boolean "Android MTP function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides Media Transfer Protocol (MTP) support for android gadget driver.
 
 config USB_ANDROID_RNDIS
 	boolean "Android gadget RNDIS ethernet function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides RNDIS ethernet function for android gadget driver.
 
 config USB_ANDROID_RNDIS_WCEIS
         boolean "Use Windows Internet Sharing Class/SubClass/Protocol"
-        depends on USB_ANDROID_RNDIS
+        depends on USB_ANDROID_RNDIS && !ICS
         help
          Causes the driver to look like a Windows-compatible Internet
          Sharing device, so Windows auto-detects it.
@@ -893,37 +893,37 @@ config USB_ANDROID_RNDIS_WCEIS
 
 config USB_ANDROID_SAMSUNG_COMPOSITE
 	boolean "Samsung Composite function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides SAMSUNG composite driver using ACM, UMS, ADB, MTP, RNDIS
 
 config USB_ANDROID_SAMSUNG_ESCAPE
 	boolean "Use escape usb host driver in PC side."
-	depends on USB_ANDROID_SAMSUNG_COMPOSITE
+	depends on USB_ANDROID_SAMSUNG_COMPOSITE && !ICS
 	help
 	  If you enable this option, the device will setting custom IAD for Escape driver.
 
 config USB_ANDROID_SAMSUNG_KIES_UMS
 	boolean "Use UMS composite in Samsung Kies mode"
-	depends on USB_ANDROID_SAMSUNG_ESCAPE
+	depends on USB_ANDROID_SAMSUNG_ESCAPE && !ICS
 	help
 	  If you enable this option, the ums will be used in Kies mode.
 
 config CONFIG_USB_ANDROID_SAMSUNG_RNDIS_WITH_MS_COMPOSITE
 	boolean "Use RNDIS with ms composite in PC side."
-	depends on USB_ANDROID_SAMSUNG_COMPOSITE
+	depends on USB_ANDROID_SAMSUNG_COMPOSITE && !ICS
 	help
 	  If you enable this option, the device will setting custom IAD for to use ms composite.
 
 config USB_ANDROID_SAMSUNG_MTP
 	boolean "Samsung MTP function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides Media Transfer Protocol (MTP) support for samsung gadget driver.
 
 config USB_ANDROID_ACCESSORY
 	boolean "Android USB accessory function"
-	depends on USB_ANDROID
+	depends on USB_ANDROID && !ICS
 	help
 	  Provides Android USB Accessory support for android gadget driver.
 
