@@ -68,7 +68,11 @@ obj-$(CONFIG_USB_OTG_UTILS)	+= usb/otg/
 obj-$(CONFIG_USB)		+= usb/
 obj-$(CONFIG_USB_MUSB_HDRC)	+= usb/musb/
 obj-$(CONFIG_PCI)		+= usb/
-obj-$(CONFIG_USB_GADGET)	+= usb/gadget/
+ifneq ($(CONFIG_ICS),y)
+obj-$(CONFIG_USB_GADGET)        += usb/gadget/
+else
+obj-$(CONFIG_USB_GADGET)        += usb/gadget-ics/
+endif
 obj-$(CONFIG_SERIO)		+= input/serio/
 obj-$(CONFIG_GAMEPORT)		+= input/gameport/
 obj-$(CONFIG_INPUT)		+= input/
