@@ -546,4 +546,10 @@ config HC_32
         help
           Say Y here to enable support for Honeycomb 3.2.
 
+config ICS
+        bool "Add support for Ice Cream Sandwich"
+        default n
+        help
+          Say Y here to enable support for Ice Cream Sandwich.
+
 endif # MISC_DEVICES
