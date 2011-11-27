@@ -171,15 +171,29 @@ object_type_name[REPORT_ID_TO_OBJECT(rid)]
 #define	T37_REG(x) (MXT_BASE_ADDR(MXT_DEBUG_DIAGNOSTICS_T37) +  (x))
 
 /* ADD TRACKING_ID */
+#if !defined(CONFIG_ICS)
 #define REPORT_MT(touch_number, x, y, amplitude, size) \
+do {     \
+        input_report_abs(mxt->input, ABS_MT_TRACKING_ID, touch_number);\
+        input_report_abs(mxt->input, ABS_MT_POSITION_X, x);             \
+        input_report_abs(mxt->input, ABS_MT_POSITION_Y, y);             \
+        input_report_abs(mxt->input, ABS_MT_TOUCH_MAJOR, amplitude);         \
+        input_report_abs(mxt->input, ABS_MT_WIDTH_MAJOR, size); \
+        input_mt_sync(mxt->input);                                      \
+} while (0)
+#else
+#define REPORT_MT(touch_number, x, y, amplitude, size, key) \
 do {     \
 	input_report_abs(mxt->input, ABS_MT_TRACKING_ID, touch_number);\
 	input_report_abs(mxt->input, ABS_MT_POSITION_X, x);             \
 	input_report_abs(mxt->input, ABS_MT_POSITION_Y, y);             \
 	input_report_abs(mxt->input, ABS_MT_TOUCH_MAJOR, amplitude);         \
 	input_report_abs(mxt->input, ABS_MT_WIDTH_MAJOR, size); \
+	input_report_abs(mxt->input, ABS_MT_PRESSURE, amplitude); \
+	input_report_key(mxt->input, BTN_TOUCH, key); \
 	input_mt_sync(mxt->input);                                      \
 } while (0)
+#endif
 
 const u8 *maxtouch_family = "maXTouch";
 const u8 *mxt224_variant  = "mXT1386";
@@ -265,7 +279,12 @@ static void mxt_forced_release(struct mxt_data *mxt)
 
 		REPORT_MT(i,
 			mtouch_info[i].x,	mtouch_info[i].y,
+#if !defined(CONFIG_ICS)
 			mtouch_info[i].pressure, mtouch_info[i].size);
+#else
+			mtouch_info[i].pressure, mtouch_info[i].size, 
+			mtouch_info[i].size ? 1 : 0);
+#endif
 
 		if (mtouch_info[i].pressure == 0)
 			mtouch_info[i].pressure = -1;
@@ -863,7 +882,12 @@ static void process_T9_message(struct mxt_data *mxt, u8 *message)
 			/* ADD TRACKING_ID*/
 			REPORT_MT(i,
 				mtouch_info[i].x,	mtouch_info[i].y,
+#if !defined(CONFIG_ICS)
 				mtouch_info[i].pressure, mtouch_info[i].size);
+#else
+				mtouch_info[i].pressure, mtouch_info[i].size, 
+				mtouch_info[i].size ? 1 : 0);
+#endif
 			/*input_sync(input);*/
 
 			if (mtouch_info[i].pressure == 0)/* if released*/
@@ -3078,10 +3102,17 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0,
 						mxt->pdata->max_y, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
+#if defined(CONFIG_ICS)
+	input_set_abs_params(input, ABS_MT_WIDTH_MAJOR, 0, 30, 0, 0);
+#endif
 	input_set_abs_params(input, ABS_MT_TRACKING_ID, 0,
 							MXT_MAX_NUM_TOUCHES-1,
 							0, 0);
+#if !defined(CONFIG_ICS)
 	input_set_abs_params(input, ABS_MT_WIDTH_MAJOR, 0, 30, 0, 0);
+#else
+	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0); 
+#endif
 	__set_bit(EV_SYN, input->evbit);
 	__set_bit(EV_KEY, input->evbit);
 
