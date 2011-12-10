@@ -184,6 +184,40 @@ static int __init setup_autogroup(char *str)
 
 __setup("noautogroup", setup_autogroup);
 
+static DEFINE_MUTEX(autogroup_sysctl_mutex);
+
+int sysctl_sched_autogroup_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp,
+		loff_t *ppos)
+{
+	int old_value, ret;
+	struct task_struct *p, *n;
+
+	mutex_lock(&autogroup_sysctl_mutex);
+
+	old_value = sysctl_sched_autogroup_enabled;
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+
+	if (ret || !write || (old_value == sysctl_sched_autogroup_enabled))
+		goto out_unlock;
+
+	read_lock_irq(&tasklist_lock);
+	rcu_read_lock();
+
+	do_each_thread(n, p) {
+		if (cgroup_task_group(p) == &root_task_group)
+			sched_move_task(p);
+	} while_each_thread(n, p);
+
+	rcu_read_unlock();
+	read_unlock_irq(&tasklist_lock);
+
+out_unlock:
+	mutex_unlock(&autogroup_sysctl_mutex);
+
+	return ret;
+}
+
 #ifdef CONFIG_PROC_FS
 
 int proc_sched_autogroup_set_nice(struct task_struct *p, int *nice)
