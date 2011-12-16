@@ -24,6 +24,9 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <asm/clkdev.h>
+#if defined(CONFIG_ICS)
+#include <mach/clk.h>
+#endif
 
 #define DIV_BUS			(1 << 0)
 #define DIV_U71			(1 << 1)
@@ -71,6 +74,9 @@ struct clk_ops {
 	int		(*set_parent)(struct clk *, struct clk *);
 	int		(*set_rate)(struct clk *, unsigned long);
 	long		(*round_rate)(struct clk *, unsigned long);
+#if defined(CONFIG_ICS)
+	int             (*clk_cfg_ex)(struct clk *, enum tegra_clk_ex_param, u32);
+#endif
 	void		(*reset)(struct clk *, bool);
 	void		(*shared_bus_update)(struct clk *);
 };

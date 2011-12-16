@@ -20,8 +20,13 @@
 
 #include <linux/fb.h>
 #include <linux/types.h>
+#if !defined(CONFIG_ICS)
 #include <asm/ioctl.h>
+#else
+#include <linux/ioctl.h>
+#endif
 
+#if !defined(CONFIG_ICS)
 #define TEGRA_FB_WIN_FMT_P1		0
 #define TEGRA_FB_WIN_FMT_P2		1
 #define TEGRA_FB_WIN_FMT_P4		2
@@ -89,14 +94,17 @@ struct tegra_fb_flip_args {
 	__u32 post_syncpt_id;
 	__u32 post_syncpt_val;
 };
+#endif
 
 struct tegra_fb_modedb {
 	struct fb_var_screeninfo *modedb;
 	__u32 modedb_len;
 };
 
+#if !defined(CONFIG_ICS)
 #define FBIO_TEGRA_SET_NVMAP_FD	_IOW('F', 0x40, __u32)
 #define FBIO_TEGRA_FLIP		_IOW('F', 0x41, struct tegra_fb_flip_args)
+#endif
 #define FBIO_TEGRA_GET_MODEDB	_IOWR('F', 0x42, struct tegra_fb_modedb)
 
 #endif

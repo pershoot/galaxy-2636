@@ -585,6 +585,29 @@ void tegra_sdmmc_tap_delay(struct clk *c, int delay) {
 	clk_unlock_restore(c, flags);
 }
 
+#if defined(CONFIG_ICS)
+/* Several extended clock configuration bits (e.g., clock routing, clock
+ * phase control) are included in PLL and peripheral clock source
+ * registers. */
+int tegra_clk_cfg_ex(struct clk *c, enum tegra_clk_ex_param p, u32 setting)
+{
+        int ret = 0;
+        unsigned long flags;
+
+        clk_lock_save(c, flags);
+
+        if (!c->ops || !c->ops->clk_cfg_ex) {
+                ret = -ENOSYS;
+                goto out;
+        }
+        ret = c->ops->clk_cfg_ex(c, p, setting);
+
+out:
+        clk_unlock_restore(c, flags);
+        return ret;
+}
+#endif
+
 #ifdef CONFIG_DEBUG_FS
 
 /*

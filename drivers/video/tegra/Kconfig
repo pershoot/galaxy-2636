@@ -4,10 +4,16 @@ comment "NVIDIA Tegra Display Driver options"
 
 config TEGRA_GRHOST
 	tristate "Tegra graphics host driver"
-	depends on TEGRA_IOVMM
+	depends on !ICS && TEGRA_IOVMM
         default n
 	help
 	  Driver for the Tegra graphics host hardware.
+
+config TEGRA_GRHOST_ICS
+        tristate "Tegra graphics host driver"
+	depends on ICS
+        help
+          Driver for the Tegra graphics host hardware.
 
 config TEGRA_DC
 	tristate "Tegra Display Contoller"
@@ -19,10 +25,17 @@ config TEGRA_DC
 
 config TEGRA_OVERLAY
 	tristate "Tegra Overlay Device Node"
-	depends on TEGRA_DC
+	depends on !ICS && TEGRA_DC
 	default y
 	help
 	  Device node for multi-client overlay support.
+
+config TEGRA_OVERLAY_ICS
+        tristate "Tegra Overlay Device Node"
+        depends on ICS && TEGRA_DC && !TEGRA_DC_EXTENSIONS
+        default y
+        help
+          Device node for multi-client overlay support.
 
 config FB_TEGRA
 	tristate "Tegra Framebuffer driver"
@@ -33,6 +46,13 @@ config FB_TEGRA
 	default FB
 	help
 	  Framebuffer device support for the Tegra display controller.
+
+config TEGRA_DC_EXTENSIONS
+        bool "Tegra Display Controller Extensions"
+        depends on ICS && TEGRA_DC
+        help
+          This exposes support for extended capabilities of the Tegra display
+          controller to userspace drivers.
 
 config TEGRA_NVMAP
 	bool "Tegra GPU memory management driver (nvmap)"
@@ -111,16 +131,27 @@ config NVMAP_SEARCH_GLOBAL_HANDLES
 	  compatibility with legacy applications.
 	  If unsure, say N.
 
+config NVMAP_VPR
+        bool "Enable VPR Heap."
+        depends on ICS && TEGRA_NVMAP
+        default n
+        help
+          Say Y here to enable Video Protection Region(VPR) heap.
+          if unsure, say N.
+
 config TEGRA_DSI
 	bool "Enable DSI panel."
+	depends on !ICS
 	default n
 	help
 	  Say Y here to enable the DSI panel.
 
 config TOUCHWIZ_UX
         bool "Add support for Touchwiz UX."
+	depends on !ICS
         default n
         help
           Say Y here to enable Touchwiz UX support.
+
 endif
 

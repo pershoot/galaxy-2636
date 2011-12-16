@@ -97,4 +97,8 @@
 
 void tegra_mc_set_priority(unsigned long client, unsigned long prio);
 
+#if defined(CONFIG_ICS)
+int tegra_mc_get_tiled_memory_bandwidth_multiplier(void);
+#endif
+
 #endif

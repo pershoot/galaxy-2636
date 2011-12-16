@@ -19,7 +19,7 @@
 
 struct tegra_overlay_info;
 
-#ifdef CONFIG_TEGRA_OVERLAY
+#ifdef CONFIG_TEGRA_OVERLAY_ICS
 struct tegra_overlay_info *tegra_overlay_register(struct nvhost_device *ndev,
 						  struct tegra_dc *dc);
 void tegra_overlay_unregister(struct tegra_overlay_info *overlay_info);

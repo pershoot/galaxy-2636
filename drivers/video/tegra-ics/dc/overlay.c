@@ -27,16 +27,20 @@
 #include <linux/spinlock.h>
 #include <linux/tegra_overlay.h>
 #include <linux/uaccess.h>
+#include <drm/drm_fixed.h>
 
 #include <asm/atomic.h>
 
 #include <mach/dc.h>
 #include <mach/fb.h>
-#include <mach/nvhost.h>
+#include <linux/nvhost.h>
 
 #include "dc_priv.h"
 #include "../nvmap/nvmap.h"
 #include "overlay.h"
+
+/* Minimum extra shot for DIDIM if n shot is enabled. */
+#define TEGRA_DC_DIDIM_MIN_SHOT	1
 
 DEFINE_MUTEX(tegra_flip_lock);
 
@@ -63,7 +67,11 @@ struct tegra_overlay_info {
 
 	struct tegra_dc_blend	blend;
 
+	u32			n_shot;
+	u32			overlay_ref;
+	struct mutex		lock;
 	struct workqueue_struct	*flip_wq;
+	struct completion	complete;
 
 	/* Big enough for tegra_dc%u when %u < 10 */
 	char			name[10];
@@ -83,12 +91,17 @@ struct tegra_overlay_flip_win {
 };
 
 struct tegra_overlay_flip_data {
+	bool				didim_work;
+	u32				flags;
+	u32				nr_unpin;
+	u32				syncpt_max;
 	struct work_struct		work;
 	struct tegra_overlay_info	*overlay;
+	struct nvmap_handle_ref		*unpin_handles[TEGRA_FB_FLIP_N_WINDOWS];
 	struct tegra_overlay_flip_win	win[TEGRA_FB_FLIP_N_WINDOWS];
-	u32				syncpt_max;
-	u32				flags;
 };
+
+static void tegra_overlay_flip_worker(struct work_struct *work);
 
 /* Overlay window manipulation */
 static int tegra_overlay_pin_window(struct tegra_overlay_info *overlay,
@@ -151,21 +164,28 @@ static int tegra_overlay_set_windowattr(struct tegra_overlay_info *overlay,
 		win->flags |= TEGRA_WIN_FLAG_BLEND_PREMULT;
 	else if (flip_win->attr.blend == TEGRA_FB_WIN_BLEND_COVERAGE)
 		win->flags |= TEGRA_WIN_FLAG_BLEND_COVERAGE;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_H)
+		win->flags |= TEGRA_WIN_FLAG_INVERT_H;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_V)
+		win->flags |= TEGRA_WIN_FLAG_INVERT_V;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_TILED)
+		win->flags |= TEGRA_WIN_FLAG_TILED;
+
 	win->fmt = flip_win->attr.pixformat;
-	win->x = flip_win->attr.x;
-	win->y = flip_win->attr.y;
-	win->w = flip_win->attr.w;
-	win->h = flip_win->attr.h;
+	win->x.full = dfixed_const(flip_win->attr.x);
+	win->y.full = dfixed_const(flip_win->attr.y);
+	win->w.full = dfixed_const(flip_win->attr.w);
+	win->h.full = dfixed_const(flip_win->attr.h);
 	win->out_x = flip_win->attr.out_x;
 	win->out_y = flip_win->attr.out_y;
 	win->out_w = flip_win->attr.out_w;
 	win->out_h = flip_win->attr.out_h;
 
 	WARN_ONCE(win->out_x >= xres,
-		"%s:application window x offset exceeds display width(%d)\n",
+		"%s:application window x offset(%d) exceeds display width(%d)\n",
 		dev_name(&win->dc->ndev->dev), win->out_x, xres);
 	WARN_ONCE(win->out_y >= yres,
-		"%s:application window y offset exceeds display height(%d)\n",
+		"%s:application window y offset(%d) exceeds display height(%d)\n",
 		dev_name(&win->dc->ndev->dev), win->out_y, yres);
 	WARN_ONCE(win->out_x + win->out_w > xres && win->out_x < xres,
 		"%s:application window width(%d) exceeds display width(%d)\n",
@@ -176,12 +196,16 @@ static int tegra_overlay_set_windowattr(struct tegra_overlay_info *overlay,
 
 	if (((win->out_x + win->out_w) > xres) && (win->out_x < xres)) {
 		long new_w = xres - win->out_x;
-		win->w = win->w * new_w / win->out_w;
+		u64 in_w = win->w.full * new_w;
+		do_div(in_w, win->out_w);
+		win->w.full = lower_32_bits(in_w);
 	        win->out_w = new_w;
 	}
 	if (((win->out_y + win->out_h) > yres) && (win->out_y < yres)) {
 		long new_h = yres - win->out_y;
-		win->h = win->h * new_h / win->out_h;
+		u64 in_h = win->h.full * new_h;
+		do_div(in_h, win->out_h);
+		win->h.full = lower_32_bits(in_h);
 	        win->out_h = new_h;
 	}
 
@@ -190,12 +214,10 @@ static int tegra_overlay_set_windowattr(struct tegra_overlay_info *overlay,
 
 	/* STOPSHIP verify that this won't read outside of the surface */
 	win->phys_addr = flip_win->phys_addr + flip_win->attr.offset;
-	win->offset_u = flip_win->attr.offset_u + flip_win->attr.offset;
-	win->offset_v = flip_win->attr.offset_v + flip_win->attr.offset;
+	win->phys_addr_u = flip_win->phys_addr + flip_win->attr.offset_u;
+	win->phys_addr_v = flip_win->phys_addr + flip_win->attr.offset_v;
 	win->stride = flip_win->attr.stride;
 	win->stride_uv = flip_win->attr.stride_uv;
-	if (flip_win->attr.tiled)
-		win->flags |= TEGRA_WIN_FLAG_TILED;
 
 	if ((s32)flip_win->attr.pre_syncpt_id >= 0) {
 		nvhost_syncpt_wait_timeout(&overlay->ndev->host->syncpt,
@@ -253,6 +275,106 @@ static void tegra_overlay_blend_reorder(struct tegra_dc_blend *blend,
 	windows[below]->flags |= blend->flags[idx];
 }
 
+static int tegra_overlay_flip_didim(struct tegra_overlay_flip_data *data)
+{
+	init_completion(&data->overlay->complete);
+	INIT_WORK(&data->work, tegra_overlay_flip_worker);
+	queue_work(data->overlay->flip_wq, &data->work);
+
+	return 0;
+}
+
+static void tegra_overlay_n_shot(struct tegra_overlay_flip_data *data,
+			struct nvmap_handle_ref **unpin_handles, int *nr_unpin)
+{
+	int i;
+	struct tegra_overlay_info *overlay = data->overlay;
+	u32 didim_delay = overlay->dc->out->sd_settings->hw_update_delay;
+	u32 didim_enable = overlay->dc->out->sd_settings->enable;
+
+	mutex_lock(&overlay->lock);
+
+	if (data->didim_work) {
+		/* Increment sync point if we finish n shot;
+		 * otherwise send overlay flip request. */
+		if (overlay->n_shot)
+			overlay->n_shot--;
+
+		if (overlay->n_shot && didim_enable) {
+			tegra_overlay_flip_didim(data);
+			mutex_unlock(&overlay->lock);
+			return;
+		} else {
+			*nr_unpin = data->nr_unpin;
+			for (i = 0; i < *nr_unpin; i++)
+				unpin_handles[i] = data->unpin_handles[i];
+			tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+		}
+	} else {
+		overlay->overlay_ref--;
+		/* If no new flip request in the queue, we will send
+		 * the last frame n times for DIDIM */
+		if (!overlay->overlay_ref && didim_enable)
+			overlay->n_shot = TEGRA_DC_DIDIM_MIN_SHOT + didim_delay;
+
+		if (overlay->n_shot && didim_enable) {
+			data->nr_unpin = *nr_unpin;
+			data->didim_work = true;
+			for (i = 0; i < *nr_unpin; i++)
+				data->unpin_handles[i] = unpin_handles[i];
+			tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+			tegra_overlay_flip_didim(data);
+			mutex_unlock(&overlay->lock);
+			return;
+		} else {
+			tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+		}
+	}
+
+	mutex_unlock(&overlay->lock);
+
+	/* unpin and deref previous front buffers */
+	for (i = 0; i < *nr_unpin; i++) {
+		nvmap_unpin(overlay->overlay_nvmap, unpin_handles[i]);
+		nvmap_free(overlay->overlay_nvmap, unpin_handles[i]);
+	}
+
+	kfree(data);
+}
+
+static bool tegra_overlay_n_shot_delay(struct tegra_overlay_flip_data *data,
+						unsigned int delay)
+{
+	int i;
+	long timeout;
+	struct tegra_overlay_info *overlay = data->overlay;
+
+	/* If delay is zero, do not delay. */
+	if (!delay)
+		return true;
+
+	timeout = wait_for_completion_interruptible_timeout(
+			&overlay->complete, msecs_to_jiffies(delay));
+
+	/* Check return value to see if timeout occurs of not. If yes, we will
+	 * continue to update duplicate frame; otherwise clear it. */
+	if (timeout) {
+		/*tegra_dc_incr_syncpt_min(overlay->dc, */
+						/*data->syncpt_max);*/
+		for (i = 0; i < data->nr_unpin; i++) {
+			nvmap_unpin(overlay->overlay_nvmap,
+						data->unpin_handles[i]);
+			nvmap_free(overlay->overlay_nvmap,
+						data->unpin_handles[i]);
+		}
+
+		kfree(data);
+		return false;
+	}
+
+	return true;
+}
+
 static void tegra_overlay_flip_worker(struct work_struct *work)
 {
 	struct tegra_overlay_flip_data *data =
@@ -261,9 +383,15 @@ static void tegra_overlay_flip_worker(struct work_struct *work)
 	struct tegra_dc_win *win;
 	struct tegra_dc_win *wins[TEGRA_FB_FLIP_N_WINDOWS];
 	struct nvmap_handle_ref *unpin_handles[TEGRA_FB_FLIP_N_WINDOWS];
+	unsigned int delay_ms = (unsigned int) overlay->dc->out->n_shot_delay;
 	int i, nr_win = 0, nr_unpin = 0;
 
 	data = container_of(work, struct tegra_overlay_flip_data, work);
+
+	if ((overlay->dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) &&
+		(overlay->dc->out->flags & TEGRA_DC_OUT_N_SHOT_MODE) &&
+		data->didim_work && !tegra_overlay_n_shot_delay(data, delay_ms))
+		return;
 
 	for (i = 0; i < TEGRA_FB_FLIP_N_WINDOWS; i++) {
 		struct tegra_overlay_flip_win *flip_win = &data->win[i];
@@ -277,8 +405,8 @@ static void tegra_overlay_flip_worker(struct work_struct *work)
 		if (!win)
 			continue;
 
-		if (win->flags && win->cur_handle)
-			unpin_handles[nr_unpin++] = win->cur_handle;
+		if (win->flags && win->cur_handle && !data->didim_work)
+				unpin_handles[nr_unpin++] = win->cur_handle;
 
 		tegra_overlay_set_windowattr(overlay, win, &data->win[i]);
 
@@ -313,15 +441,20 @@ static void tegra_overlay_flip_worker(struct work_struct *work)
 		tegra_dc_sync_windows(wins, nr_win);
 	}
 
+	if ((overlay->dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) &&
+		(overlay->dc->out->flags & TEGRA_DC_OUT_N_SHOT_MODE)) {
+		tegra_overlay_n_shot(data, unpin_handles, &nr_unpin);
+	} else {
 		tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
 
-	/* unpin and deref previous front buffers */
-	for (i = 0; i < nr_unpin; i++) {
-		nvmap_unpin(overlay->overlay_nvmap, unpin_handles[i]);
-		nvmap_free(overlay->overlay_nvmap, unpin_handles[i]);
-	}
+		/* unpin and deref previous front buffers */
+		for (i = 0; i < nr_unpin; i++) {
+			nvmap_unpin(overlay->overlay_nvmap, unpin_handles[i]);
+			nvmap_free(overlay->overlay_nvmap, unpin_handles[i]);
+		}
 
-	kfree(data);
+		kfree(data);
+	}
 }
 
 static int tegra_overlay_flip(struct tegra_overlay_info *overlay,
@@ -356,6 +489,17 @@ static int tegra_overlay_flip(struct tegra_overlay_info *overlay,
 	INIT_WORK(&data->work, tegra_overlay_flip_worker);
 	data->overlay = overlay;
 	data->flags = args->flags;
+	data->didim_work = false;
+
+	if ((overlay->dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) &&
+		(overlay->dc->out->flags & TEGRA_DC_OUT_N_SHOT_MODE)) {
+		if (!completion_done(&overlay->complete))
+			complete(&overlay->complete);
+		mutex_lock(&overlay->lock);
+		overlay->overlay_ref++;
+		overlay->n_shot = 0;
+		mutex_unlock(&overlay->lock);
+	}
 
 	for (i = 0; i < TEGRA_FB_FLIP_N_WINDOWS; i++) {
 		flip_win = &data->win[i];
@@ -397,16 +541,26 @@ surf_err:
 	mutex_unlock(&tegra_flip_lock);
 	return err;
 }
+
 static void tegra_overlay_set_emc_freq(struct tegra_overlay_info *dev)
 {
-	unsigned long emc_freq = 0;
+	unsigned long new_rate;
 	int i;
+	struct tegra_dc_win *win;
+	struct tegra_dc_win *wins[DC_N_WINDOWS];
 
-	for (i = 0; i < dev->dc->n_windows; i++) {
-		if (dev->overlays[i].owner != NULL)
-			emc_freq += dev->dc->mode.pclk*(i==1?2:1)*2;
+	for (i = 0; i < DC_N_WINDOWS; i++) {
+		win = tegra_dc_get_window(dev->dc, i);
+		wins[i] = win;
 	}
-	clk_set_rate(dev->dc->emc_clk, emc_freq);
+
+	new_rate = tegra_dc_get_bandwidth(wins, dev->dc->n_windows);
+	new_rate = EMC_BW_TO_FREQ(new_rate);
+
+	if (tegra_dc_has_multiple_dc())
+		new_rate = ULONG_MAX;
+
+	clk_set_rate(dev->dc->emc_clk, new_rate);
 }
 
 /* Overlay functions */
@@ -424,6 +578,10 @@ static bool tegra_overlay_get(struct overlay_client *client, int idx)
 		ret = true;
 		if (dev->dc->mode.pclk != 0)
 			tegra_overlay_set_emc_freq(dev);
+
+		dev_dbg(&client->dev->ndev->dev,
+			"%s(): idx=%d pid=%d comm=%s\n",
+			__func__, idx, client->task->pid, client->task->comm);
 	}
 	mutex_unlock(&dev->overlays_lock);
 
@@ -440,6 +598,10 @@ static void tegra_overlay_put_locked(struct overlay_client *client, int idx)
 
 	if (dev->overlays[idx].owner != client)
 		return;
+
+	dev_dbg(&client->dev->ndev->dev,
+		"%s(): idx=%d pid=%d comm=%s\n",
+		__func__, idx, client->task->pid, client->task->comm);
 
 	dev->overlays[idx].owner = NULL;
 
@@ -737,7 +899,10 @@ struct tegra_overlay_info *tegra_overlay_register(struct nvhost_device *ndev,
 		e = -ENOMEM;
 		goto err_delete_wq;
 	}
-
+	dev->overlay_ref = 0;
+	dev->n_shot = 0;
+	mutex_init(&dev->lock);
+	init_completion(&dev->complete);
 	dev->dc = dc;
 
 	dev_info(&ndev->dev, "registered overlay\n");
@@ -763,6 +928,14 @@ void tegra_overlay_unregister(struct tegra_overlay_info *info)
 void tegra_overlay_disable(struct tegra_overlay_info *overlay_info)
 {
 	mutex_lock(&tegra_flip_lock);
+	mutex_lock(&overlay_info->lock);
+
+	/* Clear n_shot and wake up pending worker */
+	overlay_info->n_shot = 0;
+	complete(&overlay_info->complete);
+
 	flush_workqueue(overlay_info->flip_wq);
+
+	mutex_unlock(&overlay_info->lock);
 	mutex_unlock(&tegra_flip_lock);
 }

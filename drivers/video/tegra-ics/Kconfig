@@ -4,8 +4,6 @@ comment "NVIDIA Tegra Display Driver options"
 
 config TEGRA_GRHOST
 	tristate "Tegra graphics host driver"
-	depends on TEGRA_IOVMM
-        default n
 	help
 	  Driver for the Tegra graphics host hardware.
 
@@ -19,7 +17,7 @@ config TEGRA_DC
 
 config TEGRA_OVERLAY
 	tristate "Tegra Overlay Device Node"
-	depends on TEGRA_DC
+	depends on TEGRA_DC && !TEGRA_DC_EXTENSIONS
 	default y
 	help
 	  Device node for multi-client overlay support.
@@ -33,6 +31,13 @@ config FB_TEGRA
 	default FB
 	help
 	  Framebuffer device support for the Tegra display controller.
+
+config TEGRA_DC_EXTENSIONS
+	bool "Tegra Display Controller Extensions"
+	depends on TEGRA_DC
+	help
+	  This exposes support for extended capabilities of the Tegra display
+	  controller to userspace drivers.
 
 config TEGRA_NVMAP
 	bool "Tegra GPU memory management driver (nvmap)"
@@ -68,20 +73,6 @@ config NVMAP_HIGHMEM_ONLY
 	  Say Y here to restrict nvmap system memory allocations (both
 	  physical system memory and IOVMM) to just HIGHMEM pages.
 
-config FB_TEGRA_CMC623
-	bool "Samsung CMC623"
-	depends on FB_TEGRA 
-	default y
-	help
-	  This enables support for Samsung CMC623 image converter
-
-config FB_TEGRA_CMC623_EXTEND
-	bool "Samsung CMC623 extend"
-	depends on FB_TEGRA_CMC623
-	default n
-	help
-	  This enables extended service for Samsung CMC623 image converter
-
 config NVMAP_CARVEOUT_KILLER
 	bool "Reclaim nvmap carveout by killing processes"
 	depends on TEGRA_NVMAP
@@ -111,16 +102,19 @@ config NVMAP_SEARCH_GLOBAL_HANDLES
 	  compatibility with legacy applications.
 	  If unsure, say N.
 
+config NVMAP_VPR
+	bool "Enable VPR Heap."
+	depends on TEGRA_NVMAP
+	default n
+	help
+	  Say Y here to enable Video Protection Region(VPR) heap.
+	  if unsure, say N.
+
 config TEGRA_DSI
 	bool "Enable DSI panel."
 	default n
 	help
 	  Say Y here to enable the DSI panel.
 
-config TOUCHWIZ_UX
-        bool "Add support for Touchwiz UX."
-        default n
-        help
-          Say Y here to enable Touchwiz UX support.
 endif
 
