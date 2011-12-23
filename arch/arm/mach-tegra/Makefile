@@ -49,7 +49,11 @@ obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += headsmp-t2.o
 obj-$(CONFIG_TEGRA_SYSTEM_DMA)          += dma.o
 obj-$(CONFIG_CPU_FREQ)                  += cpu-tegra.o
 obj-$(CONFIG_CPU_IDLE)                  += cpuidle.o
+ifneq ($(CONFIG_ICS),y)
 obj-$(CONFIG_TEGRA_IOVMM)               += iovmm.o
+else
+obj-$(CONFIG_TEGRA_IOVMM)               += iovmm-ics.o
+endif
 obj-$(CONFIG_TEGRA_IOVMM_GART)          += iovmm-gart.o
 obj-$(CONFIG_TEGRA_MC_PROFILE)          += tegra2_mc.o
 

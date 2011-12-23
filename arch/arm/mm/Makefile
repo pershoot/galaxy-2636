@@ -5,8 +5,13 @@
 obj-y				:= dma-mapping.o extable.o fault.o init.o \
 				   iomap.o
 
+ifneq ($(CONFIG_ICS),y)
 obj-$(CONFIG_MMU)		+= fault-armv.o flush.o ioremap.o mmap.o \
 				   pgd.o mmu.o vmregion.o
+else
+obj-$(CONFIG_MMU)               += fault-armv.o flush.o ioremap.o mmap.o \
+                                   pgd.o mmu.o vmregion.o pageattr.o
+endif
 
 ifneq ($(CONFIG_MMU),y)
 obj-y				+= nommu.o

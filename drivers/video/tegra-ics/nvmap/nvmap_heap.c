@@ -844,11 +844,13 @@ void nvmap_usecount_dec(struct nvmap_handle *h)
 
 /* nvmap_heap_alloc: allocates a block of memory of len bytes, aligned to
  * align bytes. */
-struct nvmap_heap_block *nvmap_heap_alloc(struct nvmap_heap *h, size_t len,
-					  size_t align, unsigned int prot,
+struct nvmap_heap_block *nvmap_heap_alloc(struct nvmap_heap *h,
 					  struct nvmap_handle *handle)
 {
 	struct nvmap_heap_block *b;
+	size_t len        = handle->size;
+	size_t align      = handle->align;
+	unsigned int prot = handle->flags;
 
 	mutex_lock(&h->lock);
 
@@ -888,9 +890,6 @@ struct nvmap_heap_block *nvmap_heap_alloc(struct nvmap_heap *h, size_t len,
 
 struct nvmap_heap *nvmap_block_to_heap(struct nvmap_heap_block *b)
 {
-	struct buddy_heap *bh = NULL;
-	struct nvmap_heap *h;
-
 	if (b->type == BLOCK_BUDDY) {
 		struct buddy_block *bb;
 		bb = container_of(b, struct buddy_block, block);
@@ -944,7 +943,7 @@ static void heap_release(struct device *heap)
  * will be rounded up to be a multiple of buddy_size bytes.
  */
 struct nvmap_heap *nvmap_heap_create(struct device *parent, const char *name,
-				     unsigned long base, size_t len,
+				     phys_addr_t base, size_t len,
 				     size_t buddy_size, void *arg)
 {
 	struct nvmap_heap *h = NULL;

@@ -35,6 +35,9 @@
 
 /* common carveout heaps */
 #define NVMAP_HEAP_CARVEOUT_IRAM    (1ul<<29)
+#if defined(CONFIG_ICS)
+#define NVMAP_HEAP_CARVEOUT_VPR     (1ul<<28)
+#endif
 #define NVMAP_HEAP_CARVEOUT_GENERIC (1ul<<0)
 
 #define NVMAP_HEAP_CARVEOUT_MASK    (NVMAP_HEAP_IOVMM - 1)
@@ -84,9 +87,15 @@ struct nvmap_client *nvmap_client_get(struct nvmap_client *client);
 
 void nvmap_client_put(struct nvmap_client *c);
 
+#if !defined(CONFIG_ICS)
 unsigned long nvmap_pin(struct nvmap_client *c, struct nvmap_handle_ref *r);
 
 unsigned long nvmap_handle_address(struct nvmap_client *c, unsigned long id);
+#else
+phys_addr_t nvmap_pin(struct nvmap_client *c, struct nvmap_handle_ref *r);
+
+phys_addr_t nvmap_handle_address(struct nvmap_client *c, unsigned long id);
+#endif
 
 void nvmap_unpin(struct nvmap_client *client, struct nvmap_handle_ref *r);
 

@@ -20,6 +20,9 @@
 
 #include <linux/list.h>
 #include <linux/platform_device.h>
+#if defined(CONFIG_ICS)
+#include <linux/miscdevice.h>
+#endif
 #include <linux/rbtree.h>
 #include <linux/rwsem.h>
 #include <linux/spinlock.h>
@@ -73,6 +76,9 @@ struct tegra_iovmm_client {
 	unsigned long			flags;
 	struct iovmm_share_group	*group;
 	struct tegra_iovmm_domain	*domain;
+#if defined(CONFIG_ICS)
+	struct miscdevice               *misc_dev;
+#endif
 	struct list_head		list;
 };
 
@@ -90,21 +96,41 @@ struct tegra_iovmm_area {
 
 struct tegra_iovmm_device_ops {
 	/* maps a VMA using the page residency functions provided by the VMA */
+#if !defined(CONFIG_ICS)
 	int (*map)(struct tegra_iovmm_device *dev,
 		struct tegra_iovmm_area *io_vma);
+#else
+        int (*map)(struct tegra_iovmm_domain *domain,
+                struct tegra_iovmm_area *io_vma);
+#endif
 	/* marks all PTEs in a VMA as invalid; decommits the virtual addres
 	 * space (potentially freeing PDEs when decommit is true.) */
+#if !defined(CONFIG_ICS)
 	void (*unmap)(struct tegra_iovmm_device *dev,
 		struct tegra_iovmm_area *io_vma, bool decommit);
 	void (*map_pfn)(struct tegra_iovmm_device *dev,
 		struct tegra_iovmm_area *io_vma,
 		tegra_iovmm_addr_t offs, unsigned long pfn);
+#else
+        void (*unmap)(struct tegra_iovmm_domain *domain,
+                struct tegra_iovmm_area *io_vma, bool decommit);
+        void (*map_pfn)(struct tegra_iovmm_domain *domain,
+                struct tegra_iovmm_area *io_vma,
+                tegra_iovmm_addr_t offs, unsigned long pfn);
+#endif
 	/* ensures that a domain is resident in the hardware's mapping region
 	 * so that it may be used by a client */
+#if !defined(CONFIG_ICS)
 	int (*lock_domain)(struct tegra_iovmm_device *dev,
 		struct tegra_iovmm_domain *domain);
 	void (*unlock_domain)(struct tegra_iovmm_device *dev,
 		struct tegra_iovmm_domain *domain);
+#else
+        int (*lock_domain)(struct tegra_iovmm_domain *domain,
+                struct tegra_iovmm_client *client);
+        void (*unlock_domain)(struct tegra_iovmm_domain *domain,
+                struct tegra_iovmm_client *client);
+#endif
 	/* allocates a vmm_domain for the specified client; may return the same
 	 * domain for multiple clients */
 	struct tegra_iovmm_domain* (*alloc_domain)(
@@ -130,8 +156,13 @@ struct tegra_iovmm_area_ops {
 #ifdef CONFIG_TEGRA_IOVMM
 /* called by clients to allocate an I/O VMM client mapping context which
  * will be shared by all clients in the same share_group */
+#if !defined(CONFIG_ICS)
 struct tegra_iovmm_client *tegra_iovmm_alloc_client(const char *name,
 	const char *share_group);
+#else
+struct tegra_iovmm_client *tegra_iovmm_alloc_client(const char *name,
+        const char *share_group, struct miscdevice *misc_dev);
+#endif
 
 size_t tegra_iovmm_get_vm_size(struct tegra_iovmm_client *client);
 
@@ -151,9 +182,15 @@ void tegra_iovmm_client_unlock(struct tegra_iovmm_client *client);
  * tegra_iovmm_vm_map_pages and/or tegra_iovmm_vm_insert_pfn to explicitly
  * map the I/O virtual address to an OS-allocated page or physical address,
  * respectively. VM operations may be called before this call returns */
+#if !defined(CONFIG_ICS)
 struct tegra_iovmm_area *tegra_iovmm_create_vm(
 	struct tegra_iovmm_client *client, struct tegra_iovmm_area_ops *ops,
 	unsigned long size, pgprot_t pgprot);
+#else
+struct tegra_iovmm_area *tegra_iovmm_create_vm(
+        struct tegra_iovmm_client *client, struct tegra_iovmm_area_ops *ops,
+        size_t size, size_t align, pgprot_t pgprot, unsigned long iovm_start);
+#endif
 
 /* called by clients to "zap" an iovmm_area, and replace all mappings
  * in it with invalid ones, without freeing the virtual address range */
@@ -203,8 +240,13 @@ void tegra_iovmm_resume(void);
 
 #else /* CONFIG_TEGRA_IOVMM */
 
+#if !defined(CONFIG_ICS)
 static inline struct tegra_iovmm_client *tegra_iovmm_alloc_client(
 	const char *name, const char *share_group)
+#else
+static inline struct tegra_iovmm_client *tegra_iovmm_alloc_client(
+        const char *name, const char *share_group, struct miscdevice *misc_dev)
+#endif
 {
 	return NULL;
 }
@@ -230,9 +272,15 @@ static inline int tegra_iovmm_client_trylock(struct tegra_iovmm_client *client)
 static inline void tegra_iovmm_client_unlock(struct tegra_iovmm_client *client)
 {}
 
+#if !defined(CONFIG_ICS)
 static inline struct tegra_iovmm_area *tegra_iovmm_create_vm(
 	struct tegra_iovmm_client *client, struct tegra_iovmm_area_ops *ops,
 	unsigned long size, pgprot_t pgprot)
+#else
+static inline struct tegra_iovmm_area *tegra_iovmm_create_vm(
+        struct tegra_iovmm_client *client, struct tegra_iovmm_area_ops *ops,
+        size_t size, size_t align, pgprot_t pgprot, unsigned long iovm_start)
+#endif
 {
 	return NULL;
 }
@@ -242,6 +290,12 @@ static inline void tegra_iovmm_zap_vm(struct tegra_iovmm_area *vm) { }
 static inline void tegra_iovmm_unzap_vm(struct tegra_iovmm_area *vm) { }
 
 static inline void tegra_iovmm_free_vm(struct tegra_iovmm_area *vm) { }
+#if defined(CONFIG_ICS)
+static inline size_t tegra_iovmm_get_max_free(struct tegra_iovmm_client *client)
+{
+        return 0;
+}
+#endif
 
 static inline void tegra_iovmm_vm_insert_pfn(struct tegra_iovmm_area *area,
 	tegra_iovmm_addr_t vaddr, unsigned long pfn) { }

@@ -56,11 +56,19 @@ struct gart_device {
 	bool			needs_barrier; /* emulator WAR */
 };
 
+#if !defined(CONFIG_ICS)
 static int gart_map(struct tegra_iovmm_device *, struct tegra_iovmm_area *);
 static void gart_unmap(struct tegra_iovmm_device *,
 	struct tegra_iovmm_area *, bool);
 static void gart_map_pfn(struct tegra_iovmm_device *,
 	struct tegra_iovmm_area *, tegra_iovmm_addr_t, unsigned long);
+#else
+static int gart_map(struct tegra_iovmm_domain *, struct tegra_iovmm_area *);
+static void gart_unmap(struct tegra_iovmm_domain *,
+        struct tegra_iovmm_area *, bool);
+static void gart_map_pfn(struct tegra_iovmm_domain *,
+        struct tegra_iovmm_area *, tegra_iovmm_addr_t, unsigned long);
+#endif
 static struct tegra_iovmm_domain *gart_alloc_domain(
 	struct tegra_iovmm_device *, struct tegra_iovmm_client *);
 
@@ -258,10 +266,17 @@ static void __exit gart_exit(void)
 #define GART_PTE(_pfn) (0x80000000ul | ((_pfn)<<PAGE_SHIFT))
 
 
+#if !defined(CONFIG_ICS)
 static int gart_map(struct tegra_iovmm_device *dev,
 	struct tegra_iovmm_area *iovma)
 {
 	struct gart_device *gart = container_of(dev, struct gart_device, iovmm);
+#else
+static int gart_map(struct tegra_iovmm_domain *domain,
+        struct tegra_iovmm_area *iovma)
+{
+	struct gart_device *gart = container_of(domain, struct gart_device, domain);
+#endif
 	unsigned long gart_page, count;
 	unsigned int i;
 
@@ -301,10 +316,17 @@ fail:
 	return -ENOMEM;
 }
 
+#if !defined(CONFIG_ICS)
 static void gart_unmap(struct tegra_iovmm_device *dev,
 	struct tegra_iovmm_area *iovma, bool decommit)
 {
 	struct gart_device *gart = container_of(dev, struct gart_device, iovmm);
+#else
+static void gart_unmap(struct tegra_iovmm_domain *domain,
+        struct tegra_iovmm_area *iovma, bool decommit)
+{
+        struct gart_device *gart = container_of(domain, struct gart_device, domain);
+#endif
 	unsigned long gart_page, count;
 	unsigned int i;
 
@@ -325,11 +347,19 @@ static void gart_unmap(struct tegra_iovmm_device *dev,
 	wmb();
 }
 
+#if !defined(CONFIG_ICS)
 static void gart_map_pfn(struct tegra_iovmm_device *dev,
 	struct tegra_iovmm_area *iovma, tegra_iovmm_addr_t offs,
 	unsigned long pfn)
 {
 	struct gart_device *gart = container_of(dev, struct gart_device, iovmm);
+#else
+static void gart_map_pfn(struct tegra_iovmm_domain *domain,
+        struct tegra_iovmm_area *iovma, tegra_iovmm_addr_t offs,
+        unsigned long pfn)
+{
+        struct gart_device *gart = container_of(domain, struct gart_device, domain);
+#endif
 
 	BUG_ON(!pfn_valid(pfn));
 	spin_lock(&gart->pte_lock);

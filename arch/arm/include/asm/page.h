@@ -199,6 +199,10 @@ typedef struct page *pgtable_t;
 extern int pfn_valid(unsigned long);
 #endif
 
+#if defined(CONFIG_ICS)
+extern phys_addr_t lowmem_end_addr;
+#endif
+
 #include <asm/memory.h>
 
 #endif /* !__ASSEMBLY__ */
