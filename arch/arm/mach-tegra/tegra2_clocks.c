@@ -2273,7 +2273,13 @@ struct clk tegra_list_shared_clks[] = {
 	SHARED_CLK("disp1.emc",	"tegradc.0",		"emc",	&tegra_clk_emc),
 	SHARED_CLK("disp2.emc",	"tegradc.1",		"emc",	&tegra_clk_emc),
 	SHARED_CLK("hdmi.emc",	"hdmi",			"emc",	&tegra_clk_emc),
+#if !defined(CONFIG_ICS)
 	SHARED_CLK("host.emc",	"tegra_grhost",		"emc",	&tegra_clk_emc),
+#else
+	SHARED_CLK("3d.emc",    "tegra_gr3d",           "emc",  &tegra_clk_emc),
+	SHARED_CLK("2d.emc",    "tegra_gr2d",           "emc",  &tegra_clk_emc),
+	SHARED_CLK("mpe.emc",   "tegra_mpe",            "emc",  &tegra_clk_emc),
+#endif
 	SHARED_CLK("usbd.emc",	"fsl-tegra-udc",	"emc",	&tegra_clk_emc),
 	SHARED_CLK("usb1.emc",	"tegra-ehci.0",		"emc",	&tegra_clk_emc),
 	SHARED_CLK("usb2.emc",	"tegra-ehci.1",		"emc",	&tegra_clk_emc),
@@ -2310,11 +2316,19 @@ struct clk_duplicate tegra_clk_duplicates[] = {
 	CLK_DUPLICATE("pwm", "tegra_pwm.1", NULL),
 	CLK_DUPLICATE("pwm", "tegra_pwm.2", NULL),
 	CLK_DUPLICATE("pwm", "tegra_pwm.3", NULL),
+#if !defined(CONFIG_ICS)
 	CLK_DUPLICATE("host1x", "tegra_grhost", "host1x"),
 	CLK_DUPLICATE("2d", "tegra_grhost", "gr2d"),
 	CLK_DUPLICATE("3d", "tegra_grhost", "gr3d"),
 	CLK_DUPLICATE("epp", "tegra_grhost", "epp"),
 	CLK_DUPLICATE("mpe", "tegra_grhost", "mpe"),
+#else
+	CLK_DUPLICATE("host1x", "tegra_host1x", "host1x"),
+	CLK_DUPLICATE("2d", "tegra_gr2d", "gr2d"),
+	CLK_DUPLICATE("3d", "tegra_gr3d", "gr3d"),
+	CLK_DUPLICATE("epp", "tegra_gr2d", "epp"),
+	CLK_DUPLICATE("mpe", "tegra_mpe", "mpe"),
+#endif
 	CLK_DUPLICATE("cop", "tegra-avp", "cop"),
 	CLK_DUPLICATE("vde", "tegra-aes", "vde"),
 	CLK_DUPLICATE("sbc1", "tegra_spi_slave.0", NULL),
@@ -2395,7 +2409,9 @@ static struct tegra_sku_rate_limit sku_limits[] =
 	RATE_LIMIT("bsea.sclk",	240000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
 	RATE_LIMIT("vde",	240000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
 	RATE_LIMIT("3d",	300000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
+#if !defined(CONFIG_ICS)
 	RATE_LIMIT("mpe",       300000000, 0x04, 0x7, 0x08, 0x0F, 0x10),
+#endif
 
 	RATE_LIMIT("host1x",	108000000, 0x0F),
 

@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Syncpoints
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,69 +25,31 @@
 
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <mach/nvhost.h>
+#include <linux/nvhost.h>
 #include <mach/nvmap.h>
 #include <asm/atomic.h>
 
-#include "nvhost_hardware.h"
-
+struct nvhost_syncpt;
 struct nvhost_waitchk;
 
+/* host managed and invalid syncpt id */
 #define NVSYNCPT_GRAPHICS_HOST		     (0)
-#define NVSYNCPT_VI_ISP_0		     (12)
-#define NVSYNCPT_VI_ISP_1		     (13)
-#define NVSYNCPT_VI_ISP_2		     (14)
-#define NVSYNCPT_VI_ISP_3		     (15)
-#define NVSYNCPT_VI_ISP_4		     (16)
-#define NVSYNCPT_VI_ISP_5		     (17)
-#define NVSYNCPT_2D_0			     (18)
-#define NVSYNCPT_2D_1			     (19)
-#define NVSYNCPT_3D			     (22)
-#define NVSYNCPT_MPE			     (23)
-#define NVSYNCPT_DISP0			     (24)
-#define NVSYNCPT_DISP1			     (25)
-#define NVSYNCPT_VBLANK0		     (26)
-#define NVSYNCPT_VBLANK1		     (27)
-#define NVSYNCPT_MPE_EBM_EOF		     (28)
-#define NVSYNCPT_MPE_WR_SAFE		     (29)
-#define NVSYNCPT_DSI			     (31)
 #define NVSYNCPT_INVALID		     (-1)
 
-/*#define NVSYNCPT_2D_CHANNEL2_0    (20) */
-/*#define NVSYNCPT_2D_CHANNEL2_1    (21) */
-/*#define NVSYNCPT_2D_TINYBLT_WAR		     (30)*/
-/*#define NVSYNCPT_2D_TINYBLT_RESTORE_CLASS_ID (30)*/
-
-#define NVSYNCPTS_VALID_MASK ( \
-	BIT(NVSYNCPT_GRAPHICS_HOST) | BIT(NVSYNCPT_VI_ISP_0) | BIT(NVSYNCPT_VI_ISP_1) | \
-	BIT(NVSYNCPT_VI_ISP_2) | BIT(NVSYNCPT_VI_ISP_3) | BIT(NVSYNCPT_VI_ISP_4) | \
-	BIT(NVSYNCPT_VI_ISP_5) | BIT(NVSYNCPT_2D_0) | BIT(NVSYNCPT_2D_1) | \
-	BIT(NVSYNCPT_3D) | BIT(NVSYNCPT_MPE) | BIT(NVSYNCPT_DISP0) | \
-	BIT(NVSYNCPT_DISP1) | BIT(NVSYNCPT_VBLANK0) | BIT(NVSYNCPT_VBLANK1) | \
-	BIT(NVSYNCPT_MPE_EBM_EOF) | BIT(NVSYNCPT_MPE_WR_SAFE) | BIT(NVSYNCPT_DSI))
-
-/* sync points that are wholly managed by the client */
-#define NVSYNCPTS_CLIENT_MANAGED ( \
-	BIT(NVSYNCPT_DISP0) | BIT(NVSYNCPT_DISP1) | BIT(NVSYNCPT_DSI) | \
-	BIT(NVSYNCPT_VI_ISP_0) | BIT(NVSYNCPT_VI_ISP_2) | \
-	BIT(NVSYNCPT_VI_ISP_3) | BIT(NVSYNCPT_VI_ISP_4) | BIT(NVSYNCPT_VI_ISP_5) | \
-	BIT(NVSYNCPT_MPE_EBM_EOF) | BIT(NVSYNCPT_MPE_WR_SAFE) | \
-	BIT(NVSYNCPT_2D_1))
-
-/* Non-client-managed syncpoints */
-#define NVSYNCPTS_HOST_MANAGED (NVSYNCPTS_VALID_MASK & ~(NVSYNCPTS_CLIENT_MANAGED))
-
-#define NVWAITBASE_2D_0 (1)
-#define NVWAITBASE_2D_1 (2)
-#define NVWAITBASE_3D   (3)
-#define NVWAITBASE_MPE  (4)
-
 struct nvhost_syncpt {
-	atomic_t min_val[NV_HOST1X_SYNCPT_NB_PTS];
-	atomic_t max_val[NV_HOST1X_SYNCPT_NB_PTS];
-	u32 base_val[NV_HOST1X_SYNCPT_NB_BASES];
+	atomic_t *min_val;
+	atomic_t *max_val;
+	u32 *base_val;
+	u32 nb_pts;
+	u32 nb_bases;
+	u32 client_managed;
 };
 
+int nvhost_syncpt_init(struct nvhost_syncpt *);
+#define client_managed(id) (BIT(id) & sp->client_managed)
+#define syncpt_to_dev(sp) container_of(sp, struct nvhost_master, syncpt)
+#define syncpt_op(sp) (syncpt_to_dev(sp)->op.syncpt)
+#define SYNCPT_CHECK_PERIOD 2*HZ
 /**
  * Updates the value sent to hardware.
  */
@@ -95,12 +57,6 @@ static inline u32 nvhost_syncpt_incr_max(struct nvhost_syncpt *sp,
 					u32 id, u32 incrs)
 {
 	return (u32)atomic_add_return(incrs, &sp->max_val[id]);
-}
-
-static inline u32 nvhost_syncpt_incr_min(struct nvhost_syncpt *sp,
-					u32 id, u32 incrs)
-{
-	return (u32)atomic_add_return(incrs, &sp->min_val[id]);
 }
 
 /**
@@ -124,6 +80,16 @@ static inline u32 nvhost_syncpt_read_min(struct nvhost_syncpt *sp, u32 id)
 {
 	smp_rmb();
 	return (u32)atomic_read(&sp->min_val[id]);
+}
+
+static inline bool nvhost_syncpt_check_max(struct nvhost_syncpt *sp,
+		u32 id, u32 real)
+{
+	u32 max;
+	if (client_managed(id))
+		return true;
+	max = nvhost_syncpt_read_max(sp, id);
+	return (s32)(max - real) >= 0;
 }
 
 /**
@@ -159,6 +125,7 @@ void nvhost_syncpt_save(struct nvhost_syncpt *sp);
 void nvhost_syncpt_reset(struct nvhost_syncpt *sp);
 
 u32 nvhost_syncpt_read(struct nvhost_syncpt *sp, u32 id);
+u32 nvhost_syncpt_read_wait_base(struct nvhost_syncpt *sp, u32 id);
 
 void nvhost_syncpt_incr(struct nvhost_syncpt *sp, u32 id);
 
@@ -171,9 +138,22 @@ static inline int nvhost_syncpt_wait(struct nvhost_syncpt *sp, u32 id, u32 thres
 	                                  MAX_SCHEDULE_TIMEOUT, NULL);
 }
 
-int nvhost_syncpt_wait_check(struct nvmap_client *nvmap,
-			struct nvhost_syncpt *sp, u32 mask,
-			struct nvhost_waitchk *waitp, u32 num_waits);
+/*
+ * Check driver supplied waitchk structs for syncpt thresholds
+ * that have already been satisfied and NULL the comparison (to
+ * avoid a wrap condition in the HW).
+ *
+ * @param: sp - global shadowed syncpt struct
+ * @param: nvmap - needed to access command buffer
+ * @param: mask - bit mask of syncpt IDs referenced in WAITs
+ * @param: wait - start of filled in array of waitchk structs
+ * @param: waitend - end ptr (one beyond last valid waitchk)
+ */
+int nvhost_syncpt_wait_check(struct nvhost_syncpt *sp,
+			struct nvmap_client *nvmap,
+			u32 mask,
+			struct nvhost_waitchk *wait,
+			struct nvhost_waitchk *waitend);
 
 const char *nvhost_syncpt_name(u32 id);
 

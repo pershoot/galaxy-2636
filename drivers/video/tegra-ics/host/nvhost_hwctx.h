@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Hardware Context Interface
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,25 +26,28 @@
 #include <linux/string.h>
 #include <linux/kref.h>
 
-#include <mach/nvhost.h>
+#include <linux/nvhost.h>
 #include <mach/nvmap.h>
 
 struct nvhost_channel;
+struct nvhost_cdma;
+struct nvhost_userctx_timeout;
 
 struct nvhost_hwctx {
 	struct kref ref;
 
 	struct nvhost_channel *channel;
+	struct nvhost_userctx_timeout *timeout;
 	bool valid;
 
 	struct nvmap_handle_ref *save;
-	u32 save_phys;
-	u32 save_size;
 	u32 save_incrs;
-	void *save_cpu_data;
+	u32 save_thresh;
+	u32 save_slots;
 
 	struct nvmap_handle_ref *restore;
-	u32 restore_phys;
+	u32 *restore_virt;
+	phys_addr_t restore_phys;
 	u32 restore_size;
 	u32 restore_incrs;
 };
@@ -53,22 +56,10 @@ struct nvhost_hwctx_handler {
 	struct nvhost_hwctx * (*alloc) (struct nvhost_channel *ch);
 	void (*get) (struct nvhost_hwctx *ctx);
 	void (*put) (struct nvhost_hwctx *ctx);
+	void (*save_push) (struct nvhost_cdma *cdma, struct nvhost_hwctx *ctx);
 	void (*save_service) (struct nvhost_hwctx *ctx);
 };
 
-int nvhost_3dctx_handler_init(struct nvhost_hwctx_handler *h);
-int nvhost_mpectx_handler_init(struct nvhost_hwctx_handler *h);
-
-static inline int nvhost_hwctx_handler_init(struct nvhost_hwctx_handler *h,
-                                            const char *module)
-{
-	if (strcmp(module, "gr3d") == 0)
-		return nvhost_3dctx_handler_init(h);
-	else if (strcmp(module, "mpe") == 0)
-		return nvhost_mpectx_handler_init(h);
-
-	return 0;
-}
 
 struct hwctx_reginfo {
 	unsigned int offset:12;
@@ -79,8 +70,7 @@ struct hwctx_reginfo {
 enum {
 	HWCTX_REGINFO_DIRECT = 0,
 	HWCTX_REGINFO_INDIRECT,
-	HWCTX_REGINFO_INDIRECT_OFFSET,
-	HWCTX_REGINFO_INDIRECT_DATA
+	HWCTX_REGINFO_INDIRECT_4X
 };
 
 #define HWCTX_REGINFO(offset, count, type) {offset, count, HWCTX_REGINFO_##type}

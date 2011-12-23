@@ -9,9 +9,14 @@ obj-y                                   += timer.o
 obj-y                                   += pinmux.o
 obj-y                                   += devices.o
 obj-y                                   += delay.o
-obj-y                                   += powergate.o
 obj-y                                   += suspend.o
+ifneq ($(CONFIG_ICS),y)
+obj-y                                   += powergate.o
 obj-y                                   += fuse.o
+else
+obj-y                                   += powergate-ics.o
+obj-y                                   += fuse-ics.o
+endif
 obj-y                                   += kfuse.o
 ifeq ($(CONFIG_ICS),y)
 obj-y                                   += csi.o

@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Automatic Clock Management
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,82 +20,148 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include "nvhost_acm.h"
 #include "dev.h"
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched.h>
 #include <linux/err.h>
 #include <linux/device.h>
+#include <linux/delay.h>
 #include <mach/powergate.h>
 #include <mach/clk.h>
-#include "nvhost_syncpt.h"
+#include <mach/hardware.h>
 
-#include "dev.h"
+#define ACM_SUSPEND_WAIT_FOR_IDLE_TIMEOUT (2 * HZ)
+#define POWERGATE_DELAY 10
+#define MAX_DEVID_LENGTH 16
 
-#define ACM_TIMEOUT_MSEC 25
-#define SUSPEND_TIMEOUT 6*HZ /* As per __device_suspend timer.expires */
+DEFINE_MUTEX(client_list_lock);
 
-#define DISABLE_MPE_POWERGATING
+struct nvhost_module_client {
+	struct list_head node;
+	unsigned long rate[NVHOST_MODULE_MAX_CLOCKS];
+	void *priv;
+};
+
+
+void nvhost_module_reset(struct device *dev, struct nvhost_module *mod)
+{
+	dev_dbg(dev,
+		"%s: asserting %s module reset (id %d, id2 %d)\n",
+		__func__, mod->name,
+		mod->desc->powergate_ids[0], mod->desc->powergate_ids[1]);
+
+	/* assert module and mc client reset */
+	if (mod->desc->powergate_ids[0] != -1) {
+		tegra_powergate_mc_disable(mod->desc->powergate_ids[0]);
+		tegra_periph_reset_assert(mod->clk[0]);
+		tegra_powergate_mc_flush(mod->desc->powergate_ids[0]);
+	}
+	if (mod->desc->powergate_ids[1] != -1) {
+		tegra_powergate_mc_disable(mod->desc->powergate_ids[1]);
+		tegra_periph_reset_assert(mod->clk[1]);
+		tegra_powergate_mc_flush(mod->desc->powergate_ids[1]);
+	}
+
+	udelay(POWERGATE_DELAY);
+
+	/* deassert reset */
+	if (mod->desc->powergate_ids[0] != -1) {
+		tegra_powergate_mc_flush_done(mod->desc->powergate_ids[0]);
+		tegra_periph_reset_deassert(mod->clk[0]);
+		tegra_powergate_mc_enable(mod->desc->powergate_ids[0]);
+	}
+	if (mod->desc->powergate_ids[1] != -1) {
+		tegra_powergate_mc_flush_done(mod->desc->powergate_ids[1]);
+		tegra_periph_reset_deassert(mod->clk[1]);
+		tegra_powergate_mc_enable(mod->desc->powergate_ids[1]);
+	}
+
+	dev_dbg(dev, "%s: module %s out of reset\n",
+		__func__, mod->name);
+}
+
+static void clock_enable(struct nvhost_module *mod)
+{
+	int i;
+	for (i = 0; i < mod->num_clks; i++)
+		clk_enable(mod->clk[i]);
+}
+
+static void unpowergate(struct nvhost_module *mod)
+{
+	const struct nvhost_moduledesc *desc = mod->desc;
+	if (desc->can_powergate) {
+		if (desc->powergate_ids[0] != -1)
+			tegra_unpowergate_partition(desc->powergate_ids[0]);
+
+		if (desc->powergate_ids[1] != -1)
+			tegra_unpowergate_partition(desc->powergate_ids[1]);
+	}
+}
 
 void nvhost_module_busy(struct nvhost_module *mod)
 {
 	mutex_lock(&mod->lock);
 	cancel_delayed_work(&mod->powerdown);
-
-	if (mod->force_suspend) {
-		pr_warn("tegra_grhost: module_busy despite %s force_suspend!\n",
-			mod->name);
-		WARN_ON(1);
-	}	
+	if (mod->desc->busy)
+		mod->desc->busy(mod);
 
 	if ((atomic_inc_return(&mod->refcount) == 1) && !mod->powered) {
 		if (mod->parent)
 			nvhost_module_busy(mod->parent);
-		if (mod->powergate_id != -1) {
-			BUG_ON(mod->num_clks != 1);
-			tegra_powergate_sequence_power_up(
-				mod->powergate_id, mod->clk[0]);
-		} else {
-			int i;
-			for (i = 0; i < mod->num_clks; i++)
-				clk_enable(mod->clk[i]);
-		}
-		if (mod->func)
-			mod->func(mod, NVHOST_POWER_ACTION_ON);
+		unpowergate(mod);
+		clock_enable(mod);
+		if (mod->desc->finalize_poweron)
+			mod->desc->finalize_poweron(mod);
 		mod->powered = true;
 	}
 	mutex_unlock(&mod->lock);
 }
 
+static void clock_disable(struct nvhost_module *mod)
+{
+	int i;
+	for (i = 0; i < mod->num_clks; i++)
+		clk_disable(mod->clk[i]);
+}
+
+static void powergate(struct nvhost_module *mod)
+{
+	if (mod->desc->can_powergate) {
+		if (mod->desc->powergate_ids[0] != -1)
+			tegra_powergate_partition(mod->desc->powergate_ids[0]);
+
+		if (mod->desc->powergate_ids[1] != -1)
+			tegra_powergate_partition(mod->desc->powergate_ids[1]);
+	}
+}
+
 static void powerdown_handler(struct work_struct *work)
 {
 	struct nvhost_module *mod;
-	int refcount;	
 
-	mod = container_of(to_delayed_work(work), struct nvhost_module, powerdown);
+	mod = container_of(to_delayed_work(work),
+			struct nvhost_module,
+			powerdown);
 	mutex_lock(&mod->lock);
-	refcount = atomic_read(&mod->refcount);
-	if ((refcount == 0) && mod->powered) {
-		int i;
-		if (mod->func)
-			mod->func(mod, NVHOST_POWER_ACTION_OFF);
-		for (i = 0; i < mod->num_clks; i++) {
-			clk_disable(mod->clk[i]);
+	if ((atomic_read(&mod->refcount) == 0) && mod->powered) {
+		if (mod->desc->prepare_poweroff
+			&& mod->desc->prepare_poweroff(mod)) {
+			/* If poweroff fails, retry */
+			mutex_unlock(&mod->lock);
+			schedule_delayed_work(&mod->powerdown,
+					msecs_to_jiffies(
+						mod->desc->powerdown_delay));
+			return;
 		}
-		if (mod->powergate_id != -1) {
-			tegra_periph_reset_assert(mod->clk[0]);
-			tegra_powergate_power_off(mod->powergate_id);
-		}
+		clock_disable(mod);
+		powergate(mod);
 		mod->powered = false;
 		if (mod->parent)
 			nvhost_module_idle(mod->parent);
 	}
-	else if (mod->force_suspend) {
-		pr_warn("tegra_grhost: module %s (refcnt %d)"
-			" force_suspend powerdown skipped!\n",
-			mod->name, refcount);
-	}
-	mod->force_suspend = false;	
 	mutex_unlock(&mod->lock);
 }
 
@@ -106,42 +172,23 @@ void nvhost_module_idle_mult(struct nvhost_module *mod, int refs)
 	mutex_lock(&mod->lock);
 	if (atomic_sub_return(refs, &mod->refcount) == 0) {
 		BUG_ON(!mod->powered);
-		schedule_delayed_work(
-			&mod->powerdown, msecs_to_jiffies(ACM_TIMEOUT_MSEC));
+		schedule_delayed_work(&mod->powerdown,
+			msecs_to_jiffies(mod->desc->powerdown_delay));
 		kick = true;
 	}
 	mutex_unlock(&mod->lock);
 
-	if (kick)
+	if (kick) {
 		wake_up(&mod->idle);
+
+		if (mod->desc->idle)
+			mod->desc->idle(mod);
+	}
 }
 
-static const char *get_module_clk_id(const char *module, int index)
-{
-	if (index == 1 && strcmp(module, "gr2d") == 0)
-		return "epp";
-	else if (index == 2 && strcmp(module, "gr2d") == 0)
-		return "emc";
-	else if (index == 1 && strcmp(module, "gr3d") == 0)
-		return "emc";
-	else if (index == 1 && strcmp(module, "mpe") == 0)
-		return "emc";
-	else if (index == 0)
-		return module;
-	return NULL;
-}
-
-static int get_module_powergate_id(const char *module)
-{
-	if (strcmp(module, "gr3d") == 0)
-		return TEGRA_POWERGATE_3D;
-	else if (strcmp(module, "mpe") == 0)
-		return TEGRA_POWERGATE_MPE;
-	return -1;
-}
-
-int nvhost_module_get_rate(struct nvhost_module *mod, unsigned long *rate,
-			    int index)
+int nvhost_module_get_rate(struct nvhost_master *host,
+		struct nvhost_module *mod, unsigned long *rate,
+		int index)
 {
 	struct clk *c;
 
@@ -149,170 +196,141 @@ int nvhost_module_get_rate(struct nvhost_module *mod, unsigned long *rate,
 	if (IS_ERR_OR_NULL(c))
 		return -EINVAL;
 
+	/* Need to enable client to get correct rate */
 	nvhost_module_busy(mod);
 	*rate = clk_get_rate(c);
 	nvhost_module_idle(mod);
-
 	return 0;
+
 }
 
-int nvhost_module_update_rate(struct nvhost_module *mod, int index)
+static int nvhost_module_update_rate(struct nvhost_module *mod, int index)
 {
 	unsigned long rate = 0;
 	struct nvhost_module_client *m;
 
-	if (list_empty(&mod->client_list))
-		rate = ULONG_MAX;
+	if (!mod->clk[index])
+		return -EINVAL;
 
 	list_for_each_entry(m, &mod->client_list, node) {
 		rate = max(m->rate[index], rate);
 	}
-	if (IS_ERR_OR_NULL(mod->clk[index]))
-		return -EINVAL;
-	clk_set_rate(mod->clk[index], rate);
-	return 0;
+	if (!rate)
+		rate = clk_round_rate(mod->clk[index],
+				mod->desc->clocks[index].default_rate);
+
+	return clk_set_rate(mod->clk[index], rate);
 }
 
-static unsigned long nvhost_module_round_rate(struct clk *c, unsigned long rate)
-{
-	unsigned long round_rate = 0;
-	unsigned long max_rate;
-	unsigned long delta = 0;
-
-	max_rate = clk_round_rate(c, ULONG_MAX);
-	if (rate >= max_rate)
-		return max_rate;
-
-	max_rate = rate;
-
-	round_rate = clk_round_rate(c,rate);
-	if (round_rate >= max_rate)
-		return round_rate;
-
-	delta = round_rate - clk_round_rate(c, round_rate - 1);
-
-	do {
-		rate = rate + delta;
-		round_rate = clk_round_rate(c, rate);
-	} while(round_rate < max_rate);
-
-	return round_rate;
-}
-
-int nvhost_module_set_rate(struct nvhost_module *mod, void *priv,
-			    unsigned long rate, int index)
+int nvhost_module_set_rate(struct nvhost_master *host,
+		struct nvhost_module *mod, void *priv,
+		unsigned long rate, int index)
 {
 	struct nvhost_module_client *m;
+	int ret;
 
+	mutex_lock(&client_list_lock);
 	list_for_each_entry(m, &mod->client_list, node) {
 		if (m->priv == priv) {
-			rate = nvhost_module_round_rate(mod->clk[index], rate);
+			rate = clk_round_rate(mod->clk[index], rate);
 			m->rate[index] = rate;
 			break;
 		}
 	}
-	return nvhost_module_update_rate(mod, index);
+	ret = nvhost_module_update_rate(mod, index);
+	mutex_unlock(&client_list_lock);
+	return ret;
+
 }
 
-int nvhost_module_add_client(struct nvhost_module *mod, void *priv)
+int nvhost_module_add_client(struct nvhost_master *host,
+		struct nvhost_module *mod, void *priv)
 {
 	int i;
 	unsigned long rate;
 	struct nvhost_module_client *client;
 
 	client = kzalloc(sizeof(*client), GFP_KERNEL);
-	if (!client) {
+	if (!client)
 		return -ENOMEM;
-	}
+
 	INIT_LIST_HEAD(&client->node);
 	client->priv = priv;
 
 	for (i = 0; i < mod->num_clks; i++) {
-		rate = clk_round_rate(mod->clk[i], ULONG_MAX);
+		rate = clk_round_rate(mod->clk[i],
+				mod->desc->clocks[i].default_rate);
 		client->rate[i] = rate;
 	}
+	mutex_lock(&client_list_lock);
 	list_add_tail(&client->node, &mod->client_list);
+	mutex_unlock(&client_list_lock);
 	return 0;
 }
 
-void nvhost_module_remove_client(struct nvhost_module *mod, void *priv)
+void nvhost_module_remove_client(struct nvhost_master *host,
+		struct nvhost_module *mod, void *priv)
 {
+	int i;
 	struct nvhost_module_client *m;
 
+	mutex_lock(&client_list_lock);
 	list_for_each_entry(m, &mod->client_list, node) {
 		if (priv == m->priv) {
 			list_del(&m->node);
 			break;
 		}
 	}
-	m->priv = NULL;
-	kfree(m);
-
-	nvhost_module_update_rate(mod, 0);
+	if (m) {
+		kfree(m);
+		for (i = 0; i < mod->num_clks; i++)
+			nvhost_module_update_rate(mod, i);
+	}
+	mutex_unlock(&client_list_lock);
 }
 
 int nvhost_module_init(struct nvhost_module *mod, const char *name,
-		nvhost_modulef func, struct nvhost_module *parent,
+		const struct nvhost_moduledesc *desc,
+		struct nvhost_module *parent,
 		struct device *dev)
 {
 	int i = 0;
+
 	mod->name = name;
 
 	INIT_LIST_HEAD(&mod->client_list);
-	while (i < NVHOST_MODULE_MAX_CLOCKS) {
-		long rate;
-		mod->clk[i] = clk_get(dev, get_module_clk_id(name, i));
-		if (IS_ERR_OR_NULL(mod->clk[i]))
-			break;
-		rate = clk_round_rate(mod->clk[i], UINT_MAX);
-		if (rate < 0) {
-			pr_err("%s: can't get maximum rate for %s\n",
-				__func__, name);
-			break;
-		}
-		if (rate != clk_get_rate(mod->clk[i])) {
-			clk_set_rate(mod->clk[i], rate);
-		}
+	while (desc->clocks[i].name && i < NVHOST_MODULE_MAX_CLOCKS) {
+		char devname[MAX_DEVID_LENGTH];
+		long rate = desc->clocks[i].default_rate;
+
+		snprintf(devname, MAX_DEVID_LENGTH, "tegra_%s", name);
+		mod->clk[i] = clk_get_sys(devname, desc->clocks[i].name);
+		BUG_ON(IS_ERR_OR_NULL(mod->clk[i]));
+
+		rate = clk_round_rate(mod->clk[i], rate);
+		clk_enable(mod->clk[i]);
+		clk_set_rate(mod->clk[i], rate);
+		clk_disable(mod->clk[i]);
 		i++;
 	}
-
 	mod->num_clks = i;
-	mod->func = func;
+	mod->desc = desc;
 	mod->parent = parent;
 	mod->powered = false;
-	mod->powergate_id = get_module_powergate_id(name);
-	mod->force_suspend = false;
-
-#if CONFIG_DISABLE_3D_POWERGATING
-	/*
-	 * It is possible for the 3d block to generate an invalid memory
-	 * request during the power up sequence in some cases.  Workaround
-	 * is to disable 3d block power gating.
-	 */
-	if (mod->powergate_id == TEGRA_POWERGATE_3D) {
-		tegra_powergate_sequence_power_up(mod->powergate_id,
-			mod->clk[0]);
-		clk_disable(mod->clk[0]);
-		mod->powergate_id = -1;
-	}
-#endif
-
-#ifdef DISABLE_MPE_POWERGATING
-	/*
-	 * Disable power gating for MPE as it seems to cause issues with
-	 * camera record stress tests when run in loop.
-	 */
-	if (mod->powergate_id == TEGRA_POWERGATE_MPE) {
-		tegra_powergate_sequence_power_up(mod->powergate_id,
-			mod->clk[0]);
-		clk_disable(mod->clk[0]);
-		mod->powergate_id = -1;
-	}
-#endif
 
 	mutex_init(&mod->lock);
 	init_waitqueue_head(&mod->idle);
 	INIT_DELAYED_WORK(&mod->powerdown, powerdown_handler);
+
+	if (!desc->can_powergate) {
+		if (desc->powergate_ids[0] != -1)
+			tegra_unpowergate_partition(desc->powergate_ids[0]);
+		if (desc->powergate_ids[1] != -1)
+			tegra_unpowergate_partition(desc->powergate_ids[1]);
+	}
+
+	if (desc->init)
+		desc->init(dev, mod);
 
 	return 0;
 }
@@ -326,105 +344,72 @@ static int is_module_idle(struct nvhost_module *mod)
 	return (count == 0);
 }
 
-static void debug_not_idle(struct nvhost_module *mod)
+static void debug_not_idle(struct nvhost_master *dev)
 {
 	int i;
 	bool lock_released = true;
-	struct nvhost_master *dev = container_of(mod, struct nvhost_master, mod);
 
-	for (i = 0; i < NVHOST_NUMCHANNELS; i++) {
+	for (i = 0; i < dev->nb_channels; i++) {
 		struct nvhost_module *m = &dev->channels[i].mod;
 		if (m->name)
-			pr_warn("tegra_grhost: %s: refcnt %d\n",
+			dev_warn(&dev->pdev->dev, "tegra_grhost: %s: refcnt %d\n",
 				m->name, atomic_read(&m->refcount));
 	}
 
-	for (i = 0; i < NV_HOST1X_SYNC_MLOCK_NUM; i++) {
+	for (i = 0; i < dev->nb_mlocks; i++) {
 		int c = atomic_read(&dev->cpuaccess.lock_counts[i]);
 		if (c) {
-			pr_warn("tegra_grhost: lock id %d: refcnt %d\n", i, c);
+			dev_warn(&dev->pdev->dev,
+				"tegra_grhost: lock id %d: refcnt %d\n",
+				i, c);
 			lock_released = false;
 		}
 	}
 	if (lock_released)
-		pr_warn("tegra_grhost: all locks released\n");
-
-	nvhost_debug_dump();
+		dev_dbg(&dev->pdev->dev, "tegra_grhost: all locks released\n");
 }
 
-int nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
+void nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 {
-	int i = 0, idle_timeout;
+	int ret;
 	struct nvhost_master *dev;
 
 	if (system_suspend) {
-		idle_timeout = SUSPEND_TIMEOUT;
 		dev = container_of(mod, struct nvhost_master, mod);
-	}
-	else {
-		idle_timeout = msecs_to_jiffies(ACM_TIMEOUT_MSEC + 500);
+		if (!is_module_idle(mod))
+			debug_not_idle(dev);
+	} else {
 		dev = container_of(mod, struct nvhost_channel, mod)->dev;
 	}
 
-	if (!wait_event_timeout(mod->idle, is_module_idle(mod), idle_timeout)) {
-		/* Timeout occurred: clear refcnt forcibly */
-		mod->force_suspend = true;		
-		for (i = 0; i < NVHOST_NUMCHANNELS; i++) {
-			struct nvhost_module *m = &dev->channels[i].mod;
-			if (m->name) {
-				int refcount = atomic_read(&m->refcount);
-				if (refcount != 0) {	
-					pr_warn("tegra_grhost: %s: force refcnt %d to zero\n",
-						m->name, refcount);
-					nvhost_module_idle_mult(m, refcount);
-					flush_delayed_work(&m->powerdown);
-				}
-			}
-		}
-		wait_event(mod->idle, is_module_idle(mod)); /* no timeout: failure fatal */
-	}
+	ret = wait_event_timeout(mod->idle, is_module_idle(mod),
+			ACM_SUSPEND_WAIT_FOR_IDLE_TIMEOUT);
+	if (ret == 0)
+		nvhost_debug_dump(dev);
 
-	if (system_suspend) {
-		/* Ensure that syncpoints are not stuck
-		 *
-		 * (In theory this check should apply even in the ACM case (i.e., when
-		 * !system_suspend) due to module_idle, but at such times there have
-		 * occasionally been shown to be a huge number of syncpoint fixups needed,
-		 * bogging everything down.  Since this is not fatal, until this is
-		 * investigated further, we limit to system_suspend for now.) */
-		for (i = 0; i < NV_HOST1X_SYNCPT_NB_PTS; i++) {
-			if (BIT(i) & ~(NVSYNCPTS_HOST_MANAGED))
-				continue;
-			while (!nvhost_syncpt_min_eq_max(&dev->syncpt, i)) {
-				pr_warn("tegra_grhost: force syncpt id %d (%s) = %d + 1\n",
-					i, nvhost_syncpt_name(i),
-					nvhost_syncpt_read_min(&dev->syncpt, i));
-				nvhost_syncpt_incr_min(&dev->syncpt, i, 1);
-			}
-		}
+	if (system_suspend)
+		dev_dbg(&dev->pdev->dev, "tegra_grhost: entered idle\n");
 
-		if (!is_module_idle(mod))
-			debug_not_idle(mod);
-		else
-			pr_info("tegra_grhost: entered idle\n");
-	}
-	
 	flush_delayed_work(&mod->powerdown);
-	if (system_suspend) {
-		printk("tegra_grhost: flushed delayed work\n");
 
-		if(mod->powered)
-			return -EBUSY;
-	}
+	if (system_suspend)
+		dev_dbg(&dev->pdev->dev, "tegra_grhost: flushed delayed work\n");
+
+	if (mod->desc->suspend)
+		mod->desc->suspend(mod);
 
 	BUG_ON(mod->powered);
-	return 0;
 }
 
-void nvhost_module_deinit(struct nvhost_module *mod)
+void nvhost_module_deinit(struct device *dev, struct nvhost_module *mod)
 {
 	int i;
+
+	if (mod->desc->deinit)
+		mod->desc->deinit(dev, mod);
+
 	nvhost_module_suspend(mod, false);
 	for (i = 0; i < mod->num_clks; i++)
 		clk_put(mod->clk[i]);
 }
+

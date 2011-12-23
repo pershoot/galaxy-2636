@@ -308,7 +308,8 @@ static void tegra_overlay_n_shot(struct tegra_overlay_flip_data *data,
 			*nr_unpin = data->nr_unpin;
 			for (i = 0; i < *nr_unpin; i++)
 				unpin_handles[i] = data->unpin_handles[i];
-			tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+			tegra_dc_incr_syncpt_min(overlay->dc, 0,
+						data->syncpt_max);
 		}
 	} else {
 		overlay->overlay_ref--;
@@ -322,12 +323,14 @@ static void tegra_overlay_n_shot(struct tegra_overlay_flip_data *data,
 			data->didim_work = true;
 			for (i = 0; i < *nr_unpin; i++)
 				data->unpin_handles[i] = unpin_handles[i];
-			tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+			tegra_dc_incr_syncpt_min(overlay->dc, 0,
+						data->syncpt_max);
 			tegra_overlay_flip_didim(data);
 			mutex_unlock(&overlay->lock);
 			return;
 		} else {
-			tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+			tegra_dc_incr_syncpt_min(overlay->dc, 0,
+						data->syncpt_max);
 		}
 	}
 
@@ -359,7 +362,7 @@ static bool tegra_overlay_n_shot_delay(struct tegra_overlay_flip_data *data,
 	/* Check return value to see if timeout occurs of not. If yes, we will
 	 * continue to update duplicate frame; otherwise clear it. */
 	if (timeout) {
-		/*tegra_dc_incr_syncpt_min(overlay->dc, */
+		/*tegra_dc_incr_syncpt_min(overlay->dc, 0,*/
 						/*data->syncpt_max);*/
 		for (i = 0; i < data->nr_unpin; i++) {
 			nvmap_unpin(overlay->overlay_nvmap,
@@ -445,7 +448,8 @@ static void tegra_overlay_flip_worker(struct work_struct *work)
 		(overlay->dc->out->flags & TEGRA_DC_OUT_N_SHOT_MODE)) {
 		tegra_overlay_n_shot(data, unpin_handles, &nr_unpin);
 	} else {
-		tegra_dc_incr_syncpt_min(overlay->dc, data->syncpt_max);
+		tegra_dc_incr_syncpt_min(overlay->dc, 0,
+					data->syncpt_max);
 
 		/* unpin and deref previous front buffers */
 		for (i = 0; i < nr_unpin; i++) {
@@ -517,13 +521,13 @@ static int tegra_overlay_flip(struct tegra_overlay_info *overlay,
 		}
 	}
 
-	syncpt_max = tegra_dc_incr_syncpt_max(overlay->dc);
+	syncpt_max = tegra_dc_incr_syncpt_max(overlay->dc, 0);
 	data->syncpt_max = syncpt_max;
 
 	queue_work(overlay->flip_wq, &data->work);
 
 	args->post_syncpt_val = syncpt_max;
-	args->post_syncpt_id = tegra_dc_get_syncpt_id(overlay->dc);
+	args->post_syncpt_id = tegra_dc_get_syncpt_id(overlay->dc, 0);
 	mutex_unlock(&tegra_flip_lock);
 
 	return 0;

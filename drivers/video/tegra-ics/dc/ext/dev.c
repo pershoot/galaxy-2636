@@ -48,13 +48,13 @@ struct tegra_dc_ext_flip_win {
 	dma_addr_t				phys_addr;
 	dma_addr_t				phys_addr_u;
 	dma_addr_t				phys_addr_v;
+	u32                                     syncpt_max;
 };
 
 struct tegra_dc_ext_flip_data {
 	struct tegra_dc_ext		*ext;
 	struct work_struct		work;
 	struct tegra_dc_ext_flip_win	win[DC_N_WINDOWS];
-	u32					syncpt_max;
 };
 
 int tegra_dc_ext_get_num_outputs(void)
@@ -120,10 +120,12 @@ static int tegra_dc_ext_put_window(struct tegra_dc_ext_user *user,
 
 	mutex_lock(&win->lock);
 
-	if (win->user == user)
+	if (win->user == user) {
+		flush_workqueue(win->flip_wq);
 		win->user = 0;
-	else
+	} else {
 		ret = -EACCES;
+	}
 
 	mutex_unlock(&win->lock);
 
@@ -156,13 +158,18 @@ void tegra_dc_ext_enable(struct tegra_dc_ext *ext)
 
 void tegra_dc_ext_disable(struct tegra_dc_ext *ext)
 {
+	int i;
         set_enable(ext, false);
 
         /*
          * Flush the flip queue -- note that this must be called with dc->lock
          * unlocked or else it will hang.
          */
-	flush_workqueue(ext->flip_wq);
+        for (i = 0; i < ext->dc->n_windows; i++) {
+                struct tegra_dc_ext_win *win = &ext->win[i];
+
+                flush_workqueue(win->flip_wq);
+        }
 }
 
 static int tegra_dc_ext_set_windowattr(struct tegra_dc_ext *ext,
@@ -263,7 +270,16 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 	/* TODO: implement swapinterval here */
 	tegra_dc_sync_windows(wins, nr_win);
 
-	tegra_dc_incr_syncpt_min(ext->dc, data->syncpt_max);
+        for (i = 0; i < DC_N_WINDOWS; i++) {
+                struct tegra_dc_ext_flip_win *flip_win = &data->win[i];
+                int index = flip_win->attr.index;
+
+                if (index < 0)
+                        continue;
+
+                tegra_dc_incr_syncpt_min(ext->dc, index,
+                        flip_win->syncpt_max);
+        }
 
 	/* unpin and deref previous front buffers */
 	for (i = 0; i < nr_unpin; i++) {
@@ -357,7 +373,7 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 {
 	struct tegra_dc_ext *ext = user->ext;
 	struct tegra_dc_ext_flip_data *data;
-	u32 syncpt_max;
+	int work_index;
 	int i, ret = 0;
 
 	if (!user->nvmap)
@@ -423,13 +439,26 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
                 goto unlock;
         }
 
-		syncpt_max = tegra_dc_incr_syncpt_max(ext->dc);
-		data->syncpt_max = syncpt_max;
+	for (i = 0; i < DC_N_WINDOWS; i++) {
+		u32 syncpt_max;
+		int index = args->win[i].index;
 
-	args->post_syncpt_val = syncpt_max;
-	args->post_syncpt_id = tegra_dc_get_syncpt_id(ext->dc);
+		if (index < 0)
+			continue;
 
-	queue_work(ext->flip_wq, &data->work);
+		syncpt_max = tegra_dc_incr_syncpt_max(ext->dc, index);
+
+                data->win[i].syncpt_max = syncpt_max;
+
+                /*
+                 * Any of these windows' syncpoints should be equivalent for
+                 * the client, so we just send back an arbitrary one of them
+                 */
+                args->post_syncpt_val = syncpt_max;
+                args->post_syncpt_id = tegra_dc_get_syncpt_id(ext->dc, index);
+                work_index = index;
+        }
+        queue_work(ext->win[work_index].flip_wq, &data->work);
 
 	unlock_windows_for_flip(user, args);
 
@@ -643,18 +672,35 @@ static int tegra_dc_release(struct inode *inode, struct file *filp)
 
 static int tegra_dc_ext_setup_windows(struct tegra_dc_ext *ext)
 {
-	int i;
+	int i, ret;
 
 	for (i = 0; i < ext->dc->n_windows; i++) {
 		struct tegra_dc_ext_win *win = &ext->win[i];
+		char name[32];
 
 		win->ext = ext;
 		win->idx = i;
+
+                snprintf(name, sizeof(name), "tegradc.%d/%c",
+                         ext->dc->ndev->id, 'a' + i);
+                win->flip_wq = create_singlethread_workqueue(name);
+                if (!win->flip_wq) {
+                        ret = -ENOMEM;
+                        goto cleanup;
+                }
 
 		mutex_init(&win->lock);
 	}
 
 	return 0;
+
+cleanup:
+        while (i--) {
+                struct tegra_dc_ext_win *win = &ext->win[i];
+                destroy_workqueue(win->flip_wq);
+        }
+
+        return ret;
 }
 
 static const struct file_operations tegra_dc_devops = {
@@ -706,24 +752,15 @@ struct tegra_dc_ext *tegra_dc_ext_register(struct nvhost_device *ndev,
 		goto cleanup_device;
 	}
 
-	ext->flip_wq = create_singlethread_workqueue(dev_name(&ndev->dev));
-	if (!ext->flip_wq) {
-		ret = -ENOMEM;
-		goto cleanup_nvmap;
-	}
-
 	ret = tegra_dc_ext_setup_windows(ext);
 	if (ret)
-		goto cleanup_wq;
+		goto cleanup_nvmap;
 
 	mutex_init(&ext->cursor.lock);
 
 	head_count++;
 
 	return ext;
-
-cleanup_wq:
-	destroy_workqueue(ext->flip_wq);
 
 cleanup_nvmap:
 	nvmap_client_put(ext->nvmap);
@@ -742,8 +779,14 @@ cleanup_alloc:
 
 void tegra_dc_ext_unregister(struct tegra_dc_ext *ext)
 {
-	flush_workqueue(ext->flip_wq);
-	destroy_workqueue(ext->flip_wq);
+	int i;
+
+        for (i = 0; i < ext->dc->n_windows; i++) {
+                struct tegra_dc_ext_win *win = &ext->win[i];
+
+                flush_workqueue(win->flip_wq);
+                destroy_workqueue(win->flip_wq);
+        }
 
 	nvmap_client_put(ext->nvmap);
 	device_del(ext->dev);

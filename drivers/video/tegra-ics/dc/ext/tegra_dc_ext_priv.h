@@ -52,10 +52,10 @@ struct tegra_dc_ext_win {
 
 	struct mutex		lock;
 
-	u32                     syncpt_id;
-
 	/* Current nvmap handle (if any) for Y, U, V planes */
 	struct nvmap_handle_ref	*cur_handle[TEGRA_DC_NUM_PLANES];
+
+	struct workqueue_struct *flip_wq;
 };
 
 struct tegra_dc_ext {
@@ -67,8 +67,6 @@ struct tegra_dc_ext {
 	struct nvmap_client		*nvmap;
 
 	struct tegra_dc_ext_win		win[DC_N_WINDOWS];
-
-	struct workqueue_struct         *flip_wq;
 
 	struct {
 		struct tegra_dc_ext_user	*user;

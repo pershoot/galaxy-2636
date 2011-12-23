@@ -523,6 +523,14 @@ void tegra_periph_reset_assert(struct clk *c)
 }
 EXPORT_SYMBOL(tegra_periph_reset_assert);
 
+#if defined(CONFIG_ICS)
+int tegra_is_clk_enabled(struct clk *c)
+{
+	return c->refcnt;
+}
+EXPORT_SYMBOL(tegra_is_clk_enabled);
+#endif
+
 void tegra_clk_shared_bus_update(struct clk *c)
 {
 	unsigned long flags;

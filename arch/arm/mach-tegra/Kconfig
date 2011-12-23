@@ -14,7 +14,6 @@ config ARCH_TEGRA_2x_SOC
 	select USB_ARCH_HAS_EHCI if USB_SUPPORT
 	select USB_ULPI if USB_SUPPORT
 	select USB_ULPI_VIEWPORT if USB_SUPPORT
-	select DISABLE_3D_POWERGATING
 	help
 	  Support for NVIDIA Tegra AP20 and T20 processors, based on the
 	  ARM CortexA9MP CPU and the ARM PL310 L2 cache controller
@@ -280,7 +279,8 @@ config TEGRA_CPU_FREQ_MIN
 
 config DISABLE_3D_POWERGATING
         bool "Disable 3D power gate"
-        depends on ARCH_TEGRA_2x_SOC
+        depends on ARCH_TEGRA_2x_SOC && !ICS
+	default y
         help
           This is for silicon errata of 3D power gating. By setting this
           config, 3D power will never be gated.

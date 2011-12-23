@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Channel
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,25 +30,30 @@
 #include <linux/cdev.h>
 #include <linux/io.h>
 
-#define NVHOST_CHANNEL_BASE 0
-#define NVHOST_NUMCHANNELS (NV_HOST1X_CHANNELS - 1)
 #define NVHOST_MAX_WAIT_CHECKS 256
 #define NVHOST_MAX_GATHERS 512
 #define NVHOST_MAX_HANDLES 1280
+#define NVHOST_MAX_POWERGATE_IDS 2
 
 struct nvhost_master;
+struct nvhost_waitchk;
 
 struct nvhost_channeldesc {
 	const char *name;
-	nvhost_modulef power;
 	u32 syncpts;
 	u32 waitbases;
 	u32 modulemutexes;
 	u32 class;
+	bool exclusive;
+	bool keepalive;
+	bool waitbasesync;
+	struct nvhost_moduledesc module;
 };
 
 struct nvhost_channel {
 	int refcount;
+	int chid;
+	u32 syncpt_id;
 	struct mutex reflock;
 	struct mutex submitlock;
 	void __iomem *aperture;
@@ -76,16 +81,39 @@ int nvhost_channel_init(
 	struct nvhost_channel *ch,
 	struct nvhost_master *dev, int index);
 
-void nvhost_channel_submit(struct nvhost_channel *ch,
-			   struct nvmap_client *user_nvmap,
-			   struct nvhost_op_pair *ops, int num_pairs,
-			   struct nvhost_cpuinterrupt *intrs, int num_intrs,
-			   struct nvmap_handle **unpins, int num_unpins,
-			   u32 syncpt_id, u32 syncpt_val,
-			   int num_nulled_incrs);
+int nvhost_channel_submit(
+	struct nvhost_channel *channel,
+	struct nvhost_hwctx *hwctx,
+	struct nvmap_client *user_nvmap,
+	u32 *gather,
+	u32 *gather_end,
+	struct nvhost_waitchk *waitchk,
+	struct nvhost_waitchk *waitchk_end,
+	u32 waitchk_mask,
+	struct nvmap_handle **unpins,
+	int nr_unpins,
+	u32 syncpt_id,
+	u32 syncpt_incrs,
+	struct nvhost_userctx_timeout *timeout_ctx,
+	u32 priority,
+	u32 *syncpt_value,
+	bool null_kickoff);
 
 struct nvhost_channel *nvhost_getchannel(struct nvhost_channel *ch);
 void nvhost_putchannel(struct nvhost_channel *ch, struct nvhost_hwctx *ctx);
 void nvhost_channel_suspend(struct nvhost_channel *ch);
+
+#define channel_cdma_op(ch) (ch->dev->op.cdma)
+#define channel_op(ch) (ch->dev->op.channel)
+#define host_channel_op(host) (host->op.channel)
+
+int nvhost_channel_drain_read_fifo(void __iomem *chan_regs,
+			u32 *ptr, unsigned int count, unsigned int *pending);
+
+int nvhost_channel_read_3d_reg(
+	struct nvhost_channel *channel,
+	struct nvhost_hwctx *hwctx,
+	u32 offset,
+	u32 *value);
 
 #endif

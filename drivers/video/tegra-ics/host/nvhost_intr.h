@@ -26,8 +26,6 @@
 #include <linux/kthread.h>
 #include <linux/semaphore.h>
 
-#include "nvhost_hardware.h"
-
 struct nvhost_channel;
 
 enum nvhost_intr_action {
@@ -44,6 +42,12 @@ enum nvhost_intr_action {
 	NVHOST_INTR_ACTION_CTXSAVE,
 
 	/**
+	 * Restore a HW context.
+	 * 'data' points to a context
+	 */
+	NVHOST_INTR_ACTION_CTXRESTORE,
+
+	/**
 	 * Wake up a  task.
 	 * 'data' points to a wait_queue_head_t
 	 */
@@ -58,7 +62,10 @@ enum nvhost_intr_action {
 	NVHOST_INTR_ACTION_COUNT
 };
 
+struct nvhost_intr;
+
 struct nvhost_intr_syncpt {
+	struct  nvhost_intr *intr;
 	u8 id;
 	u8 irq_requested;
 	u16 irq;
@@ -68,10 +75,14 @@ struct nvhost_intr_syncpt {
 };
 
 struct nvhost_intr {
-	struct nvhost_intr_syncpt syncpt[NV_HOST1X_SYNCPT_NB_PTS];
-	int host1x_irq;
-	bool host1x_isr_started;
+	struct nvhost_intr_syncpt *syncpt;
+	struct mutex mutex;
+	int host_general_irq;
+	bool host_general_irq_requested;
 };
+#define intr_to_dev(x) container_of(x, struct nvhost_master, intr)
+#define intr_op(intr) (intr_to_dev(intr)->op.intr)
+#define intr_syncpt_to_intr(is) is->intr
 
 /**
  * Schedule an action to be taken when a sync point reaches the given threshold.
@@ -80,13 +91,20 @@ struct nvhost_intr {
  * @thresh the threshold
  * @action the action to take
  * @data a pointer to extra data depending on action, see above
+ * @waiter waiter allocated with nvhost_intr_alloc_waiter - assumes ownership
  * @ref must be passed if cancellation is possible, else NULL
  *
  * This is a non-blocking api.
  */
 int nvhost_intr_add_action(struct nvhost_intr *intr, u32 id, u32 thresh,
 			enum nvhost_intr_action action, void *data,
+			void *waiter,
 			void **ref);
+
+/**
+ * Allocate a waiter.
+ */
+void *nvhost_intr_alloc_waiter(void);
 
 /**
  * Unreference an action submitted to nvhost_intr_add_action().
@@ -97,6 +115,7 @@ void nvhost_intr_put_ref(struct nvhost_intr *intr, void *ref);
 
 int nvhost_intr_init(struct nvhost_intr *intr, u32 irq_gen, u32 irq_sync);
 void nvhost_intr_deinit(struct nvhost_intr *intr);
-void nvhost_intr_configure(struct nvhost_intr *intr, u32 hz);
+void nvhost_intr_start(struct nvhost_intr *intr, u32 hz);
+void nvhost_intr_stop(struct nvhost_intr *intr);
 
 #endif

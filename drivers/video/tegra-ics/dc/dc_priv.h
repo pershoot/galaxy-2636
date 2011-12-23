@@ -27,6 +27,7 @@
 #include <mach/dc.h>
 
 #include "../host/dev.h"
+#include "../host/t20/syncpt_t20.h"
 
 #include <mach/tegra_dc_ext.h>
 
@@ -106,9 +107,11 @@ struct tegra_dc {
 
 	struct tegra_overlay_info	*overlay;
 
-	u32                             syncpt_id;
-	u32                             syncpt_min;
-	u32                             syncpt_max;
+	struct {
+		u32                     id;
+		u32                     min;
+		u32                     max;
+	} syncpt[DC_N_WINDOWS];
 
 	u32				vblank_syncpt;
 
@@ -194,8 +197,6 @@ void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk);
 extern struct tegra_dc_out_ops tegra_dc_rgb_ops;
 extern struct tegra_dc_out_ops tegra_dc_hdmi_ops;
 extern struct tegra_dc_out_ops tegra_dc_dsi_ops;
-
-void tegra_dc_schedule_reset(int dc_id);
 
 /* defined in dc_sysfs.c, used by dc.c */
 void __devexit tegra_dc_remove_sysfs(struct device *dev);

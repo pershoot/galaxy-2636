@@ -5,9 +5,10 @@ nvhost-objs = \
 	nvhost_cpuaccess.o \
 	nvhost_intr.o \
 	nvhost_channel.o \
-	nvhost_3dctx.o \
 	dev.o \
 	bus.o \
+	3dctx_common.o \
 	debug.o
 
+obj-$(CONFIG_TEGRA_GRHOST_ICS) += t20/
 obj-$(CONFIG_TEGRA_GRHOST_ICS) += nvhost.o

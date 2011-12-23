@@ -41,6 +41,14 @@ unsigned long clk_get_rate_all_locked(struct clk *c);
 void tegra_sdmmc_tap_delay(struct clk *c, int delay);
 #if defined(CONFIG_ICS)
 int tegra_clk_cfg_ex(struct clk *c, enum tegra_clk_ex_param p, u32 setting);
+
+/**
+ * tegra_is_clk_enabled - get info if the clk is enabled or not
+ * @clk: clock source
+ *
+ * Returns refcnt.
+ */
+int tegra_is_clk_enabled(struct clk *clk);
 #endif
 
 #endif

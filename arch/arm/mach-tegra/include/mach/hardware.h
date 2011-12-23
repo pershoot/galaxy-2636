@@ -21,4 +21,26 @@
 #ifndef __MACH_TEGRA_HARDWARE_H
 #define __MACH_TEGRA_HARDWARE_H
 
+#if defined(CONFIG_ICS)
+enum tegra_chipid {
+        TEGRA_CHIPID_UNKNOWN = 0,
+        TEGRA_CHIPID_TEGRA2 = 0x20,
+        TEGRA_CHIPID_TEGRA3 = 0x30,
+};
+
+enum tegra_revision {
+        TEGRA_REVISION_UNKNOWN = 0,
+        TEGRA_REVISION_A01,
+        TEGRA_REVISION_A02,
+        TEGRA_REVISION_A03,
+#if defined(CONFIG_ARCH_TEGRA_2x_SOC)
+        TEGRA_REVISION_A03p,
+#endif
+        TEGRA_REVISION_MAX,
+};
+
+enum tegra_chipid tegra_get_chipid(void);
+enum tegra_revision tegra_get_revision(void);
+#endif
+
 #endif

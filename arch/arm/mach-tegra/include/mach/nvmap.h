@@ -106,14 +106,24 @@ int nvmap_pin_array(struct nvmap_client *client, struct nvmap_handle *gather,
 void nvmap_unpin_handles(struct nvmap_client *client,
 			 struct nvmap_handle **h, int nr);
 
+#if !defined(CONFIG_ICS)
 int nvmap_patch_wait(struct nvmap_client *client,
 		     struct nvmap_handle *patch,
 		     u32 patch_offset, u32 patch_value);
+#else
+int nvmap_patch_word(struct nvmap_client *client,
+                     struct nvmap_handle *patch,
+                     u32 patch_offset, u32 patch_value);
+#endif
 
 struct nvmap_platform_carveout {
 	const char *name;
 	unsigned int usage_mask;
+#if defined(CONFIG_ICS)
+	phys_addr_t base;
+#else
 	unsigned long base;
+#endif
 	size_t size;
 	size_t buddy_size;
 };
