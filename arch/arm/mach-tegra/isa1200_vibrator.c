@@ -346,9 +346,15 @@ static void isa1200_vibrator_enable(struct timed_output_dev *_dev, int value)
 	pr_info("[VIB] time = %dms\n", value);
 #endif
 	cancel_work_sync(&data->work);
+#if !defined(CONFIG_ICS)
 	spin_lock_irqsave(&data->lock, flags);
 	hrtimer_cancel(&data->timer);
 	isa1200_vibrator_set_val(data, value);
+#else
+	hrtimer_cancel(&data->timer);
+	isa1200_vibrator_set_val(data, value);
+	spin_lock_irqsave(&data->lock, flags);
+#endif
 	if (value > 0) {
 		if (value > data->max_timeout)
 			value = data->max_timeout;
