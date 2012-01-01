@@ -148,8 +148,13 @@ static struct mpu3050_platform_data p3_mpu3050_pdata = {
 		 * So X & Y are swapped and Y is negated.
 		 */
 #if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
+#if !defined(CONFIG_HC_32)
 		.orientation = {  0, 1,  0,
 				 1,  0,  0,
+#else
+		.orientation = {  0, -1,  0,
+				  -1,  0,  0,
+#endif
 				  0,  0,  -1 },
 #else
 		.orientation = {  0, -1,  0,
