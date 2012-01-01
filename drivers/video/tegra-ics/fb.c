@@ -6,8 +6,6 @@
  *         Colin Cross <ccross@android.com>
  *         Travis Geiselbrecht <travis@palm.com>
  *
- * Copyright (C) 2010-2011 NVIDIA Corporation
- *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
  * may be copied, distributed, and modified under those terms.
@@ -36,15 +34,12 @@
 
 #include <mach/dc.h>
 #include <mach/fb.h>
-#include <linux/nvhost.h>
+#include <mach/nvhost.h>
 #include <mach/nvmap.h>
 
 #include "host/dev.h"
 #include "nvmap/nvmap.h"
 #include "dc/dc_priv.h"
-
-/* Pad pitch to 16-byte boundary. */
-#define TEGRA_LINEAR_PITCH_ALIGNMENT 16
 
 struct tegra_fb_info {
 	struct tegra_dc_win	*win;
@@ -57,11 +52,74 @@ struct tegra_fb_info {
 	int			xres;
 	int			yres;
 
-	struct workqueue_struct *flip_wq;
+	atomic_t		in_use;
+	struct nvmap_client	*user_nvmap;
+	struct nvmap_client	*fb_nvmap;
+
+	struct workqueue_struct	*flip_wq;
+};
+
+struct tegra_fb_flip_win {
+	struct tegra_fb_windowattr	attr;
+	struct nvmap_handle_ref		*handle;
+	dma_addr_t			phys_addr;
+};
+
+struct tegra_fb_flip_data {
+	struct work_struct		work;
+	struct tegra_fb_info		*fb;
+	struct tegra_fb_flip_win	win[TEGRA_FB_FLIP_N_WINDOWS];
+	u32				syncpt_max;
 };
 
 /* palette array used by the fbcon */
 static u32 pseudo_palette[16];
+
+static int tegra_fb_open(struct fb_info *info, int user)
+{
+	struct tegra_fb_info *tegra_fb = info->par;
+
+	if (atomic_xchg(&tegra_fb->in_use, 1))
+		return -EBUSY;
+
+	tegra_fb->user_nvmap = NULL;
+
+	return 0;
+}
+
+static int tegra_fb_release(struct fb_info *info, int user)
+{
+	struct tegra_fb_info *tegra_fb = info->par;
+	struct fb_var_screeninfo *var = &info->var;
+
+	flush_workqueue(tegra_fb->flip_wq);
+
+	if (tegra_fb->win->cur_handle) {
+		nvmap_unpin(tegra_fb->fb_nvmap, tegra_fb->win->cur_handle);
+		nvmap_free(tegra_fb->fb_nvmap, tegra_fb->win->cur_handle);
+
+		tegra_fb->win->cur_handle = NULL;
+
+		tegra_fb->win->x = 0;
+		tegra_fb->win->y = 0;
+		tegra_fb->win->w = var->xres;
+		tegra_fb->win->h = var->yres;
+		tegra_fb->win->out_x = 0;
+		tegra_fb->win->out_y = 0;
+		tegra_fb->win->out_w = var->xres;
+		tegra_fb->win->out_h = var->yres;
+		tegra_fb->win->flags = TEGRA_WIN_FLAG_ENABLED;
+	}
+
+	if (tegra_fb->user_nvmap) {
+		nvmap_client_put(tegra_fb->user_nvmap);
+		tegra_fb->user_nvmap = NULL;
+	}
+
+	WARN_ON(!atomic_xchg(&tegra_fb->in_use, 0));
+
+	return 0;
+}
 
 static int tegra_fb_check_var(struct fb_var_screeninfo *var,
 			      struct fb_info *info)
@@ -109,19 +167,17 @@ static int tegra_fb_set_par(struct fb_info *info)
 			return -EINVAL;
 		}
 		info->fix.line_length = var->xres * var->bits_per_pixel / 8;
-		/* Pad the stride to 16-byte boundary. */
-		tegra_fb->win->stride = round_up(info->fix.line_length,
-						TEGRA_LINEAR_PITCH_ALIGNMENT);
+		tegra_fb->win->stride = info->fix.line_length;
 		tegra_fb->win->stride_uv = 0;
-		tegra_fb->win->phys_addr_u = 0;
-		tegra_fb->win->phys_addr_v = 0;
+		tegra_fb->win->offset_u = 0;
+		tegra_fb->win->offset_v = 0;
 	}
 
 	if (var->pixclock) {
-		bool stereo;
-		struct fb_videomode m;
+		struct tegra_dc_mode mode;
+                struct fb_videomode m;
 
-		fb_var_to_videomode(&m, var);
+                fb_var_to_videomode(&m, var);
 
 		info->mode = (struct fb_videomode *)
 			fb_find_nearest_mode(&m, &info->modelist);
@@ -130,17 +186,45 @@ static int tegra_fb_set_par(struct fb_info *info)
 			return -EINVAL;
 		}
 
+		mode.pclk = PICOS2KHZ(info->mode->pixclock) * 1000;
+		mode.h_ref_to_sync = 1;
+		mode.v_ref_to_sync = 1;
+		mode.h_sync_width = info->mode->hsync_len;
+		mode.v_sync_width = info->mode->vsync_len;
+		mode.h_back_porch = info->mode->left_margin;
+		mode.v_back_porch = info->mode->upper_margin;
+		mode.h_active = info->mode->xres;
+		mode.v_active = info->mode->yres;
+		mode.h_front_porch = info->mode->right_margin;
+		mode.v_front_porch = info->mode->lower_margin;
 		/*
 		 * only enable stereo if the mode supports it and
 		 * client requests it
 		 */
-		stereo = !!(var->vmode & info->mode->vmode &
+		mode.stereo_mode = !!(var->vmode & info->mode->vmode &
 					FB_VMODE_STEREO_FRAME_PACK);
 
-		tegra_dc_set_fb_mode(tegra_fb->win->dc, info->mode, stereo);
+		if (mode.stereo_mode) {
+			mode.pclk *= 2;
+			/* total v_active = yres*2 + activespace */
+			mode.v_active = info->mode->yres*2 +
+					info->mode->vsync_len +
+					info->mode->upper_margin +
+					info->mode->lower_margin;
+		}
 
-		tegra_fb->win->w.full = dfixed_const(info->mode->xres);
-		tegra_fb->win->h.full = dfixed_const(info->mode->yres);
+		mode.flags = 0;
+
+		if (!(info->mode->sync & FB_SYNC_HOR_HIGH_ACT))
+			mode.flags |= TEGRA_DC_MODE_FLAG_NEG_H_SYNC;
+
+		if (!(info->mode->sync & FB_SYNC_VERT_HIGH_ACT))
+			mode.flags |= TEGRA_DC_MODE_FLAG_NEG_V_SYNC;
+
+		tegra_dc_set_mode(tegra_fb->win->dc, &mode);
+
+		tegra_fb->win->w = info->mode->xres;
+		tegra_fb->win->h = info->mode->yres;
 		tegra_fb->win->out_w = info->mode->xres;
 		tegra_fb->win->out_h = info->mode->yres;
 	}
@@ -183,15 +267,9 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 		tegra_dc_enable(tegra_fb->win->dc);
 		return 0;
 
-	case FB_BLANK_NORMAL:
-		dev_dbg(&tegra_fb->ndev->dev, "blank - normal\n");
-		tegra_dc_blank(tegra_fb->win->dc);
-		return 0;
-
-	case FB_BLANK_VSYNC_SUSPEND:
-	case FB_BLANK_HSYNC_SUSPEND:
 	case FB_BLANK_POWERDOWN:
-		dev_dbg(&tegra_fb->ndev->dev, "blank - powerdown\n");
+		dev_dbg(&tegra_fb->ndev->dev, "blank\n");
+		flush_workqueue(tegra_fb->flip_wq);
 		tegra_dc_disable(tegra_fb->win->dc);
 		return 0;
 
@@ -202,8 +280,9 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 
 void tegra_fb_suspend(struct tegra_fb_info *tegra_fb)
 {
-       flush_workqueue(tegra_fb->flip_wq);
+	flush_workqueue(tegra_fb->flip_wq);
 }
+
 
 static int tegra_fb_pan_display(struct fb_var_screeninfo *var,
 				struct fb_info *info)
@@ -251,13 +330,298 @@ static void tegra_fb_imageblit(struct fb_info *info,
 	cfb_imageblit(info, image);
 }
 
+/* TODO: implement ALLOC, FREE, BLANK ioctls */
+
+static int tegra_fb_set_nvmap_fd(struct tegra_fb_info *tegra_fb, int fd)
+{
+	struct nvmap_client *nvmap = NULL;
+
+	if (fd < 0)
+		return -EINVAL;
+
+	nvmap = nvmap_client_get_file(fd);
+	if (IS_ERR(nvmap))
+		return PTR_ERR(nvmap);
+
+	if (tegra_fb->user_nvmap)
+		nvmap_client_put(tegra_fb->user_nvmap);
+
+	tegra_fb->user_nvmap = nvmap;
+
+	return 0;
+}
+
+static int tegra_fb_pin_window(struct tegra_fb_info *tegra_fb,
+			       struct tegra_fb_flip_win *flip_win)
+{
+	struct nvmap_handle_ref *win_dupe;
+	struct nvmap_handle *win_handle;
+	unsigned long buff_id = flip_win->attr.buff_id;
+
+	if (!buff_id)
+		return 0;
+
+	win_handle = nvmap_get_handle_id(tegra_fb->user_nvmap, buff_id);
+	if (win_handle == NULL) {
+		dev_err(&tegra_fb->ndev->dev, "%s: flip invalid "
+			"handle %08lx\n", current->comm, buff_id);
+		return -EPERM;
+	}
+
+	/* duplicate the new framebuffer's handle into the fb driver's
+	 * nvmap context, to ensure that the handle won't be freed as
+	 * long as it is in-use by the fb driver */
+	win_dupe = nvmap_duplicate_handle_id(tegra_fb->fb_nvmap, buff_id);
+	nvmap_handle_put(win_handle);
+
+	if (IS_ERR(win_dupe)) {
+		dev_err(&tegra_fb->ndev->dev, "couldn't duplicate handle\n");
+		return PTR_ERR(win_dupe);
+	}
+
+	flip_win->handle = win_dupe;
+
+	flip_win->phys_addr = nvmap_pin(tegra_fb->fb_nvmap, win_dupe);
+	if (IS_ERR((void *)flip_win->phys_addr)) {
+		dev_err(&tegra_fb->ndev->dev, "couldn't pin handle\n");
+		nvmap_free(tegra_fb->fb_nvmap, win_dupe);
+		return PTR_ERR((void *)flip_win->phys_addr);
+	}
+
+	return 0;
+}
+
+static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
+				   struct tegra_dc_win *win,
+				   const struct tegra_fb_flip_win *flip_win)
+{
+	int xres, yres;
+	if (flip_win->handle == NULL) {
+		win->flags = 0;
+		win->cur_handle = NULL;
+		return 0;
+	}
+
+	xres = tegra_fb->win->dc->mode.h_active;
+	yres = tegra_fb->win->dc->mode.v_active;
+
+	win->flags = TEGRA_WIN_FLAG_ENABLED;
+	if (flip_win->attr.blend == TEGRA_FB_WIN_BLEND_PREMULT)
+		win->flags |= TEGRA_WIN_FLAG_BLEND_PREMULT;
+	else if (flip_win->attr.blend == TEGRA_FB_WIN_BLEND_COVERAGE)
+		win->flags |= TEGRA_WIN_FLAG_BLEND_COVERAGE;
+#if defined(CONFIG_TOUCHWIZ_UX)
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_H)
+		win->flags |= TEGRA_WIN_FLAG_INVERT_H;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_V)
+		win->flags |= TEGRA_WIN_FLAG_INVERT_V;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_TILED)
+		win->flags |= TEGRA_WIN_FLAG_TILED;
+#endif
+
+	win->fmt = flip_win->attr.pixformat;
+	win->x = flip_win->attr.x;
+	win->y = flip_win->attr.y;
+	win->w = flip_win->attr.w;
+	win->h = flip_win->attr.h;
+	win->out_x = flip_win->attr.out_x;
+	win->out_y = flip_win->attr.out_y;
+	win->out_w = flip_win->attr.out_w;
+	win->out_h = flip_win->attr.out_h;
+
+	WARN_ONCE(win->out_x >= xres,
+		"%s:application window x offset exceeds display width(%d)\n",
+		dev_name(&win->dc->ndev->dev), win->out_x, xres);
+	WARN_ONCE(win->out_y >= yres,
+		"%s:application window y offset exceeds display height(%d)\n",
+		dev_name(&win->dc->ndev->dev), win->out_y, yres);
+	WARN_ONCE(win->out_x + win->out_w > xres && win->out_x < xres,
+		"%s:application window width(%d) exceeds display width(%d)\n",
+		dev_name(&win->dc->ndev->dev), win->out_x + win->out_w, xres);
+	WARN_ONCE(win->out_y + win->out_h > yres && win->out_y < yres,
+		"%s:application window height(%d) exceeds display height(%d)\n",
+		dev_name(&win->dc->ndev->dev), win->out_y + win->out_h, yres);
+
+	if (((win->out_x + win->out_w) > xres) && (win->out_x < xres)) {
+		long new_w = xres - win->out_x;
+		win->w = win->w * new_w / win->out_w;
+	        win->out_w = new_w;
+	}
+	if (((win->out_y + win->out_h) > yres) && (win->out_y < yres)) {
+		long new_h = yres - win->out_y;
+		win->h = win->h * new_h / win->out_h;
+	        win->out_h = new_h;
+	}
+
+	win->z = flip_win->attr.z;
+	win->cur_handle = flip_win->handle;
+
+	/* STOPSHIP verify that this won't read outside of the surface */
+	win->phys_addr = flip_win->phys_addr;
+	win->offset = flip_win->attr.offset;
+	win->offset_u = flip_win->attr.offset_u;
+	win->offset_v = flip_win->attr.offset_v;
+	win->stride = flip_win->attr.stride;
+	win->stride_uv = flip_win->attr.stride_uv;
+
+	if ((s32)flip_win->attr.pre_syncpt_id >= 0) {
+		nvhost_syncpt_wait_timeout(&tegra_fb->ndev->host->syncpt,
+					   flip_win->attr.pre_syncpt_id,
+					   flip_win->attr.pre_syncpt_val,
+					   msecs_to_jiffies(500),
+					   NULL);
+	}
+
+
+	return 0;
+}
+
+static void tegra_fb_flip_worker(struct work_struct *work)
+{
+	struct tegra_fb_flip_data *data =
+		container_of(work, struct tegra_fb_flip_data, work);
+	struct tegra_fb_info *tegra_fb = data->fb;
+	struct tegra_dc_win *win;
+	struct tegra_dc_win *wins[TEGRA_FB_FLIP_N_WINDOWS];
+	struct nvmap_handle_ref *unpin_handles[TEGRA_FB_FLIP_N_WINDOWS];
+	int i, nr_win = 0, nr_unpin = 0;
+
+	data = container_of(work, struct tegra_fb_flip_data, work);
+
+	for (i = 0; i < TEGRA_FB_FLIP_N_WINDOWS; i++) {
+		struct tegra_fb_flip_win *flip_win = &data->win[i];
+		int idx = flip_win->attr.index;
+		win = tegra_dc_get_window(tegra_fb->win->dc, idx);
+
+		if (!win)
+			continue;
+
+		if (win->flags && win->cur_handle)
+			unpin_handles[nr_unpin++] = win->cur_handle;
+
+		tegra_fb_set_windowattr(tegra_fb, win, &data->win[i]);
+
+		wins[nr_win++] = win;
+
+#if 0
+		if (flip_win->attr.pre_syncpt_id < 0)
+			continue;
+		printk("%08x %08x\n",
+		       flip_win->attr.pre_syncpt_id,
+		       flip_win->attr.pre_syncpt_val);
+
+		nvhost_syncpt_wait_timeout(&tegra_fb->ndev->host->syncpt,
+					   flip_win->attr.pre_syncpt_id,
+					   flip_win->attr.pre_syncpt_val,
+					   msecs_to_jiffies(500));
+#endif
+	}
+
+	tegra_dc_update_windows(wins, nr_win);
+	/* TODO: implement swapinterval here */
+	tegra_dc_sync_windows(wins, nr_win);
+
+	tegra_dc_incr_syncpt_min(tegra_fb->win->dc, data->syncpt_max);
+
+	/* unpin and deref previous front buffers */
+	for (i = 0; i < nr_unpin; i++) {
+		nvmap_unpin(tegra_fb->fb_nvmap, unpin_handles[i]);
+		nvmap_free(tegra_fb->fb_nvmap, unpin_handles[i]);
+	}
+
+	kfree(data);
+}
+
+static int tegra_fb_flip(struct tegra_fb_info *tegra_fb,
+			 struct tegra_fb_flip_args *args)
+{
+	struct tegra_fb_flip_data *data;
+	struct tegra_fb_flip_win *flip_win;
+	u32 syncpt_max;
+	int i, err;
+
+	if (WARN_ON(!tegra_fb->user_nvmap))
+		return -EFAULT;
+
+	if (WARN_ON(!tegra_fb->ndev))
+		return -EFAULT;
+
+	data = kzalloc(sizeof(*data), GFP_KERNEL);
+	if (data == NULL) {
+		dev_err(&tegra_fb->ndev->dev,
+			"can't allocate memory for flip\n");
+		return -ENOMEM;
+	}
+
+	INIT_WORK(&data->work, tegra_fb_flip_worker);
+	data->fb = tegra_fb;
+
+	for (i = 0; i < TEGRA_FB_FLIP_N_WINDOWS; i++) {
+		flip_win = &data->win[i];
+
+		memcpy(&flip_win->attr, &args->win[i], sizeof(flip_win->attr));
+
+		err = tegra_fb_pin_window(tegra_fb, flip_win);
+		if (err < 0) {
+			dev_err(&tegra_fb->ndev->dev,
+				"error setting window attributes\n");
+			goto surf_err;
+		}
+	}
+
+	syncpt_max = tegra_dc_incr_syncpt_max(tegra_fb->win->dc);
+	data->syncpt_max = syncpt_max;
+
+	queue_work(tegra_fb->flip_wq, &data->work);
+
+	args->post_syncpt_val = syncpt_max;
+	args->post_syncpt_id = tegra_dc_get_syncpt_id(tegra_fb->win->dc);
+
+	return 0;
+
+surf_err:
+	while (i--) {
+		if (data->win[i].handle) {
+			nvmap_unpin(tegra_fb->fb_nvmap,
+				    data->win[i].handle);
+			nvmap_free(tegra_fb->fb_nvmap,
+				   data->win[i].handle);
+		}
+	}
+	kfree(data);
+	return err;
+}
+
+/* TODO: implement private window ioctls to set overlay x,y */
+
 static int tegra_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
+	struct tegra_fb_info *tegra_fb = info->par;
+	struct tegra_fb_flip_args flip_args;
 	struct tegra_fb_modedb modedb;
 	struct fb_modelist *modelist;
 	int i;
+	int fd;
+	int ret;
 
 	switch (cmd) {
+	case FBIO_TEGRA_SET_NVMAP_FD:
+		if (copy_from_user(&fd, (void __user *)arg, sizeof(fd)))
+			return -EFAULT;
+
+		return tegra_fb_set_nvmap_fd(tegra_fb, fd);
+
+	case FBIO_TEGRA_FLIP:
+		if (copy_from_user(&flip_args, (void __user *)arg, sizeof(flip_args)))
+			return -EFAULT;
+
+		ret = tegra_fb_flip(tegra_fb, &flip_args);
+
+		if (copy_to_user((void __user *)arg, &flip_args, sizeof(flip_args)))
+			return -EFAULT;
+
+		return ret;
+
 	case FBIO_TEGRA_GET_MODEDB:
 		if (copy_from_user(&modedb, (void __user *)arg, sizeof(modedb)))
 			return -EFAULT;
@@ -306,6 +670,8 @@ static int tegra_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long 
 
 static struct fb_ops tegra_fb_ops = {
 	.owner = THIS_MODULE,
+	.fb_open = tegra_fb_open,
+	.fb_release = tegra_fb_release,
 	.fb_check_var = tegra_fb_check_var,
 	.fb_set_par = tegra_fb_set_par,
 	.fb_setcolreg = tegra_fb_setcolreg,
@@ -319,10 +685,10 @@ static struct fb_ops tegra_fb_ops = {
 
 void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 			      struct fb_monspecs *specs,
-			      bool (*mode_filter)(const struct tegra_dc *dc,
-						  struct fb_videomode *mode))
+			      bool (*mode_filter)(const struct tegra_dc *dc, struct fb_videomode *mode))
 {
 	struct fb_event event;
+	struct fb_modelist *m;
 	int i;
 
 	mutex_lock(&fb_info->info->lock);
@@ -335,6 +701,12 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 		memset(&fb_info->info->monspecs, 0x0,
 		       sizeof(fb_info->info->monspecs));
 		memset(&mode, 0x0, sizeof(mode));
+
+		/*
+		 * reset video mode properties to prevent garbage being displayed on 'mode' device.
+		 */
+		fb_info->info->mode = (struct fb_videomode*) NULL;
+
 		tegra_dc_set_mode(fb_info->win->dc, &mode);
 		mutex_unlock(&fb_info->info->lock);
 		return;
@@ -352,6 +724,26 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 			fb_add_videomode(&specs->modedb[i],
 					 &fb_info->info->modelist);
 		}
+	}
+
+	if (list_empty(&fb_info->info->modelist)) {
+		struct tegra_dc_mode mode;
+		memset(&fb_info->info->var, 0x0, sizeof(fb_info->info->var));
+		memset(&mode, 0x0, sizeof(mode));
+		tegra_dc_set_mode(fb_info->win->dc, &mode);
+	} else {
+		/* in case the first mode was not matched */
+		m = list_first_entry(&fb_info->info->modelist, struct fb_modelist, list);
+		m->mode.flag |= FB_MODE_IS_FIRST;
+		fb_info->info->mode = (struct fb_videomode *)
+			fb_find_best_display(specs, &fb_info->info->modelist);
+
+		/* fb_videomode_to_var doesn't fill out all the members
+		   of fb_var_screeninfo */
+		memset(&fb_info->info->var, 0x0, sizeof(fb_info->info->var));
+
+		fb_videomode_to_var(&fb_info->info->var, fb_info->info->mode);
+		tegra_fb_set_par(fb_info->info);
 	}
 
 	event.info = fb_info->info;
@@ -391,6 +783,20 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	tegra_fb->fb_mem = fb_mem;
 	tegra_fb->xres = fb_data->xres;
 	tegra_fb->yres = fb_data->yres;
+	tegra_fb->fb_nvmap = nvmap_create_client(nvmap_dev, "tegra-fb");
+	if (!tegra_fb->fb_nvmap) {
+		dev_err(&ndev->dev, "couldn't create nvmap client\n");
+		ret = -ENOMEM;
+		goto err_free;
+	}
+	atomic_set(&tegra_fb->in_use, 0);
+
+	tegra_fb->flip_wq = create_singlethread_workqueue(dev_name(&ndev->dev));
+	if (!tegra_fb->flip_wq) {
+		dev_err(&ndev->dev, "couldn't create flip work-queue\n");
+		ret = -ENOMEM;
+		goto err_put_client;
+	}
 
 	if (fb_mem) {
 		fb_size = resource_size(fb_mem);
@@ -399,7 +805,7 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 		if (!fb_base) {
 			dev_err(&ndev->dev, "fb can't be mapped\n");
 			ret = -EBUSY;
-			goto err_free;
+			goto err_delete_wq;
 		}
 		tegra_fb->valid = true;
 	}
@@ -435,10 +841,10 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	info->var.vsync_len		= 0;
 	info->var.vmode			= FB_VMODE_NONINTERLACED;
 
-	win->x.full = dfixed_const(0);
-	win->y.full = dfixed_const(0);
-	win->w.full = dfixed_const(fb_data->xres);
-	win->h.full = dfixed_const(fb_data->yres);
+	win->x = 0;
+	win->y = 0;
+	win->w = fb_data->xres;
+	win->h = fb_data->yres;
 	/* TODO: set to output res dc */
 	win->out_x = 0;
 	win->out_y = 0;
@@ -447,11 +853,9 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	win->z = 0;
 	win->phys_addr = fb_phys;
 	win->virt_addr = fb_base;
-	win->phys_addr_u = 0;
-	win->phys_addr_v = 0;
+	win->offset_u = 0;
+	win->offset_v = 0;
 	win->stride = fb_data->xres * fb_data->bits_per_pixel / 8;
-	/* Pad the stride to 16-byte boundary. */
-	win->stride = round_up(win->stride, TEGRA_LINEAR_PITCH_ALIGNMENT);
 	win->stride_uv = 0;
 	win->flags = TEGRA_WIN_FLAG_ENABLED;
 
@@ -476,8 +880,11 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	return tegra_fb;
 
 err_iounmap_fb:
-	if (fb_base)
-		iounmap(fb_base);
+	iounmap(fb_base);
+err_delete_wq:
+	destroy_workqueue(tegra_fb->flip_wq);
+err_put_client:
+	nvmap_client_put(tegra_fb->fb_nvmap);
 err_free:
 	framebuffer_release(info);
 err:
@@ -488,7 +895,18 @@ void tegra_fb_unregister(struct tegra_fb_info *fb_info)
 {
 	struct fb_info *info = fb_info->info;
 
+	if (fb_info->win->cur_handle) {
+		nvmap_unpin(fb_info->fb_nvmap, fb_info->win->cur_handle);
+		nvmap_free(fb_info->fb_nvmap, fb_info->win->cur_handle);
+	}
+
+	if (fb_info->fb_nvmap)
+		nvmap_client_put(fb_info->fb_nvmap);
+
 	unregister_framebuffer(info);
+
+	flush_workqueue(fb_info->flip_wq);
+	destroy_workqueue(fb_info->flip_wq);
 
 	iounmap(info->screen_base);
 	framebuffer_release(info);

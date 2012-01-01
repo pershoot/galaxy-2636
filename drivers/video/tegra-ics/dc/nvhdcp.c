@@ -26,6 +26,7 @@
 #include <asm/atomic.h>
 
 #include <mach/dc.h>
+#include <mach/nvhost.h>
 #include <mach/kfuse.h>
 
 #include <video/nvhdcp.h>
@@ -34,6 +35,7 @@
 #include "dc_priv.h"
 #include "hdmi_reg.h"
 #include "hdmi.h"
+
 
 DECLARE_WAIT_QUEUE_HEAD(wq_worker);
 
@@ -114,10 +116,14 @@ static inline bool nvhdcp_set_plugged(struct tegra_nvhdcp *nvhdcp, bool plugged)
 	return plugged;
 }
 
+static struct clk *cpu_clk; 
+static spinlock_t temp_lock = SPIN_LOCK_UNLOCKED;
+
 static int nvhdcp_i2c_read(struct tegra_nvhdcp *nvhdcp, u8 reg,
 					size_t len, void *data)
 {
 	int status;
+	unsigned long flags;
 	int retries = 15;
 	struct i2c_msg msg[] = {
 		{
@@ -133,17 +139,40 @@ static int nvhdcp_i2c_read(struct tegra_nvhdcp *nvhdcp, u8 reg,
 			.buf = data,
 		},
 	};
-
+/*************************************************************************
+ * This is a workaround for S/W i2c fail problem.
+ * 
+ */
+#ifdef SAMSUNG_MHL_SW_I2C
+	if (cpu_clk == NULL) {
+		printk("get CPU clk for i2c ***************\n");
+		cpu_clk = clk_get_sys(NULL, "cpu");
+	}
+	if (clk_enable(cpu_clk))
+		printk("nvhdcp failed to enable cpu clock *********88\n");
+	clk_set_rate(cpu_clk, 1000*1000*1000);
+#endif
 	do {
 		if (!nvhdcp_is_plugged(nvhdcp)) {
 			nvhdcp_err("disconnect during i2c xfer\n");
 			return -EIO;
 		}
+#ifdef SAMSUNG_SW_I2C
+		spin_lock_irqsave(&temp_lock, flags);
+#endif
 		status = i2c_transfer(nvhdcp->client->adapter,
 			msg, ARRAY_SIZE(msg));
+#ifdef SAMSUNG_SW_I2C
+		spin_unlock_irqrestore(&temp_lock, flags);
+#endif
+
 		if ((status < 0) && (retries > 1))
 			msleep(250);
 	} while ((status < 0) && retries--);
+
+#ifdef SAMSUNG_MHL_SW_I2C
+	clk_put(cpu_clk);
+#endif
 
 	if (status < 0) {
 		nvhdcp_err("i2c xfer error %d\n", status);
@@ -167,20 +196,38 @@ static int nvhdcp_i2c_write(struct tegra_nvhdcp *nvhdcp, u8 reg,
 		},
 	};
 	int retries = 15;
+	unsigned long flags;
 
 	buf[0] = reg;
 	memcpy(buf + 1, data, len);
-
+#ifdef SAMSUNG_MHL_SW_I2C
+	if (cpu_clk == NULL) {
+		printk("get CPU clk for i2c ***************\n");
+		cpu_clk = clk_get_sys(NULL, "cpu");
+	}
+	if (clk_enable(cpu_clk))
+		printk("nvhdcp failed to enable cpu clock *********88\n");
+	clk_set_rate(cpu_clk, 1000*1000*1000);
+#endif
 	do {
 		if (!nvhdcp_is_plugged(nvhdcp)) {
 			nvhdcp_err("disconnect during i2c xfer\n");
 			return -EIO;
 		}
+#ifdef SAMSUNG_SW_I2C
+		spin_lock_irqsave(&temp_lock, flags);
+#endif
 		status = i2c_transfer(nvhdcp->client->adapter,
 			msg, ARRAY_SIZE(msg));
+#ifdef SAMSUNG_SW_I2C
+		spin_unlock_irqrestore(&temp_lock, flags);
+#endif
 		if ((status < 0) && (retries > 1))
 			msleep(250);
 	} while ((status < 0) && retries--);
+#ifdef SAMSUNG_MHL_SW_I2C
+	clk_put(cpu_clk);
+#endif
 
 	if (status < 0) {
 		nvhdcp_err("i2c xfer error %d\n", status);
@@ -779,6 +826,7 @@ static int get_repeater_info(struct tegra_nvhdcp *nvhdcp)
 		}
 		if (retries > 1)
 			msleep(100);
+		printk(KERN_ERR "[HDCP] Repeater retries = %d\n", retries);
 	} while (--retries);
 	if (!retries) {
 		nvhdcp_err("repeater Bcaps read timeout\n");
@@ -895,7 +943,7 @@ static void nvhdcp_downstream_worker(struct work_struct *work)
 	nvhdcp_vdbg("An is 0x%016llx\n", nvhdcp->a_n);
 	if (verify_ksv(nvhdcp->a_ksv)) {
 		nvhdcp_err("Aksv verify failure! (0x%016llx)\n", nvhdcp->a_ksv);
-		goto disable;
+		goto failure;
 	}
 
 	/* write Ainfo to receiver - set 1.1 only if b_caps supports it */
@@ -1019,11 +1067,6 @@ lost_hdmi:
 	hdcp_ctrl_run(hdmi, 0);
 
 err:
-	mutex_unlock(&nvhdcp->lock);
-	return;
-disable:
-	nvhdcp->state = STATE_OFF;
-	nvhdcp_set_plugged(nvhdcp, false);
 	mutex_unlock(&nvhdcp->lock);
 	return;
 }

@@ -127,37 +127,6 @@ config TEGRA_DEBUG_UARTE
 
 endchoice
 
-choice
-       prompt "Tegra platform type"
-       depends on ICS
-       default TEGRA_SILICON_PLATFORM
-
-config TEGRA_SILICON_PLATFORM
-        bool "Silicon"
-        help
-          This enables support for a Tegra silicon platform.
-
-config TEGRA_SIMULATION_PLATFORM
-        bool "Simulation"
-        help
-          This enables support for a Tegra simulation platform.
-          Select this only if you are an NVIDIA developer working
-          on a simulation platform.
-
-config TEGRA_FPGA_PLATFORM
-        bool "FPGA"
-        help
-          This enables support for a Tegra FPGA platform.
-          Select this only if you are an NVIDIA developer working
-          on a FPGA platform.
-endchoice
-
-config TEGRA_EMC_TO_DDR_CLOCK
-        int "EMC to DDR clocks ratio"
-	depends on ICS
-        default "2" if ARCH_TEGRA_2x_SOC
-        default "1"
-
 config TARGET_LOCALE_KOR
         bool "KOR"
 	default n

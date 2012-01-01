@@ -23,13 +23,7 @@ enum {
 };
 
 /* These are word offsets from base (not byte offsets) */
-enum {
-	OP_DONE = 1,
-};
 #define DSI_INCR_SYNCPT 0x00
-#define DSI_INCR_SYNCPT_COND(x)		(((x) & 0xff) << 8)
-#define DSI_INCR_SYNCPT_INDX(x)		(((x) & 0xff) << 0)
-
 #define DSI_INCR_SYNCPT_CNTRL 0x01
 #define DSI_INCR_SYNCPT_ERROR 0x02
 #define DSI_CTXSW 0x08
@@ -331,13 +325,8 @@ enum {
 
 #define DSI_PAD_CONTROL 0x4b
 #define DSI_PAD_CONTROL_PAD_PULLDN_ENAB(x)	(((x) & 0x1) << 28)
-#define DSI_PAD_CONTROL_PAD_SLEWUPADJ(x)	(((x) & 0x7) << 24)
-#define DSI_PAD_CONTROL_PAD_SLEWDNADJ(x)	(((x) & 0x7) << 20)
-#define DSI_PAD_CONTROL_PAD_PREEMP_EN(x)	(((x) & 0x1) << 19)
 #define DSI_PAD_CONTROL_PAD_PDIO_CLK(x)		(((x) & 0x1) << 18)
 #define DSI_PAD_CONTROL_PAD_PDIO(x)		(((x) & 0x3) << 16)
-#define DSI_PAD_CONTROL_PAD_LPUPADJ(x)		(((x) & 0x3) << 14)
-#define DSI_PAD_CONTROL_PAD_LPDNADJ(x)		(((x) & 0x3) << 12)
 
 #define DSI_PAD_CONTROL_CD 0x4c
 #define DSI_PAD_CD_STATUS 0x4d

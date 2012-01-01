@@ -574,29 +574,6 @@ int __init tegra_late_init_clock(void)
 }
 late_initcall(tegra_late_init_clock);
 
-#if defined(CONFIG_ICS)
-/* Several extended clock configuration bits (e.g., clock routing, clock
- * phase control) are included in PLL and peripheral clock source
- * registers. */
-int tegra_clk_cfg_ex(struct clk *c, enum tegra_clk_ex_param p, u32 setting)
-{
-        int ret = 0;
-        unsigned long flags;
-
-        clk_lock_save(c, flags);
-
-        if (!c->ops || !c->ops->clk_cfg_ex) {
-                ret = -ENOSYS;
-                goto out;
-        }
-        ret = c->ops->clk_cfg_ex(c, p, setting);
-
-out:
-        clk_unlock_restore(c, flags);
-        return ret;
-}
-#endif
-
 /* The SDMMC controllers have extra bits in the clock source register that
  * adjust the delay between the clock and data to compenstate for delays
  * on the PCB. */

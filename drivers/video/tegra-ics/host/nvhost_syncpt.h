@@ -31,8 +31,6 @@
 
 #include "nvhost_hardware.h"
 
-struct nvhost_waitchk;
-
 #define NVSYNCPT_GRAPHICS_HOST		     (0)
 #define NVSYNCPT_VI_ISP_0		     (12)
 #define NVSYNCPT_VI_ISP_1		     (13)

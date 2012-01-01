@@ -10,4 +10,4 @@ nvhost-objs = \
 	bus.o \
 	debug.o
 
-obj-$(CONFIG_TEGRA_GRHOST_ICS) += nvhost.o
+obj-$(CONFIG_TEGRA_GRHOST) += nvhost.o
