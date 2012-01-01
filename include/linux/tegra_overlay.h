@@ -20,6 +20,16 @@
 #include <linux/types.h>
 #include <video/tegrafb.h>
 
+#if defined(CONFIG_ICS)
+#define TEGRA_FB_WIN_BLEND_NONE         0
+#define TEGRA_FB_WIN_BLEND_PREMULT      1
+#define TEGRA_FB_WIN_BLEND_COVERAGE     2
+
+#define TEGRA_FB_WIN_FLAG_INVERT_H      (1 << 0)
+#define TEGRA_FB_WIN_FLAG_INVERT_V      (1 << 1)
+#define TEGRA_FB_WIN_FLAG_TILED         (1 << 2)
+#endif
+
 /* set index to -1 to ignore window data */
 struct tegra_overlay_windowattr {
 	__s32	index;
@@ -44,11 +54,18 @@ struct tegra_overlay_windowattr {
 	__u32	pre_syncpt_val;
 	__u32	hfilter;
 	__u32	vfilter;
+#if !defined(CONFIG_ICS)
 	__u32	tiled;
+#else
+        __u32   do_not_use__tiled; /* compatibility */
+#endif
 	__u32	flags;
 };
 
 #define TEGRA_OVERLAY_FLIP_FLAG_BLEND_REORDER (1 << 0)
+#if defined(CONFIG_ICS)
+#define TEGRA_FB_FLIP_N_WINDOWS                 3
+#endif
 
 struct tegra_overlay_flip_args {
 	struct tegra_overlay_windowattr win[TEGRA_FB_FLIP_N_WINDOWS];

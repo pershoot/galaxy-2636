@@ -40,3 +40,10 @@ void tegra_mc_set_priority(unsigned long client, unsigned long prio)
 	writel(val, mc_base + reg);
 	spin_unlock_irqrestore(&tegra_mc_lock, flags);
 }
+
+#if defined(CONFIG_ICS)
+int tegra_mc_get_tiled_memory_bandwidth_multiplier(void)
+{
+        return 1;
+}
+#endif

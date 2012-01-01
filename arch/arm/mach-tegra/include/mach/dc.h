@@ -21,6 +21,10 @@
 #define __MACH_TEGRA_DC_H
 
 #include <linux/pm.h>
+#if defined(CONFIG_ICS)
+#include <linux/types.h>
+#include <drm/drm_fixed.h>
+#endif
 
 #define TEGRA_MAX_DC		2
 #define DC_N_WINDOWS		3
@@ -54,6 +58,7 @@ enum {
 	TEGRA_DSI_VIDEO_CLOCK_TX_ONLY,
 };
 
+#if !defined(CONFIG_ICS)
 /* DSI burst mode setting in video mode */
 enum {
 	TEGRA_DSI_VIDEO_NONE_BURST_MODE,
@@ -65,6 +70,20 @@ enum {
 	TEGRA_DSI_VIDEO_BURST_MODE_FASTEST_SPEED,
 	TEGRA_DSI_VIDEO_BURST_MODE_MANUAL,
 };
+#else
+/* DSI burst mode setting in video mode. Each mode is assigned with a
+ * fixed value. The rationale behind this is to avoid change of these
+ * values, since the calculation of dsi clock depends on them. */
+enum {
+        TEGRA_DSI_VIDEO_NONE_BURST_MODE = 0,
+        TEGRA_DSI_VIDEO_NONE_BURST_MODE_WITH_SYNC_END = 1,
+        TEGRA_DSI_VIDEO_BURST_MODE_LOWEST_SPEED = 2,
+        TEGRA_DSI_VIDEO_BURST_MODE_LOW_SPEED = 3,
+        TEGRA_DSI_VIDEO_BURST_MODE_MEDIUM_SPEED = 4,
+        TEGRA_DSI_VIDEO_BURST_MODE_FAST_SPEED = 5,
+        TEGRA_DSI_VIDEO_BURST_MODE_FASTEST_SPEED = 6,
+};
+#endif
 
 enum {
 	TEGRA_DSI_PACKET_CMD,
@@ -119,12 +138,31 @@ struct tegra_dsi_out {
 	u8		n_data_lanes;			/* required*/
 	u8		pixel_format;			/* required*/
 	u8		refresh_rate;			/* required*/
+#if defined(CONFIG_ICS)
+	u8              panel_reset;                    /* required */
+        u8              virtual_channel;                /* required */
+        u8              dsi_instance;
+        u8              chip_id;
+	u8              chip_rev;
+#else
 	u8		virtual_channel;		/* required*/
+#endif
 
 	bool		panel_has_frame_buffer;	/* required*/
 
 	struct tegra_dsi_cmd*	dsi_init_cmd;		/* required*/
 	u16		n_init_cmd;			/* required*/
+
+#if defined(CONFIG_ICS)
+        struct tegra_dsi_cmd*   dsi_early_suspend_cmd;
+        u16             n_early_suspend_cmd;
+
+        struct tegra_dsi_cmd*   dsi_late_resume_cmd;
+        u16             n_late_resume_cmd;
+
+        struct tegra_dsi_cmd*   dsi_suspend_cmd;        /* required */
+        u16             n_suspend_cmd;
+#endif
 
 	u8		video_data_type;		/* required*/
 	u8		video_clock_mode;
@@ -136,14 +174,44 @@ struct tegra_dsi_out {
 	bool		hs_cmd_mode_supported;
 	bool		hs_cmd_mode_on_blank_supported;
 	bool		enable_hs_clock_on_lp_cmd_mode;
+#if defined(CONFIG_ICS)
+        bool            no_pkt_seq_eot; /* 1st generation panel may not
+                                         * support eot. Don't set it for
+                                         * most panels. */
+        bool            te_polarity_low;
+        bool            power_saving_suspend;
+#endif
 
 	u32 		max_panel_freq_khz;
 	u32 		lp_cmd_mode_freq_khz;
 	u32		hs_clk_in_lp_cmd_mode_freq_khz;
+#if defined(CONFIG_ICS)
+	u32             lp_read_cmd_mode_freq_khz;
+#endif
 	u32		burst_mode_freq_khz;
 
 	struct dsi_phy_timing_ns phy_timing;
 };
+
+#if defined(CONFIG_ICS)
+enum {
+        TEGRA_DC_STEREO_MODE_2D,
+        TEGRA_DC_STEREO_MODE_3D
+};
+
+enum {
+        TEGRA_DC_STEREO_LANDSCAPE,
+        TEGRA_DC_STEREO_PORTRAIT
+};
+
+struct tegra_stereo_out {
+        int  mode_2d_3d;
+        int  orientation;
+
+        void (*set_mode)(int mode);
+        void (*set_orientation)(int orientation);
+};
+#endif
 
 struct tegra_dc_mode {
 	int	pclk;
@@ -193,6 +261,46 @@ enum {
 	TEGRA_DC_ERRDIFF_DITHER,
 };
 
+#if defined(CONFIG_ICS)
+typedef u8 tegra_dc_bl_output[256];
+typedef u8 *p_tegra_dc_bl_output;
+
+struct tegra_dc_sd_blp {
+        u16 time_constant;
+        u8 step;
+};
+
+struct tegra_dc_sd_fc {
+        u8 time_limit;
+        u8 threshold;
+};
+
+struct tegra_dc_sd_rgb {
+        u8 r;
+        u8 g;
+        u8 b;
+};
+
+struct tegra_dc_sd_settings {
+        unsigned enable;
+        bool use_auto_pwm;
+        u8 hw_update_delay;
+        unsigned bin_width;
+        u8 aggressiveness;
+
+        bool use_vid_luma;
+        struct tegra_dc_sd_rgb coeff;
+
+        struct tegra_dc_sd_fc fc;
+        struct tegra_dc_sd_blp blp;
+        u8 bltf[4][4][4];
+        struct tegra_dc_sd_rgb lut[4][9];
+
+        atomic_t *sd_brightness;
+        struct platform_device *bl_device;
+};
+#endif
+
 enum {
 	TEGRA_PIN_OUT_CONFIG_SEL_LHP0_LD21,
 	TEGRA_PIN_OUT_CONFIG_SEL_LHP1_LD18,
@@ -220,6 +328,9 @@ struct tegra_dc_out {
 
 	int			dcc_bus;
 	int			hotplug_gpio;
+#if defined(CONFIG_ICS)
+	const char                      *parent_clk;
+#endif
 
 	unsigned		max_pixclock;
 	unsigned		order;
@@ -234,9 +345,16 @@ struct tegra_dc_out {
 	int			n_modes;
 
 	struct tegra_dsi_out	*dsi;
+#if defined(CONFIG_ICS)
+	struct tegra_stereo_out         *stereo;
+#endif
 
 	struct tegra_dc_out_pin	*out_pins;
 	unsigned		n_out_pins;
+
+#if defined(CONFIG_ICS)
+	struct tegra_dc_sd_settings     *sd_settings;
+#endif
 
 	u8			*out_sel_configs;
 	unsigned		n_out_sel_configs;
@@ -244,6 +362,11 @@ struct tegra_dc_out {
 	int	(*enable)(void);
 	int	(*postpoweron)(void);
 	int	(*disable)(void);
+
+#if defined(CONFIG_ICS)
+	int     (*hotplug_init)(void);
+	int     (*postsuspend)(void);
+#endif
 };
 
 /* bits for tegra_dc_out.flags */
@@ -253,6 +376,11 @@ struct tegra_dc_out {
 #define TEGRA_DC_OUT_NVHDCP_POLICY_ALWAYS_ON	(0 << 2)
 #define TEGRA_DC_OUT_NVHDCP_POLICY_ON_DEMAND	(1 << 2)
 #define TEGRA_DC_OUT_NVHDCP_POLICY_MASK		(1 << 2)
+#if defined(CONFIG_ICS)
+#define TEGRA_DC_OUT_CONTINUOUS_MODE            (0 << 3)
+#define TEGRA_DC_OUT_ONE_SHOT_MODE              (1 << 3)
+#define TEGRA_DC_OUT_N_SHOT_MODE                (1 << 4)
+#endif
 
 #define TEGRA_DC_ALIGN_MSB		0
 #define TEGRA_DC_ALIGN_LSB		1
@@ -263,45 +391,97 @@ struct tegra_dc_out {
 struct tegra_dc;
 struct nvmap_handle_ref;
 
+#if defined(CONFIG_ICS)
+struct tegra_dc_csc {
+        unsigned short yof;
+        unsigned short kyrgb;
+        unsigned short kur;
+        unsigned short kvr;
+        unsigned short kug;
+        unsigned short kvg;
+        unsigned short kub;
+        unsigned short kvb;
+};
+
+/* palette lookup table */
+struct tegra_dc_lut {
+        u8 r[256];
+        u8 g[256];
+        u8 b[256];
+};
+#endif
+
 struct tegra_dc_win {
 	u8			idx;
 	u8			fmt;
+#if defined(CONFIG_ICS)
+	u8                      ppflags; /* see TEGRA_WIN_PPFLAG* */
+#endif
 	u32			flags;
 
 	void			*virt_addr;
 	dma_addr_t		phys_addr;
+#if defined(CONFIG_ICS)
+        dma_addr_t              phys_addr_u;
+        dma_addr_t              phys_addr_v;
+#else
 	unsigned		offset;
 	unsigned		offset_u;
 	unsigned		offset_v;
+#endif
 	unsigned		stride;
 	unsigned		stride_uv;
+#if !defined(CONFIG_ICS)
 	unsigned		x;
 	unsigned		y;
 	unsigned		w;
 	unsigned		h;
+#else
+        fixed20_12              x;
+        fixed20_12              y;
+        fixed20_12              w;
+        fixed20_12              h;
+#endif
 	unsigned		out_x;
 	unsigned		out_y;
 	unsigned		out_w;
 	unsigned		out_h;
 	unsigned		z;
 
+#if defined(CONFIG_ICS)
+	struct tegra_dc_csc     csc;
+#endif
+
 	int			dirty;
 	int			underflows;
 	struct tegra_dc		*dc;
 
 	struct nvmap_handle_ref	*cur_handle;
+#if defined(CONFIG_ICS)
+        unsigned                bandwidth;
+        unsigned                new_bandwidth;
+	struct tegra_dc_lut     lut;
+#endif
 };
 
+#if defined(CONFIG_ICS)
+#define TEGRA_WIN_PPFLAG_CP_ENABLE      (1 << 0) /* enable RGB color lut */
+#define TEGRA_WIN_PPFLAG_CP_FBOVERRIDE  (1 << 1) /* override fbdev color lut */
+#endif
 
 #define TEGRA_WIN_FLAG_ENABLED		(1 << 0)
 #define TEGRA_WIN_FLAG_BLEND_PREMULT	(1 << 1)
 #define TEGRA_WIN_FLAG_BLEND_COVERAGE	(1 << 2)
-#if defined(CONFIG_TOUCHWIZ_UX)
+#if defined(CONFIG_TOUCHWIZ_UX) || defined(CONFIG_ICS)
 #define TEGRA_WIN_FLAG_INVERT_H		(1 << 3)
 #define TEGRA_WIN_FLAG_INVERT_V		(1 << 4)
 #define TEGRA_WIN_FLAG_TILED		(1 << 5)
 #else
 #define TEGRA_WIN_FLAG_TILED            (1 << 3)
+#endif
+#if defined(CONFIG_ICS)
+#define TEGRA_WIN_FLAG_H_FILTER         (1 << 6)
+#define TEGRA_WIN_FLAG_V_FILTER         (1 << 7)
 #endif
 
 #define TEGRA_WIN_BLEND_FLAGS_MASK \
@@ -356,6 +536,11 @@ struct tegra_dc_platform_data {
 
 struct tegra_dc *tegra_dc_get_dc(unsigned idx);
 struct tegra_dc_win *tegra_dc_get_window(struct tegra_dc *dc, unsigned win);
+#if defined(CONFIG_ICS)
+bool tegra_dc_get_connected(struct tegra_dc *);
+
+void tegra_dc_blank(struct tegra_dc *dc);
+#endif
 
 void tegra_dc_enable(struct tegra_dc *dc);
 void tegra_dc_disable(struct tegra_dc *dc);
@@ -371,6 +556,11 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n);
 int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n);
 
 int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode);
+#if defined(CONFIG_ICS)
+struct fb_videomode;
+int tegra_dc_set_fb_mode(struct tegra_dc *dc, const struct fb_videomode *fbmode,
+        bool stereo_mode);
+#endif
 
 unsigned tegra_dc_get_out_height(const struct tegra_dc *dc);
 unsigned tegra_dc_get_out_width(const struct tegra_dc *dc);
@@ -382,6 +572,10 @@ unsigned tegra_dc_get_out_max_pixclock(const struct tegra_dc *dc);
 
 struct tegra_dc_pwm_params {
 	int which_pwm;
+#if defined(CONFIG_ICS)
+        void (*switch_to_sfio)(int);
+        int gpio_conf_to_sfio;
+#endif
 	unsigned int period;
 	unsigned int clk_div;
 	unsigned int clk_select;
@@ -389,5 +583,25 @@ struct tegra_dc_pwm_params {
 };
 
 void tegra_dc_config_pwm(struct tegra_dc *dc, struct tegra_dc_pwm_params *cfg);
+
+#if defined(CONFIG_ICS)
+int tegra_dc_update_csc(struct tegra_dc *dc, int win_index);
+
+int tegra_dc_update_lut(struct tegra_dc *dc, int win_index, int fboveride);
+
+/*
+ * In order to get a dc's current EDID, first call tegra_dc_get_edid() from an
+ * interruptible context.  The returned value (if non-NULL) points to a
+ * snapshot of the current state; after copying data from it, call
+ * tegra_dc_put_edid() on that pointer.  Do not dereference anything through
+ * that pointer after calling tegra_dc_put_edid().
+ */
+struct tegra_dc_edid {
+        size_t          len;
+        u8              buf[0];
+};
+struct tegra_dc_edid *tegra_dc_get_edid(struct tegra_dc *dc);
+void tegra_dc_put_edid(struct tegra_dc_edid *edid);
+#endif
 
 #endif
