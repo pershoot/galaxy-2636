@@ -227,6 +227,13 @@ config TEGRA_IOVMM_GART
 config TEGRA_IOVMM
 	bool
 
+config TEGRA_AVP_KERNEL_ON_MMU
+        bool "Use AVP MMU to relocate AVP kernel"
+        depends on ARCH_TEGRA_2x_SOC && ICS
+        default y
+        help
+          Use AVP MMU to relocate AVP kernel (nvrm_avp.bin).
+
 config TEGRA_ARB_SEMAPHORE
 	bool
 

@@ -2,6 +2,8 @@
  * Copyright (C) 2010 Google, Inc.
  * Author: Dima Zavin <dima@android.com>
  *
+ * Copyright (C) 2010-2011 NVIDIA Corporation
+ *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
  * may be copied, distributed, and modified under those terms.
@@ -42,8 +44,9 @@
 #include <mach/iomap.h>
 #include <mach/nvmap.h>
 #include <mach/legacy_irq.h>
+#include <mach/hardware.h>
 
-#include "../../../../video/tegra/nvmap/nvmap.h"
+#include "../../../../video/tegra-ics/nvmap/nvmap.h"
 
 #include "headavp.h"
 #include "avp_msg.h"
@@ -61,7 +64,15 @@ enum {
 	AVP_DBG_TRACE_LIB	= 1U << 6,
 };
 
-static u32 avp_debug_mask;
+static u32 avp_debug_mask =
+	AVP_DBG_TRACE_XPC	|
+	/* AVP_DBG_TRACE_XPC_IRQ	| */
+	/* AVP_DBG_TRACE_XPC_MSG	| */
+	/* AVP_DBG_TRACE_TRPC_MSG	| */
+	AVP_DBG_TRACE_XPC_CONN	|
+	AVP_DBG_TRACE_TRPC_CONN	|
+	AVP_DBG_TRACE_LIB;
+
 module_param_named(debug_mask, avp_debug_mask, uint, S_IWUSR | S_IRUGO);
 
 #define DBG(flag, args...) \
@@ -69,12 +80,10 @@ module_param_named(debug_mask, avp_debug_mask, uint, S_IWUSR | S_IRUGO);
 
 #define TEGRA_AVP_NAME			"tegra-avp"
 
-#define TEGRA_AVP_KERNEL_FW		"nvrm_avp.bin"
-
 #define TEGRA_AVP_RESET_VECTOR_ADDR \
 		(IO_ADDRESS(TEGRA_EXCEPTION_VECTORS_BASE) + 0x200)
 
-#define TEGRA_AVP_RESUME_ADDR		IO_ADDRESS(TEGRA_IRAM_BASE)
+#define TEGRA_AVP_RESUME_ADDR          IO_ADDRESS(TEGRA_IRAM_BASE)
 
 #define FLOW_CTRL_HALT_COP_EVENTS	IO_ADDRESS(TEGRA_FLOW_CTRL_BASE + 0x4)
 #define FLOW_MODE_STOP			(0x2 << 29)
@@ -130,12 +139,13 @@ struct tegra_avp_info {
 	struct nvmap_client	*nvmap_drv;
 	struct nvmap_handle_ref	*kernel_handle;
 	void			*kernel_data;
-	unsigned long		kernel_phys;
+	phys_addr_t		kernel_phys;
 
 	struct nvmap_handle_ref *iram_backup_handle;
 	void			*iram_backup_data;
-	unsigned long		iram_backup_phys;
+	phys_addr_t		iram_backup_phys;
 	unsigned long		resume_addr;
+	unsigned long		reset_addr;
 
 	struct trpc_endpoint	*avp_ep;
 	struct rb_root		endpoints;
@@ -550,7 +560,7 @@ static int avp_node_try_connect(struct trpc_node *node,
 
 	len = strlen(port_name);
 	if (len > XPC_PORT_NAME_LEN) {
-		pr_err("%s: port name (%s) to long\n", __func__, port_name);
+		pr_err("%s: port name (%s) too long\n", __func__, port_name);
 		return -EINVAL;
 	}
 
@@ -610,15 +620,14 @@ static int avp_node_try_connect(struct trpc_node *node,
 			goto err_msg_write;
 		}
 		ret = msg_wait_ack_locked(avp, CMD_RESPONSE, &rinfo->rem_id);
- 		mutex_unlock(&avp->to_avp_lock);
+		mutex_unlock(&avp->to_avp_lock);
 		if (!ret && rinfo->rem_id)
 			break;
 
 		/* Skip the sleep function at last retry count */
 		if ((cnt + 1) < max_retry_cnt)
 			usleep_range(100, 2000);
- 	}
-
+	}
 
 	if (ret) {
 		pr_err("%s: remote end won't respond for '%s'\n", __func__,
@@ -899,6 +908,9 @@ static int avp_reset(struct tegra_avp_info *avp, unsigned long reset_addr)
 
 	writel(stub_code_phys, TEGRA_AVP_RESET_VECTOR_ADDR);
 
+	pr_debug("%s: TEGRA_AVP_RESET_VECTOR=%x\n", __func__, readl(TEGRA_AVP_RESET_VECTOR_ADDR));
+	pr_info("%s: Resetting AVP: reset_addr=%lx\n", __func__, reset_addr);
+
 	tegra_periph_reset_assert(avp->cop_clk);
 	udelay(10);
 	tegra_periph_reset_deassert(avp->cop_clk);
@@ -909,12 +921,16 @@ static int avp_reset(struct tegra_avp_info *avp, unsigned long reset_addr)
 	 * starts, so a dead kernel can be detected by polling this value */
 	timeout = jiffies + msecs_to_jiffies(2000);
 	while (time_before(jiffies, timeout)) {
+		pr_debug("%s: TEGRA_AVP_RESET_VECTOR=%x\n", __func__, readl(TEGRA_AVP_RESET_VECTOR_ADDR));
 		if (readl(TEGRA_AVP_RESET_VECTOR_ADDR) != stub_code_phys)
 			break;
 		cpu_relax();
 	}
-	if (readl(TEGRA_AVP_RESET_VECTOR_ADDR) == stub_code_phys)
+	if (readl(TEGRA_AVP_RESET_VECTOR_ADDR) == stub_code_phys) {
+		pr_err("%s: Timed out waiting for AVP kernel to start\n", __func__);
 		ret = -EINVAL;
+	}
+	pr_debug("%s: TEGRA_AVP_RESET_VECTOR=%x\n", __func__, readl(TEGRA_AVP_RESET_VECTOR_ADDR));
 	WARN_ON(ret);
 	dma_unmap_single(NULL, stub_data_phys,
 			 sizeof(_tegra_avp_boot_stub_data),
@@ -941,14 +957,15 @@ static void avp_halt(struct tegra_avp_info *avp)
  * of the char dev for receiving replies for managing remote
  * libraries/modules. */
 
-static int avp_init(struct tegra_avp_info *avp, const char *fw_file)
+static int avp_init(struct tegra_avp_info *avp)
 {
 	const struct firmware *avp_fw;
 	int ret;
 	struct trpc_endpoint *ep;
+	char fw_file[30];
 
 	avp->nvmap_libs = nvmap_create_client(nvmap_dev, "avp_libs");
-	if (IS_ERR(avp->nvmap_libs)) {
+	if (IS_ERR_OR_NULL(avp->nvmap_libs)) {
 		pr_err("%s: cannot create libs nvmap client\n", __func__);
 		ret = PTR_ERR(avp->nvmap_libs);
 		goto err_nvmap_create_libs_client;
@@ -958,21 +975,66 @@ static int avp_init(struct tegra_avp_info *avp, const char *fw_file)
 	 * to read out when its kernel boots. */
 	mbox_writel(avp->msg, MBOX_TO_AVP);
 
+#if defined(CONFIG_TEGRA_AVP_KERNEL_ON_MMU) /* Tegra2 with AVP MMU */
+	/* paddr is any address returned from nvmap_pin */
+	/* vaddr is AVP_KERNEL_VIRT_BASE */
+	pr_info("%s: Using AVP MMU to relocate AVP kernel\n", __func__);
+	sprintf(fw_file, "nvrm_avp.bin");
+	avp->reset_addr = AVP_KERNEL_VIRT_BASE;
+#elif defined(CONFIG_TEGRA_AVP_KERNEL_ON_SMMU) /* Tegra3 with SMMU */
+	/* paddr is any address behind SMMU */
+	/* vaddr is TEGRA_SMMU_BASE */
+	pr_info("%s: Using SMMU at %lx to load AVP kernel\n",
+		__func__, (unsigned long)avp->kernel_phys);
+	BUG_ON(avp->kernel_phys != 0xeff00000
+		&& avp->kernel_phys != 0x0ff00000);
+	sprintf(fw_file, "nvrm_avp_%08lx.bin", (unsigned long)avp->kernel_phys);
+	avp->reset_addr = avp->kernel_phys;
+#else /* nvmem= carveout */
+	/* paddr is found in nvmem= carveout */
+	/* vaddr is same as paddr */
+	/* Find nvmem carveout */
+	if (!pfn_valid(__phys_to_pfn(0x8e000000))) {
+		avp->kernel_phys = 0x8e000000;
+	}
+	else if (!pfn_valid(__phys_to_pfn(0x9e000000))) {
+		avp->kernel_phys = 0x9e000000;
+	}
+	else if (!pfn_valid(__phys_to_pfn(0xbe000000))) {
+		avp->kernel_phys = 0xbe000000;
+	}
+	else {
+		pr_err("Cannot find nvmem= carveout to load AVP kernel\n");
+		pr_err("Check kernel command line "
+			"to see if nvmem= is defined\n");
+		BUG();
+	}
+	pr_info("%s: Using nvmem= carveout at %lx to load AVP kernel\n",
+		__func__, (unsigned long)avp->kernel_phys);
+	sprintf(fw_file, "nvrm_avp_%08lx.bin", avp->kernel_phys);
+	avp->reset_addr = avp->kernel_phys;
+	avp->kernel_data = ioremap(avp->kernel_phys, SZ_1M);
+#endif
+
 	ret = request_firmware(&avp_fw, fw_file, avp->misc_dev.this_device);
 	if (ret) {
 		pr_err("%s: Cannot read firmware '%s'\n", __func__, fw_file);
 		goto err_req_fw;
 	}
-	pr_info("%s: read firmware from '%s' (%d bytes)\n", __func__,
+	pr_info("%s: Reading firmware from '%s' (%d bytes)\n", __func__,
 		fw_file, avp_fw->size);
+
+	pr_info("%s: Loading AVP kernel at vaddr=%p paddr=%lx\n",
+		__func__, avp->kernel_data, (unsigned long)avp->kernel_phys);
 	memcpy(avp->kernel_data, avp_fw->data, avp_fw->size);
 	memset(avp->kernel_data + avp_fw->size, 0, SZ_1M - avp_fw->size);
+
 	wmb();
 	release_firmware(avp_fw);
 
 	tegra_init_legacy_irq_cop();
 
-	ret = avp_reset(avp, AVP_KERNEL_VIRT_BASE);
+	ret = avp_reset(avp, avp->reset_addr);
 	if (ret) {
 		pr_err("%s: cannot reset the AVP.. aborting..\n", __func__);
 		goto err_reset;
@@ -1068,7 +1130,7 @@ static int _load_lib(struct tegra_avp_info *avp, struct tegra_avp_lib *lib,
 	void *args;
 	struct nvmap_handle_ref *lib_handle;
 	void *lib_data;
-	unsigned long lib_phys;
+	phys_addr_t lib_phys;
 	int ret;
 
 	DBG(AVP_DBG_TRACE_LIB, "avp_lib: loading library '%s'\n", lib->name);
@@ -1095,8 +1157,8 @@ static int _load_lib(struct tegra_avp_info *avp, struct tegra_avp_lib *lib,
 	}
 
 	lib_handle = nvmap_alloc(avp->nvmap_libs, fw->size, L1_CACHE_BYTES,
-				 NVMAP_HANDLE_WRITE_COMBINE);
-	if (IS_ERR(lib_handle)) {
+				 NVMAP_HANDLE_UNCACHEABLE);
+	if (IS_ERR_OR_NULL(lib_handle)) {
 		pr_err("avp_lib: can't nvmap alloc for lib '%s'\n", lib->name);
 		ret = PTR_ERR(lib_handle);
 		goto err_nvmap_alloc;
@@ -1110,7 +1172,7 @@ static int _load_lib(struct tegra_avp_info *avp, struct tegra_avp_lib *lib,
 	}
 
 	lib_phys = nvmap_pin(avp->nvmap_libs, lib_handle);
-	if (IS_ERR((void *)lib_phys)) {
+	if (IS_ERR_OR_NULL((void *)lib_phys)) {
 		pr_err("avp_lib: can't nvmap pin for lib '%s'\n", lib->name);
 		ret = PTR_ERR(lib_handle);
 		goto err_nvmap_pin;
@@ -1149,9 +1211,6 @@ static int _load_lib(struct tegra_avp_info *avp, struct tegra_avp_lib *lib,
 	DBG(AVP_DBG_TRACE_LIB,
 		"avp_lib: Successfully loaded library %s (lib_id=%x)\n",
 		lib->name, resp.lib_id);
-
-	pr_info("avp_lib: Successfully loaded library %s (lib_id=%x)\n",
-			lib->name, resp.lib_id);
 
 	/* We free the memory here because by this point the AVP has already
 	 * requested memory for the library for all the sections since it does
@@ -1252,6 +1311,7 @@ static int handle_load_lib_ioctl(struct tegra_avp_info *avp, unsigned long arg)
 	struct tegra_avp_lib lib;
 	int ret;
 
+	pr_debug("%s: ioctl\n", __func__);
 	if (copy_from_user(&lib, (void __user *)arg, sizeof(lib)))
 		return -EFAULT;
 	lib.name[TEGRA_AVP_LIB_MAX_NAME - 1] = '\0';
@@ -1336,20 +1396,22 @@ int tegra_avp_open(struct tegra_avp_info **avp)
 	struct tegra_avp_info *new_avp = tegra_avp;
 	int ret = 0;
 
+	pr_debug("%s: open\n", __func__);
 	mutex_lock(&new_avp->open_lock);
 
 	if (!new_avp->refcount)
-		ret = avp_init(new_avp, TEGRA_AVP_KERNEL_FW);
+		ret = avp_init(new_avp);
 
 	if (ret < 0) {
+		mutex_unlock(&new_avp->open_lock);
 		new_avp = 0;
 		goto out;
 	}
 
 	new_avp->refcount++;
 
-out:
 	mutex_unlock(&new_avp->open_lock);
+out:
 	*avp = new_avp;
 	return ret;
 }
@@ -1517,6 +1579,7 @@ static int tegra_avp_probe(struct platform_device *pdev)
 	struct tegra_avp_info *avp;
 	int ret = 0;
 	int irq;
+	unsigned int heap_mask;
 
 	irq = platform_get_irq_byname(pdev, "mbox_from_avp_pending");
 	if (irq < 0) {
@@ -1531,32 +1594,84 @@ static int tegra_avp_probe(struct platform_device *pdev)
 	}
 
 	avp->nvmap_drv = nvmap_create_client(nvmap_dev, "avp_core");
-	if (IS_ERR(avp->nvmap_drv)) {
+	if (IS_ERR_OR_NULL(avp->nvmap_drv)) {
 		pr_err("%s: cannot create drv nvmap client\n", __func__);
 		ret = PTR_ERR(avp->nvmap_drv);
 		goto err_nvmap_create_drv_client;
 	}
 
-	avp->kernel_handle = nvmap_alloc(avp->nvmap_drv, SZ_1M, SZ_1M,
-					 NVMAP_HANDLE_WRITE_COMBINE);
-	if (IS_ERR(avp->kernel_handle)) {
-		pr_err("%s: cannot create handle\n", __func__);
-		ret = PTR_ERR(avp->kernel_handle);
-		goto err_nvmap_alloc;
+#if defined(CONFIG_TEGRA_AVP_KERNEL_ON_MMU) /* Tegra2 with AVP MMU */
+	heap_mask = NVMAP_HEAP_CARVEOUT_GENERIC;
+#elif defined(CONFIG_TEGRA_AVP_KERNEL_ON_SMMU) /* Tegra3 with SMMU */
+	heap_mask = NVMAP_HEAP_IOVMM;
+#else /* nvmem= carveout */
+	heap_mask = 0;
+#endif
+
+	if (heap_mask == NVMAP_HEAP_IOVMM) {
+		u32 iovmm_addr = 0x0ff00000;
+
+		/* Tegra3 A01 has different SMMU address */
+		if (tegra_get_chipid() == TEGRA_CHIPID_TEGRA3
+			&& tegra_get_revision() == TEGRA_REVISION_A01) {
+			iovmm_addr = 0xeff00000;
+		}
+
+		avp->kernel_handle = nvmap_alloc_iovm(avp->nvmap_drv, SZ_1M,
+						L1_CACHE_BYTES,
+						NVMAP_HANDLE_WRITE_COMBINE,
+						iovmm_addr);
+		if (IS_ERR_OR_NULL(avp->kernel_handle)) {
+			pr_err("%s: cannot create handle\n", __func__);
+			ret = PTR_ERR(avp->kernel_handle);
+			goto err_nvmap_alloc;
+		}
+
+		avp->kernel_data = nvmap_mmap(avp->kernel_handle);
+		if (!avp->kernel_data) {
+			pr_err("%s: cannot map kernel handle\n", __func__);
+			ret = -ENOMEM;
+			goto err_nvmap_mmap;
+		}
+
+		avp->kernel_phys =
+			nvmap_pin(avp->nvmap_drv, avp->kernel_handle);
+		if (IS_ERR_OR_NULL((void *)avp->kernel_phys)) {
+			pr_err("%s: cannot pin kernel handle\n", __func__);
+			ret = PTR_ERR((void *)avp->kernel_phys);
+			goto err_nvmap_pin;
+		}
+
+		pr_info("%s: allocated IOVM at %lx for AVP kernel\n",
+			__func__, (unsigned long)avp->kernel_phys);
 	}
 
-	avp->kernel_data = nvmap_mmap(avp->kernel_handle);
-	if (!avp->kernel_data) {
-		pr_err("%s: cannot map kernel handle\n", __func__);
-		ret = -ENOMEM;
-		goto err_nvmap_mmap;
-	}
+	if (heap_mask == NVMAP_HEAP_CARVEOUT_GENERIC) {
+		avp->kernel_handle = nvmap_alloc(avp->nvmap_drv, SZ_1M, SZ_1M,
+						NVMAP_HANDLE_UNCACHEABLE);
+		if (IS_ERR_OR_NULL(avp->kernel_handle)) {
+			pr_err("%s: cannot create handle\n", __func__);
+			ret = PTR_ERR(avp->kernel_handle);
+			goto err_nvmap_alloc;
+		}
 
-	avp->kernel_phys = nvmap_pin(avp->nvmap_drv, avp->kernel_handle);
-	if (IS_ERR((void *)avp->kernel_phys)) {
-		pr_err("%s: cannot pin kernel handle\n", __func__);
-		ret = PTR_ERR((void *)avp->kernel_phys);
-		goto err_nvmap_pin;
+		avp->kernel_data = nvmap_mmap(avp->kernel_handle);
+		if (!avp->kernel_data) {
+			pr_err("%s: cannot map kernel handle\n", __func__);
+			ret = -ENOMEM;
+			goto err_nvmap_mmap;
+		}
+
+		avp->kernel_phys = nvmap_pin(avp->nvmap_drv,
+					avp->kernel_handle);
+		if (IS_ERR_OR_NULL((void *)avp->kernel_phys)) {
+			pr_err("%s: cannot pin kernel handle\n", __func__);
+			ret = PTR_ERR((void *)avp->kernel_phys);
+			goto err_nvmap_pin;
+		}
+
+		pr_info("%s: allocated carveout memory at %lx for AVP kernel\n",
+			__func__, (unsigned long)avp->kernel_phys);
 	}
 
 	/* allocate an extra 4 bytes at the end which AVP uses to signal to
@@ -1564,8 +1679,8 @@ static int tegra_avp_probe(struct platform_device *pdev)
 	 */
 	avp->iram_backup_handle =
 		nvmap_alloc(avp->nvmap_drv, TEGRA_IRAM_SIZE + 4,
-				L1_CACHE_BYTES, NVMAP_HANDLE_WRITE_COMBINE);
-	if (IS_ERR(avp->iram_backup_handle)) {
+				L1_CACHE_BYTES, NVMAP_HANDLE_UNCACHEABLE);
+	if (IS_ERR_OR_NULL(avp->iram_backup_handle)) {
 		pr_err("%s: cannot create handle for iram backup\n", __func__);
 		ret = PTR_ERR(avp->iram_backup_handle);
 		goto err_iram_nvmap_alloc;
@@ -1578,7 +1693,7 @@ static int tegra_avp_probe(struct platform_device *pdev)
 	}
 	avp->iram_backup_phys = nvmap_pin(avp->nvmap_drv,
 					  avp->iram_backup_handle);
-	if (IS_ERR((void *)avp->iram_backup_phys)) {
+	if (IS_ERR_OR_NULL((void *)avp->iram_backup_phys)) {
 		pr_err("%s: cannot pin iram backup handle\n", __func__);
 		ret = PTR_ERR((void *)avp->iram_backup_phys);
 		goto err_iram_nvmap_pin;
@@ -1604,7 +1719,7 @@ static int tegra_avp_probe(struct platform_device *pdev)
 	}
 
 	avp->cop_clk = clk_get(&pdev->dev, "cop");
-	if (IS_ERR(avp->cop_clk)) {
+	if (IS_ERR_OR_NULL(avp->cop_clk)) {
 		pr_err("%s: Couldn't get cop clock\n", TEGRA_AVP_NAME);
 		ret = -ENOENT;
 		goto err_get_cop_clk;
@@ -1634,7 +1749,7 @@ static int tegra_avp_probe(struct platform_device *pdev)
 	avp->rpc_node = &avp_trpc_node;
 
 	avp->avp_svc = avp_svc_init(pdev, avp->rpc_node);
-	if (IS_ERR(avp->avp_svc)) {
+	if (IS_ERR_OR_NULL(avp->avp_svc)) {
 		pr_err("%s: Cannot initialize avp_svc\n", __func__);
 		ret = PTR_ERR(avp->avp_svc);
 		goto err_avp_svc_init;
@@ -1659,8 +1774,7 @@ static int tegra_avp_probe(struct platform_device *pdev)
 
 	tegra_avp = avp;
 
-	pr_info("%s: driver registered, kernel %lx(%p), msg area %lx/%lx\n",
-		__func__, avp->kernel_phys, avp->kernel_data,
+	pr_info("%s: message area %lx/%lx\n", __func__,
 		(unsigned long)avp->msg_area_addr,
 		(unsigned long)avp->msg_area_addr + AVP_MSG_AREA_SIZE);
 
