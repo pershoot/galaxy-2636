@@ -1,7 +1,11 @@
 #
 # Makefile for the video capture/playback device drivers.
 #
+ifneq ($(CONFIG_ICS),y)
 obj-y				+= avp/
+else
+obj-y                           += avp-ics/
+endif
 obj-$(CONFIG_TEGRA_CAMERA)	+= tegra_camera.o
 obj-$(CONFIG_VIDEO_OV5650)	+= ov5650.o
 obj-$(CONFIG_VIDEO_IMX073)	+= imx073.o
