@@ -593,14 +593,11 @@ static int kxtf9_read(void *mlsl_handle,
 {
 	int result;
 	unsigned char reg;
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	int x,y,z;
-#endif
 
 	result = MLSLSerialRead(mlsl_handle, pdata->address,
 				slave->reg, slave->len, data);
 
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	if(slave->len == 6)
 	{
 		x = (s16)((data[1] << 4) | (data[0] >> 4)) + cal_data.x;
@@ -614,7 +611,6 @@ static int kxtf9_read(void *mlsl_handle,
 		data[4] = (z & 0xf) << 4;
 		data[5] = (z & 0xff0) >> 4;
 	}
-#endif
 
 	ERROR_CHECK(result);
 	return result;

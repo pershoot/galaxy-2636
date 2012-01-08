@@ -231,7 +231,6 @@ config SENSORS_MPU_DEBUG
 
 config SENSORS_CORE
 	tristate "Sensors core"
-	depends on !MACH_SAMSUNG_P3_P7100
 	help
 	  Say Y here to enable debugging messages for power supply class
 	  and drivers.

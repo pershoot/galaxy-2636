@@ -31,13 +31,11 @@ extern "C" {
 /* - Defines. - */
 /* ------------ */
 /* acceleration data */
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 struct acc_data {
 	s16 x;
 	s16 y;
 	s16 z;
 };
-#endif
 
 
 /*
