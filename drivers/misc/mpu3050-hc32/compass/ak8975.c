@@ -171,8 +171,13 @@ struct ext_slave_descr ak8975_descr = {
 	/*.name             = */ "ak8975",
 	/*.type             = */ EXT_SLAVE_TYPE_COMPASS,
 	/*.id               = */ COMPASS_ID_AKM,
+#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	/*.reg              = */ 0x01,
 	/*.len              = */ 9,
+#else
+	/*.reg              = */ 0x03,
+	/*.len              = */ 6,
+#endif
 	/*.endian           = */ EXT_SLAVE_LITTLE_ENDIAN,
 	/*.range            = */ {9830, 4000}
 };

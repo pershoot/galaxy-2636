@@ -279,14 +279,11 @@ mpu_accel_input_work_func(struct work_struct *work)
     }
     
     if(data_is_avail) {
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
       int data_is_valid = 0;
-#endif
       
       for(i=0;i<3;i++)  {
         mpu_accel_build_data(data, &buffer[i*2], &raw[i]);
       }
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 		raw[0] += cal_data.x;
 		raw[1] += cal_data.y;
 		raw[2] += cal_data.z;
@@ -295,7 +292,6 @@ mpu_accel_input_work_func(struct work_struct *work)
         data_is_valid = 1;
 
       if(data_is_valid) {
-#endif
     	int accel[3] = {0,};
 
         /*apply mounting matrix*/
@@ -327,9 +323,7 @@ mpu_accel_input_work_func(struct work_struct *work)
         if(MPUACC_DEBUG) {
           printk("input device is updated\n");
         }
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
       }
-#endif
     }
   }
 

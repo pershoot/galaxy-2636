@@ -30,9 +30,7 @@
 #include "mlos.h"
 #include <linux/delay.h>
 #include <linux/slab.h>
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #include <linux/time.h>
-#endif
 
 void *MLOSMalloc(unsigned int numBytes)
 {
@@ -87,14 +85,9 @@ void MLOSSleep(int mSecs)
 
 unsigned long MLOSGetTickCount(void)
 {
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 	struct timespec now;
 
 	getnstimeofday(&now);
 
 	return (long)(now.tv_sec * 1000L + now.tv_nsec / 1000000L);
-#else
-	/* @todo implement if needed */
-	return ML_ERROR_FEATURE_NOT_IMPLEMENTED;
-#endif
 }

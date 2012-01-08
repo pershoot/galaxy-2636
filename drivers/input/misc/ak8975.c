@@ -16,9 +16,7 @@
  * GNU General Public License for more details.
  *
  */
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 #define FACTORY_TEST
-#endif
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -351,9 +349,7 @@ static void ak8975c_selftest(struct akm8975_data *ak_data)
 
 	/* wait for data ready */
 	while (1) {
-#if !defined(CONFIG_MACH_SAMSUNG_P3_P7100)
 		msleep(20);
-#endif
 		if (i2c_smbus_read_byte_data(ak_data->this_client,
 						AK8975_REG_ST1) == 1) {
 			break;
