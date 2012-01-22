@@ -26,6 +26,14 @@
 
 #include "hardware_t20.h"
 #include "syncpt_t20.h"
+#include "cdma_t20.h"
+
+static inline u32 host1x_channel_dmactrl(int stop, int get_rst, int init_get)
+{
+	return HOST1X_CREATE(CHANNEL_DMACTRL, DMASTOP, stop)
+			| HOST1X_CREATE(CHANNEL_DMACTRL, DMAGETRST, get_rst)
+			| HOST1X_CREATE(CHANNEL_DMACTRL, DMAINITGET, init_get);
+}
 
 static void t20_cdma_timeout_handler(struct work_struct *work);
 
@@ -130,7 +138,7 @@ static void t20_push_buffer_push_to(struct push_buffer *pb,
 		struct nvmap_handle *handle, u32 op1, u32 op2)
 {
 	u32 cur = pb->cur;
-	u32 *p = (u32*)((u32)pb->mapped + cur);
+	u32 *p = (u32 *)((u32)pb->mapped + cur);
 	u32 cur_nvmap = (cur/8) & (NVHOST_GATHER_QUEUE_SIZE - 1);
 	BUG_ON(cur == pb->fence);
 	*(p++) = op1;
@@ -328,7 +336,7 @@ static void t20_cdma_timeout_pb_incr(struct nvhost_cdma *cdma, u32 getptr,
 	struct nvhost_master *dev = cdma_to_dev(cdma);
 	struct syncpt_buffer *sb = &cdma->syncpt_buffer;
 	struct push_buffer *pb = &cdma->push_buffer;
-	struct nvhost_userctx_timeout *timeout = cdma->timeout.ctx_timeout;
+	struct nvhost_hwctx *hwctx = cdma->timeout.ctx;
 	u32 getidx, *p;
 
 	/* should have enough slots to incr to desired count */
@@ -337,10 +345,10 @@ static void t20_cdma_timeout_pb_incr(struct nvhost_cdma *cdma, u32 getptr,
 	getidx = getptr - pb->phys;
 	if (exec_ctxsave) {
 		/* don't disrupt the CTXSAVE of a good/non-timed out ctx */
-		nr_slots -= timeout->hwctx->save_slots;
-		syncpt_incrs -= timeout->hwctx->save_incrs;
+		nr_slots -= hwctx->save_slots;
+		syncpt_incrs -= hwctx->save_incrs;
 
-		getidx += (timeout->hwctx->save_slots * 8);
+		getidx += (hwctx->save_slots * 8);
 		getidx &= (PUSH_BUFFER_SIZE - 1);
 
 		dev_dbg(&dev->pdev->dev,
@@ -395,7 +403,7 @@ static void t20_cdma_start(struct nvhost_cdma *cdma)
 	BUG_ON(!cdma_pb_op(cdma).putptr);
 	cdma->last_put = cdma_pb_op(cdma).putptr(&cdma->push_buffer);
 
-	writel(nvhost_channel_dmactrl(true, false, false),
+	writel(host1x_channel_dmactrl(true, false, false),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 
 	/* set base, put, end pointer (all of memory) */
@@ -404,11 +412,11 @@ static void t20_cdma_start(struct nvhost_cdma *cdma)
 	writel(0xFFFFFFFF, chan_regs + HOST1X_CHANNEL_DMAEND);
 
 	/* reset GET */
-	writel(nvhost_channel_dmactrl(true, true, true),
+	writel(host1x_channel_dmactrl(true, true, true),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 
 	/* start the command DMA */
-	writel(nvhost_channel_dmactrl(false, false, false),
+	writel(host1x_channel_dmactrl(false, false, false),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 
 	cdma->running = true;
@@ -430,7 +438,7 @@ static void t20_cdma_timeout_restart(struct nvhost_cdma *cdma, u32 getptr)
 	BUG_ON(!cdma_pb_op(cdma).putptr);
 	cdma->last_put = cdma_pb_op(cdma).putptr(&cdma->push_buffer);
 
-	writel(nvhost_channel_dmactrl(true, false, false),
+	writel(host1x_channel_dmactrl(true, false, false),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 
 	/* set base, end pointer (all of memory) */
@@ -439,7 +447,7 @@ static void t20_cdma_timeout_restart(struct nvhost_cdma *cdma, u32 getptr)
 
 	/* set GET, by loading the value in PUT (then reset GET) */
 	writel(getptr, chan_regs + HOST1X_CHANNEL_DMAPUT);
-	writel(nvhost_channel_dmactrl(true, true, true),
+	writel(host1x_channel_dmactrl(true, true, true),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 
 	dev_dbg(&dev->pdev->dev,
@@ -450,12 +458,12 @@ static void t20_cdma_timeout_restart(struct nvhost_cdma *cdma, u32 getptr)
 		cdma->last_put);
 
 	/* deassert GET reset and set PUT */
-	writel(nvhost_channel_dmactrl(true, false, false),
+	writel(host1x_channel_dmactrl(true, false, false),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 	writel(cdma->last_put, chan_regs + HOST1X_CHANNEL_DMAPUT);
 
 	/* start the command DMA */
-	writel(nvhost_channel_dmactrl(false, false, false),
+	writel(host1x_channel_dmactrl(false, false, false),
 		chan_regs + HOST1X_CHANNEL_DMACTRL);
 
 	cdma->running = true;
@@ -486,7 +494,7 @@ static void t20_cdma_stop(struct nvhost_cdma *cdma)
 	mutex_lock(&cdma->lock);
 	if (cdma->running) {
 		nvhost_cdma_wait_locked(cdma, CDMA_EVENT_SYNC_QUEUE_EMPTY);
-		writel(nvhost_channel_dmactrl(true, false, false),
+		writel(host1x_channel_dmactrl(true, false, false),
 			chan_regs + HOST1X_CHANNEL_DMACTRL);
 		cdma->running = false;
 	}
@@ -523,7 +531,7 @@ void t20_cdma_timeout_teardown_begin(struct nvhost_cdma *cdma)
 		"begin channel teardown (channel id %d)\n", ch->chid);
 
 	cmdproc_stop = readl(dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
-	cmdproc_stop = nvhost_sync_cmdproc_stop_chid(cmdproc_stop, ch->chid);
+	cmdproc_stop |= BIT(ch->chid);
 	writel(cmdproc_stop, dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
 
 	dev_dbg(&dev->pdev->dev,
@@ -533,7 +541,7 @@ void t20_cdma_timeout_teardown_begin(struct nvhost_cdma *cdma)
 		readl(ch->aperture + HOST1X_CHANNEL_DMAPUT),
 		cdma->last_put);
 
-	writel(nvhost_channel_dmactrl(true, false, false),
+	writel(host1x_channel_dmactrl(true, false, false),
 		ch->aperture + HOST1X_CHANNEL_DMACTRL);
 
 	writel(BIT(ch->chid), dev->sync_aperture + HOST1X_SYNC_CH_TEARDOWN);
@@ -556,7 +564,7 @@ void t20_cdma_timeout_teardown_end(struct nvhost_cdma *cdma, u32 getptr)
 		ch->chid, getptr);
 
 	cmdproc_stop = readl(dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
-	cmdproc_stop = nvhost_sync_cmdproc_run_chid(cmdproc_stop, ch->chid);
+	cmdproc_stop &= ~(BIT(ch->chid));
 	writel(cmdproc_stop, dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
 
 	cdma->torndown = false;
@@ -587,16 +595,16 @@ static void t20_cdma_timeout_handler(struct work_struct *work)
 
 	mutex_lock(&cdma->lock);
 
-	if (!cdma->timeout.ctx_timeout) {
+	if (!cdma->timeout.clientid) {
 		dev_dbg(&dev->pdev->dev,
-			 "cdma_timeout: expired, but has NULL context\n");
+			 "cdma_timeout: expired, but has no clientid\n");
 		mutex_unlock(&cdma->lock);
 		return;
 	}
 
 	/* stop processing to get a clean snapshot */
 	prev_cmdproc = readl(dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
-	cmdproc_stop = nvhost_sync_cmdproc_stop_chid(prev_cmdproc, ch->chid);
+	cmdproc_stop = prev_cmdproc | BIT(ch->chid);
 	writel(cmdproc_stop, dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
 
 	dev_dbg(&dev->pdev->dev, "cdma_timeout: cmdproc was 0x%x is 0x%x\n",
@@ -610,8 +618,7 @@ static void t20_cdma_timeout_handler(struct work_struct *work)
 		dev_dbg(&dev->pdev->dev,
 			 "cdma_timeout: expired, but buffer had completed\n");
 		/* restore */
-		cmdproc_stop = nvhost_sync_cmdproc_run_chid(prev_cmdproc,
-			ch->chid);
+		cmdproc_stop = prev_cmdproc & ~(BIT(ch->chid));
 		writel(cmdproc_stop,
 			dev->sync_aperture + HOST1X_SYNC_CMDPROC_STOP);
 		mutex_unlock(&cdma->lock);
@@ -623,13 +630,14 @@ static void t20_cdma_timeout_handler(struct work_struct *work)
 		__func__,
 		cdma->timeout.syncpt_id,
 		syncpt_op(sp).name(sp, cdma->timeout.syncpt_id),
-		cdma->timeout.ctx_timeout,
+		cdma->timeout.ctx,
 		syncpt_val, cdma->timeout.syncpt_val);
 
 	/* stop HW, resetting channel/module */
 	cdma_op(cdma).timeout_teardown_begin(cdma);
 
 	nvhost_cdma_update_sync_queue(cdma, sp, &dev->pdev->dev);
+	mutex_unlock(&cdma->lock);
 }
 
 int nvhost_init_t20_cdma_support(struct nvhost_master *host)

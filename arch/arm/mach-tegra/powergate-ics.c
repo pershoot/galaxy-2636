@@ -2,11 +2,10 @@
  * drivers/powergate/tegra-powergate.c
  *
  * Copyright (c) 2010 Google, Inc
+ * Copyright (C) 2011 NVIDIA Corporation.
  *
  * Author:
  *	Colin Cross <ccross@google.com>
- *
- *  Copyright (C) 2010-2011 NVIDIA Corporation
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -142,7 +141,7 @@ static struct powergate_partition powergate_partition_info[TEGRA_NUM_POWERGATE] 
 	[TEGRA_POWERGATE_CPU1]	= { "cpu1",	{MC_CLIENT_LAST}, },
 	[TEGRA_POWERGATE_CPU2]	= { "cpu2",	{MC_CLIENT_LAST}, },
 	[TEGRA_POWERGATE_CPU3]	= { "cpu3",	{MC_CLIENT_LAST}, },
-	[TEGRA_POWERGATE_A9LP]	= { "a9lp",	{MC_CLIENT_LAST}, },
+	[TEGRA_POWERGATE_CELP]	= { "celp",	{MC_CLIENT_LAST}, },
 	[TEGRA_POWERGATE_SATA]	= { "sata",     {MC_CLIENT_SATA, MC_CLIENT_LAST},
 						{{"sata", CLK_AND_RST},
 						{"sata_oob", CLK_AND_RST},
@@ -152,7 +151,9 @@ static struct powergate_partition powergate_partition_info[TEGRA_NUM_POWERGATE] 
 						{MC_CLIENT_NV2, MC_CLIENT_LAST},
 						{{"3d2", CLK_AND_RST} }, },
 	[TEGRA_POWERGATE_HEG]	= { "heg",
-						{MC_CLIENT_G2, MC_CLIENT_EPP, MC_CLIENT_HC},
+						{MC_CLIENT_G2, MC_CLIENT_EPP,
+							MC_CLIENT_HC,
+							MC_CLIENT_LAST},
 						{{"2d", CLK_AND_RST},
 						{"epp", CLK_AND_RST},
 						{"host1x", CLK_AND_RST},
@@ -203,7 +204,6 @@ static void mc_flush(int id)
 			break;
 
 		spin_lock_irqsave(&tegra_powergate_lock, flags);
-
 		rst_ctrl = mc_read(MC_CLIENT_HOTRESET_CTRL);
 		rst_ctrl |= (1 << mcClientBit);
 		mc_write(rst_ctrl, MC_CLIENT_HOTRESET_CTRL);
@@ -425,7 +425,6 @@ static int tegra_powergate_set(int id, bool new_state)
 
 	status = !!(pmc_read(PWRGATE_STATUS) & (1 << id));
 
-	/* If already on that state, we are done! */
 	if (status == new_state) {
 		spin_unlock_irqrestore(&tegra_powergate_lock, flags);
 		return 0;

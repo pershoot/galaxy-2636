@@ -21,8 +21,8 @@
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
-#include <linux/switch.h>
 #include <linux/completion.h>
+#include <linux/switch.h>
 
 #include <mach/dc.h>
 
@@ -108,11 +108,10 @@ struct tegra_dc {
 	struct tegra_overlay_info	*overlay;
 
 	struct {
-		u32                     id;
-		u32                     min;
-		u32                     max;
+		u32			id;
+		u32			min;
+		u32			max;
 	} syncpt[DC_N_WINDOWS];
-
 	u32				vblank_syncpt;
 
 	unsigned long			underflow_mask;
@@ -138,6 +137,7 @@ struct tegra_dc {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry			*debugdir;
 #endif
+	struct tegra_dc_lut		fb_lut;
 };
 
 static inline void tegra_dc_io_start(struct tegra_dc *dc)
@@ -214,5 +214,9 @@ unsigned long tegra_dc_get_bandwidth(struct tegra_dc_win *wins[], int n);
 u32 tegra_dc_read_checksum_latched(struct tegra_dc *dc);
 void tegra_dc_enable_crc(struct tegra_dc *dc);
 void tegra_dc_disable_crc(struct tegra_dc *dc);
+
+void tegra_dc_set_out_pin_polars(struct tegra_dc *dc,
+				const struct tegra_dc_out_pin *pins,
+				const unsigned int n_pins);
 #endif
 

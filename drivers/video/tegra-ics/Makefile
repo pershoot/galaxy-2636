@@ -1,3 +1,4 @@
+GCOV_PROFILE := y
 obj-$(CONFIG_TEGRA_GRHOST_ICS) += host/
 obj-$(CONFIG_TEGRA_DC) += dc/
 obj-$(CONFIG_FB_TEGRA) += fb.o

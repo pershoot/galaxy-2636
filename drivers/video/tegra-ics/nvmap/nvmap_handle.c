@@ -27,6 +27,7 @@
 #include <linux/rbtree.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <linux/fs.h>
 
 #include <asm/cacheflush.h>
 #include <asm/outercache.h>
@@ -117,8 +118,6 @@ out:
 	kfree(h);
 }
 
-extern void __flush_dcache_page(struct address_space *, struct page *);
-
 static struct page *nvmap_alloc_pages_exact(gfp_t gfp, size_t size)
 {
 	struct page *page, *p, *e;
@@ -198,8 +197,8 @@ static int handle_page_alloc(struct nvmap_client *client,
 	for (i = 0; i < nr_page; i++) {
 		if (flush_inner)
 			__flush_dcache_page(page_mapping(pages[i]), pages[i]);
-			base = page_to_phys(pages[i]);
-			outer_flush_range(base, base + PAGE_SIZE);
+		base = page_to_phys(pages[i]);
+		outer_flush_range(base, base + PAGE_SIZE);
 	}
 
 	h->size = size;
@@ -345,6 +344,7 @@ int nvmap_alloc_handle_id(struct nvmap_client *client,
 	if (h->alloc)
 		goto out;
 
+	h->userflags = flags;
 	nr_page = ((h->size + PAGE_SIZE - 1) >> PAGE_SHIFT);
 	h->secure = !!(flags & NVMAP_HANDLE_SECURE);
 	h->flags = (flags & NVMAP_HANDLE_CACHE_FLAG);
@@ -505,7 +505,7 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	struct nvmap_handle *h;
 	struct nvmap_handle_ref *ref = NULL;
 
-	if (!client )
+	if (!client)
 		return ERR_PTR(-EINVAL);
 
 	if (!size)

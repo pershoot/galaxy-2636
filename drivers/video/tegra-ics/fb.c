@@ -56,8 +56,6 @@ struct tegra_fb_info {
 
 	int			xres;
 	int			yres;
-
-	struct workqueue_struct *flip_wq;
 };
 
 /* palette array used by the fbcon */
@@ -110,8 +108,9 @@ static int tegra_fb_set_par(struct fb_info *info)
 		}
 		info->fix.line_length = var->xres * var->bits_per_pixel / 8;
 		/* Pad the stride to 16-byte boundary. */
-		tegra_fb->win->stride = round_up(info->fix.line_length,
+		info->fix.line_length = round_up(info->fix.line_length,
 						TEGRA_LINEAR_PITCH_ALIGNMENT);
+		tegra_fb->win->stride = info->fix.line_length;
 		tegra_fb->win->stride_uv = 0;
 		tegra_fb->win->phys_addr_u = 0;
 		tegra_fb->win->phys_addr_v = 0;
@@ -147,27 +146,28 @@ static int tegra_fb_set_par(struct fb_info *info)
 	return 0;
 }
 
-static int tegra_fb_setcolreg(unsigned regno, unsigned red, unsigned green,
-	unsigned blue, unsigned transp, struct fb_info *info)
+static int tegra_fb_setcmap(struct fb_cmap *cmap, struct fb_info *info)
 {
-	struct fb_var_screeninfo *var = &info->var;
+	struct tegra_fb_info *tegra_fb = info->par;
+	struct tegra_dc *dc = tegra_fb->win->dc;
+	int i;
+	u16 *red = cmap->red;
+	u16 *green = cmap->green;
+	u16 *blue = cmap->blue;
+	int start = cmap->start;
+
+	if (((unsigned)start > 255) || ((start + cmap->len) > 256))
+		return -EINVAL;
 
 	if (info->fix.visual == FB_VISUAL_TRUECOLOR ||
 	    info->fix.visual == FB_VISUAL_DIRECTCOLOR) {
-		u32 v;
+		for (i = 0; i < cmap->len; i++) {
+			dc->fb_lut.r[start+i] = *red++ >> 8;
+			dc->fb_lut.g[start+i] = *green++ >> 8;
+			dc->fb_lut.b[start+i] = *blue++ >> 8;
+		}
 
-		if (regno >= 16)
-			return -EINVAL;
-
-		red = (red >> (16 - info->var.red.length));
-		green = (green >> (16 - info->var.green.length));
-		blue = (blue >> (16 - info->var.blue.length));
-
-		v = (red << var->red.offset) |
-			(green << var->green.offset) |
-			(blue << var->blue.offset);
-
-		((u32 *)info->pseudo_palette)[regno] = v;
+		tegra_dc_update_lut(dc, -1, -1);
 	}
 
 	return 0;
@@ -180,6 +180,7 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 	switch (blank) {
 	case FB_BLANK_UNBLANK:
 		dev_dbg(&tegra_fb->ndev->dev, "unblank\n");
+		tegra_fb->win->flags = TEGRA_WIN_FLAG_ENABLED;
 		tegra_dc_enable(tegra_fb->win->dc);
 		return 0;
 
@@ -198,11 +199,6 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 	default:
 		return -ENOTTY;
 	}
-}
-
-void tegra_fb_suspend(struct tegra_fb_info *tegra_fb)
-{
-        flush_workqueue(tegra_fb->flip_wq);
 }
 
 static int tegra_fb_pan_display(struct fb_var_screeninfo *var,
@@ -308,7 +304,7 @@ static struct fb_ops tegra_fb_ops = {
 	.owner = THIS_MODULE,
 	.fb_check_var = tegra_fb_check_var,
 	.fb_set_par = tegra_fb_set_par,
-	.fb_setcolreg = tegra_fb_setcolreg,
+	.fb_setcmap = tegra_fb_setcmap,
 	.fb_blank = tegra_fb_blank,
 	.fb_pan_display = tegra_fb_pan_display,
 	.fb_fillrect = tegra_fb_fillrect,
@@ -335,6 +331,12 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 		memset(&fb_info->info->monspecs, 0x0,
 		       sizeof(fb_info->info->monspecs));
 		memset(&mode, 0x0, sizeof(mode));
+
+		/*
+		 * reset video mode properties to prevent garbage being displayed on 'mode' device.
+		 */
+		fb_info->info->mode = (struct fb_videomode*) NULL;
+
 		tegra_dc_set_mode(fb_info->win->dc, &mode);
 		mutex_unlock(&fb_info->info->lock);
 		return;
@@ -417,6 +419,10 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	info->fix.accel		= FB_ACCEL_NONE;
 	info->fix.smem_start	= fb_phys;
 	info->fix.smem_len	= fb_size;
+	info->fix.line_length = fb_data->xres * fb_data->bits_per_pixel / 8;
+	/* Pad the stride to 16-byte boundary. */
+	info->fix.line_length = round_up(info->fix.line_length,
+					TEGRA_LINEAR_PITCH_ALIGNMENT);
 
 	info->var.xres			= fb_data->xres;
 	info->var.yres			= fb_data->yres;
@@ -449,9 +455,7 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	win->virt_addr = fb_base;
 	win->phys_addr_u = 0;
 	win->phys_addr_v = 0;
-	win->stride = fb_data->xres * fb_data->bits_per_pixel / 8;
-	/* Pad the stride to 16-byte boundary. */
-	win->stride = round_up(win->stride, TEGRA_LINEAR_PITCH_ALIGNMENT);
+	win->stride = info->fix.line_length;
 	win->stride_uv = 0;
 	win->flags = TEGRA_WIN_FLAG_ENABLED;
 

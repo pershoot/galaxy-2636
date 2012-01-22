@@ -292,15 +292,26 @@ struct tegra_dc_sd_settings {
         u8 hw_update_delay;
         u8 aggressiveness;
         short bin_width;
+#if !defined(CONFIG_ICS)
         u8 phase_in;
         u8 phase_in_video;
+#else
+        u8 phase_in_settings;
+        u8 phase_in_adjustments;
+#endif
         u8 cmd;
         u8 final_agg;
         u16 cur_agg_step;
+#if !defined(CONFIG_ICS)
         u16 cur_phase_step;
         u16 phase_in_steps;
         short prev_k;
         short phase_vid_step;
+#else
+        u16 phase_settings_step;
+        u16 phase_adj_step;
+        u16 num_phase_in_steps;
+#endif
 
         struct tegra_dc_sd_agg_priorities agg_priorities;
 
@@ -345,9 +356,6 @@ enum {
 struct tegra_dc_out {
 	int			type;
 	unsigned		flags;
-#if defined(CONFIG_ICS)
-	unsigned                n_shot_delay;
-#endif
 
 	/* size in mm */
 	unsigned		h_size;
@@ -365,8 +373,10 @@ struct tegra_dc_out {
 	unsigned		depth;
 	unsigned		dither;
 
+#if !defined(CONFIG_ICS)
 	unsigned		height; /* mm */
 	unsigned		width; /* mm */
+#endif
 
 	struct tegra_dc_mode	*modes;
 	int			n_modes;
@@ -374,6 +384,9 @@ struct tegra_dc_out {
 	struct tegra_dsi_out	*dsi;
 #if defined(CONFIG_ICS)
 	struct tegra_stereo_out         *stereo;
+
+        unsigned                        height; /* mm */
+        unsigned                        width; /* mm */
 #endif
 
 	struct tegra_dc_out_pin	*out_pins;
@@ -429,11 +442,21 @@ struct tegra_dc_csc {
         unsigned short kub;
         unsigned short kvb;
 };
+
+/* palette lookup table */
+struct tegra_dc_lut {
+        u8 r[256];
+        u8 g[256];
+        u8 b[256];
+};
 #endif
 
 struct tegra_dc_win {
 	u8			idx;
 	u8			fmt;
+#if defined(CONFIG_ICS)
+        u8                      ppflags; /* see TEGRA_WIN_PPFLAG* */
+#endif
 	u32			flags;
 
 	void			*virt_addr;
@@ -477,9 +500,15 @@ struct tegra_dc_win {
 #if defined(CONFIG_ICS)
         unsigned                bandwidth;
         unsigned                new_bandwidth;
+	struct tegra_dc_lut     lut;
 #endif
 };
 
+
+#if defined(CONFIG_ICS)
+#define TEGRA_WIN_PPFLAG_CP_ENABLE      (1 << 0) /* enable RGB color lut */
+#define TEGRA_WIN_PPFLAG_CP_FBOVERRIDE  (1 << 1) /* override fbdev color lut */
+#endif
 
 #define TEGRA_WIN_FLAG_ENABLED		(1 << 0)
 #define TEGRA_WIN_FLAG_BLEND_PREMULT	(1 << 1)
@@ -606,6 +635,8 @@ void tegra_dc_config_pwm(struct tegra_dc *dc, struct tegra_dc_pwm_params *cfg);
 int tegra_dsi_send_panel_short_cmd(struct tegra_dc *dc, u8 *pdata, u8 data_len);
 
 int tegra_dc_update_csc(struct tegra_dc *dc, int win_index);
+
+int tegra_dc_update_lut(struct tegra_dc *dc, int win_index, int fboveride);
 
 /*
  * In order to get a dc's current EDID, first call tegra_dc_get_edid() from an

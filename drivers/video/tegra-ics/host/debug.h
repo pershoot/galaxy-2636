@@ -38,13 +38,15 @@ static inline void write_to_seqfile(void *ctx, const char* str, size_t len)
 
 static inline void write_to_printk(void *ctx, const char* str, size_t len)
 {
-	printk("%s", str);
+	printk(KERN_INFO "%s", str);
 }
 
 void nvhost_debug_output(struct output *o, const char* fmt, ...);
 
+extern pid_t nvhost_debug_null_kickoff_pid;
 extern pid_t nvhost_debug_force_timeout_pid;
 extern u32 nvhost_debug_force_timeout_val;
 extern u32 nvhost_debug_force_timeout_channel;
+extern unsigned int nvhost_debug_trace_cmdbuf;
 
 #endif /*__NVHOST_DEBUG_H */

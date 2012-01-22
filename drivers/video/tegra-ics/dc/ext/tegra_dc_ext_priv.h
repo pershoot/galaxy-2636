@@ -55,7 +55,7 @@ struct tegra_dc_ext_win {
 	/* Current nvmap handle (if any) for Y, U, V planes */
 	struct nvmap_handle_ref	*cur_handle[TEGRA_DC_NUM_PLANES];
 
-	struct workqueue_struct *flip_wq;
+	struct workqueue_struct	*flip_wq;
 };
 
 struct tegra_dc_ext {
@@ -74,7 +74,7 @@ struct tegra_dc_ext {
 		struct mutex			lock;
 	} cursor;
 
-	bool                            enabled;
+	bool				enabled;
 };
 
 #define TEGRA_DC_EXT_EVENT_MASK_ALL \

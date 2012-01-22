@@ -28,11 +28,13 @@
 
 #include <linux/nvhost.h>
 #include <mach/nvmap.h>
+#include <linux/kfifo.h>
 
 #include "nvhost_acm.h"
 
 struct nvhost_syncpt;
 struct nvhost_userctx_timeout;
+struct nvhost_job;
 
 /*
  * cdma
@@ -71,24 +73,6 @@ struct syncpt_buffer {
 	u32 words_per_incr;	/* # of DWORDS in buffer to incr a syncpt */
 };
 
-enum sync_queue_idx {
-	SQ_IDX_SYNCPT_ID   = 0,
-	SQ_IDX_SYNCPT_VAL  = 1,
-	SQ_IDX_FIRST_GET   = 2,
-	SQ_IDX_TIMEOUT     = 3,
-	SQ_IDX_TIMEOUT_CTX = 4,
-	SQ_IDX_NUM_SLOTS   = (SQ_IDX_TIMEOUT_CTX + sizeof(void *)/4),
-	SQ_IDX_NUM_HANDLES = (SQ_IDX_NUM_SLOTS + 1),
-	SQ_IDX_NVMAP_CTX   = (SQ_IDX_NUM_HANDLES + 1),
-	SQ_IDX_HANDLES     = (SQ_IDX_NVMAP_CTX + sizeof(void *)/4),
-};
-
-struct sync_queue {
-	unsigned int read;		    /* read position within buffer */
-	unsigned int write;		    /* write position within buffer */
-	u32 *buffer;                        /* queue data */
-};
-
 struct buffer_timeout {
 	struct delayed_work wq;		/* work queue */
 	bool initialized;		/* timer one-time setup flag */
@@ -96,7 +80,8 @@ struct buffer_timeout {
 	u32 syncpt_val;			/* syncpt value when completed */
 	ktime_t start_ktime;		/* starting time */
 	/* context timeout information */
-	struct nvhost_userctx_timeout *ctx_timeout;
+	struct nvhost_hwctx *ctx;
+	int clientid;
 };
 
 enum cdma_event {
@@ -116,7 +101,7 @@ struct nvhost_cdma {
 	unsigned int last_put;		/* last value written to DMAPUT */
 	struct push_buffer push_buffer;	/* channel's push buffer */
 	struct syncpt_buffer syncpt_buffer; /* syncpt incr buffer */
-	struct sync_queue sync_queue;	/* channel's sync queue */
+	DECLARE_KFIFO_PTR(sync_queue, struct nvhost_job *); /* job queue */
 	struct buffer_timeout timeout;	/* channel's timeout state/wq */
 	bool running;
 	bool torndown;
@@ -132,18 +117,14 @@ struct nvhost_cdma {
 int	nvhost_cdma_init(struct nvhost_cdma *cdma);
 void	nvhost_cdma_deinit(struct nvhost_cdma *cdma);
 void	nvhost_cdma_stop(struct nvhost_cdma *cdma);
-int	nvhost_cdma_begin(struct nvhost_cdma *cdma,
-		struct nvhost_userctx_timeout *timeout);
+int	nvhost_cdma_begin(struct nvhost_cdma *cdma, struct nvhost_job *job);
 void	nvhost_cdma_push(struct nvhost_cdma *cdma, u32 op1, u32 op2);
 #define NVHOST_CDMA_PUSH_GATHER_CTXSAVE 0xffffffff
 void	nvhost_cdma_push_gather(struct nvhost_cdma *cdma,
 		struct nvmap_client *client,
 		struct nvmap_handle *handle, u32 op1, u32 op2);
 void	nvhost_cdma_end(struct nvhost_cdma *cdma,
-		struct nvmap_client *user_nvmap,
-		u32 sync_point_id, u32 sync_point_value,
-		struct nvmap_handle **handles, unsigned int nr_handles,
-		struct nvhost_userctx_timeout *timeout);
+		struct nvhost_job *job);
 void	nvhost_cdma_update(struct nvhost_cdma *cdma);
 int	nvhost_cdma_flush(struct nvhost_cdma *cdma, int timeout);
 void	nvhost_cdma_peek(struct nvhost_cdma *cdma,

@@ -61,7 +61,7 @@ struct nvmap_carveout_node {
 	struct nvmap_heap	*carveout;
 	int			index;
 	struct list_head	clients;
-	spinlock_t 		clients_lock;
+	spinlock_t		clients_lock;
 };
 
 struct nvmap_device {
@@ -287,7 +287,7 @@ int nvmap_flush_heap_block(struct nvmap_client *client,
 	if (prot == NVMAP_HANDLE_UNCACHEABLE || prot == NVMAP_HANDLE_WRITE_COMBINE)
 		goto out;
 
-	if ( len >= FLUSH_CLEAN_BY_SET_WAY_THRESHOLD ) {
+	if (len >= FLUSH_CLEAN_BY_SET_WAY_THRESHOLD) {
 		inner_flush_cache_all();
 		if (prot != NVMAP_HANDLE_INNER_CACHEABLE)
 			outer_flush_range(block->base, block->base + len);
@@ -315,7 +315,7 @@ int nvmap_flush_heap_block(struct nvmap_client *client,
 	if (prot != NVMAP_HANDLE_INNER_CACHEABLE)
 		outer_flush_range(block->base, block->base + len);
 
-	nvmap_free_pte((client ? client->dev: nvmap_dev), pte);
+	nvmap_free_pte((client ? client->dev : nvmap_dev), pte);
 out:
 	wmb();
 	return 0;
@@ -353,15 +353,15 @@ void nvmap_carveout_commit_subtract(struct nvmap_client *client,
 		return;
 
 	spin_lock_irqsave(&node->clients_lock, flags);
+	BUG_ON(client->carveout_commit[node->index].commit < len);
 	client->carveout_commit[node->index].commit -= len;
-	BUG_ON(client->carveout_commit[node->index].commit < 0);
 	/* if no more allocation in this carveout for this node, delete it */
 	if (!client->carveout_commit[node->index].commit)
 		list_del_init(&client->carveout_commit[node->index].list);
 	spin_unlock_irqrestore(&node->clients_lock, flags);
 }
 
-static struct nvmap_client* get_client_from_carveout_commit(
+static struct nvmap_client *get_client_from_carveout_commit(
 	struct nvmap_carveout_node *node, struct nvmap_carveout_commit *commit)
 {
 	struct nvmap_carveout_commit *first_commit = commit - node->index;
@@ -680,7 +680,7 @@ static void destroy_client(struct nvmap_client *client)
 		pins = atomic_read(&ref->pin);
 
 		if (ref->handle->owner == client)
-		    ref->handle->owner = NULL;
+			ref->handle->owner = NULL;
 
 		while (pins--)
 			nvmap_unpin_handles(client, &ref->handle, 1);
@@ -983,12 +983,12 @@ static void allocations_stringify(struct nvmap_client *client,
 			rb_entry(n, struct nvmap_handle_ref, node);
 		struct nvmap_handle *handle = ref->handle;
 		if (handle->alloc && !handle->heap_pgalloc) {
-			seq_printf(s, "%-18s %-18s %8lx %10u\n", "", "",
+			seq_printf(s, "%-18s %-18s %8lx %10u %8x\n", "", "",
 					(unsigned long)(handle->carveout->base),
-					handle->size);
+					handle->size, handle->userflags);
 		} else if (handle->alloc && handle->heap_pgalloc) {
-			seq_printf(s, "%-18s %-18s %8lx %10u\n", "", "",
-					base, handle->size);
+			seq_printf(s, "%-18s %-18s %8lx %10u %8x\n", "", "",
+					base, handle->size, handle->userflags);
 		}
 	}
 }
@@ -1001,8 +1001,8 @@ static int nvmap_debug_allocations_show(struct seq_file *s, void *unused)
 	unsigned int total = 0;
 
 	spin_lock_irqsave(&node->clients_lock, flags);
-	seq_printf(s, "%-18s %18s %8s %10s\n", "CLIENT", "PROCESS", "PID",
-		"SIZE");
+	seq_printf(s, "%-18s %18s %8s %10s %8s\n", "CLIENT", "PROCESS", "PID",
+		"SIZE", "FLAGS");
 	seq_printf(s, "%-18s %18s %8s %10s\n", "", "",
 					"BASE", "SIZE");
 	list_for_each_entry(commit, &node->clients, list) {
@@ -1026,7 +1026,7 @@ static int nvmap_debug_allocations_open(struct inode *inode, struct file *file)
 			   inode->i_private);
 }
 
-static struct file_operations debug_allocations_fops = {
+static const struct file_operations debug_allocations_fops = {
 	.open = nvmap_debug_allocations_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
@@ -1061,7 +1061,7 @@ static int nvmap_debug_clients_open(struct inode *inode, struct file *file)
 	return single_open(file, nvmap_debug_clients_show, inode->i_private);
 }
 
-static struct file_operations debug_clients_fops = {
+static const struct file_operations debug_clients_fops = {
 	.open = nvmap_debug_clients_open,
 	.read = seq_read,
 	.llseek = seq_lseek,

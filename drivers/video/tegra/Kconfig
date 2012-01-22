@@ -12,6 +12,7 @@ config TEGRA_GRHOST
 config TEGRA_GRHOST_ICS
         tristate "Tegra graphics host driver"
 	depends on ICS
+	default y
         help
           Driver for the Tegra graphics host hardware.
 
@@ -122,7 +123,7 @@ config NVMAP_CARVEOUT_COMPACTOR
 
 config NVMAP_SEARCH_GLOBAL_HANDLES
 	bool "Check global handle list when generating memory IDs"
-	depends on TEGRA_NVMAP
+	depends on TEGRA_NVMAP && !ICS
 	default n
 	help
 	  Say Y here to allow the system to search through memory handles not
@@ -152,6 +153,14 @@ config TOUCHWIZ_UX
         default n
         help
           Say Y here to enable Touchwiz UX support.
+
+config TEGRA_NVHDCP
+        bool "Support NVHDCP content protection on HDMI"
+	depends on ICS
+        default n
+        help
+          Say Y here to support NVHDCP upstream and downstream protocols, this
+          requires a correctly fused chip to negotiate keys.
 
 endif
 

@@ -30,7 +30,7 @@
 #include <linux/sched.h>
 #include <linux/wait.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #include <mach/nvmap.h>
 
@@ -84,6 +84,7 @@ struct nvmap_handle {
 	bool secure;		/* zap IOVMM area on unpin */
 	bool heap_pgalloc;	/* handle is page allocated (sysmem / iovmm) */
 	bool alloc;		/* handle has memory allocated */
+	unsigned int userflags;	/* flags passed from userspace */
 	struct mutex lock;
 };
 
@@ -116,17 +117,6 @@ struct nvmap_client {
 	struct task_struct		*task;
 	struct list_head		list;
 	struct nvmap_carveout_commit	carveout_commit[0];
-};
-
-/* handle_ref objects are client-local references to an nvmap_handle;
- * they are distinct objects so that handles can be unpinned and
- * unreferenced the correct number of times when a client abnormally
- * terminates */
-struct nvmap_handle_ref {
-	struct nvmap_handle *handle;
-	struct rb_node	node;
-	atomic_t	dupes;	/* number of times to free on file close */
-	atomic_t	pin;	/* number of times to unpin on free */
 };
 
 struct nvmap_vma_priv {

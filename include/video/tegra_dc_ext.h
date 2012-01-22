@@ -55,6 +55,10 @@
 #define TEGRA_DC_EXT_BLEND_PREMULT	1
 #define TEGRA_DC_EXT_BLEND_COVERAGE	2
 
+#define TEGRA_DC_EXT_FLIP_FLAG_INVERT_H	(1 << 0)
+#define TEGRA_DC_EXT_FLIP_FLAG_INVERT_V	(1 << 1)
+#define TEGRA_DC_EXT_FLIP_FLAG_TILED	(1 << 2)
+
 struct tegra_dc_ext_flip_windowattr {
 	__s32	index;
 	__u32	buff_id;
@@ -82,11 +86,12 @@ struct tegra_dc_ext_flip_windowattr {
 	struct timespec timestamp;
 	__u32	pre_syncpt_id;
 	__u32	pre_syncpt_val;
-	/* These are optional; if zero, U and V are taken from buff_id */
+	/* These two are optional; if zero, U and V are taken from buff_id */
 	__u32	buff_id_u;
 	__u32	buff_id_v;
+	__u32	flags;
 	/* Leave some wiggle room for future expansion */
-	__u32   pad[6];
+	__u32   pad[5];
 };
 
 #define TEGRA_DC_EXT_FLIP_N_WINDOWS	3
@@ -164,6 +169,36 @@ struct tegra_dc_ext_csc {
 	__u16 kvb;	/* s.2.8 */
 };
 
+/*
+ * RGB Lookup table
+ *
+ * In true-color and YUV modes this is used for post-CSC RGB->RGB lookup, i.e.
+ * gamma-correction. In palette-indexed RGB modes, this table designates the
+ * mode's color palette.
+ *
+ * To convert 8-bit per channel RGB values to 16-bit, duplicate the 8 bits
+ * in low and high byte, e.g. r=r|(r<<8)
+ *
+ * To just update flags, set len to 0.
+ *
+ * Current Tegra DC hardware supports 8-bit per channel to 8-bit per channel,
+ * and each hardware window (overlay) uses its own lookup table.
+ *
+ */
+struct tegra_dc_ext_lut {
+	__u32  win_index; /* window index to set lut for */
+	__u32  flags;     /* Flag bitmask, see TEGRA_DC_EXT_LUT_FLAGS_* */
+	__u32  start;     /* start index to update lut from */
+	__u32  len;       /* number of valid lut entries */
+	__u16 *r;         /* array of 16-bit red values, 0 to reset */
+	__u16 *g;         /* array of 16-bit green values, 0 to reset */
+	__u16 *b;         /* array of 16-bit blue values, 0 to reset */
+};
+
+/* tegra_dc_ext_lut.flags - override global fb device lookup table.
+ * Default behaviour is double-lookup.
+ */
+#define TEGRA_DC_EXT_LUT_FLAGS_FBOVERRIDE 0x01
 
 #define TEGRA_DC_EXT_FLAGS_ENABLED	1
 struct tegra_dc_ext_status {
@@ -205,6 +240,8 @@ struct tegra_dc_ext_status {
 #define TEGRA_DC_EXT_GET_VBLANK_SYNCPT \
 	_IOR('D', 0x09, __u32)
 
+#define TEGRA_DC_EXT_SET_LUT \
+	_IOW('D', 0x0A, struct tegra_dc_ext_lut)
 
 enum tegra_dc_ext_control_output_type {
 	TEGRA_DC_EXT_DSI,

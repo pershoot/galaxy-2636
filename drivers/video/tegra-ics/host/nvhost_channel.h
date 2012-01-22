@@ -26,6 +26,7 @@
 #include "nvhost_cdma.h"
 #include "nvhost_acm.h"
 #include "nvhost_hwctx.h"
+#include "nvhost_job.h"
 
 #include <linux/cdev.h>
 #include <linux/io.h>
@@ -50,6 +51,13 @@ struct nvhost_channeldesc {
 	struct nvhost_moduledesc module;
 };
 
+struct nvhost_channel_gather {
+	u32 words;
+	phys_addr_t mem;
+	u32 mem_id;
+	int offset;
+};
+
 struct nvhost_channel {
 	int refcount;
 	int chid;
@@ -67,41 +75,15 @@ struct nvhost_channel {
 	struct nvhost_cdma cdma;
 };
 
-struct nvhost_op_pair {
-	u32 op1;
-	u32 op2;
-};
-
-struct nvhost_cpuinterrupt {
-	u32 syncpt_val;
-	void *intr_data;
-};
-
 int nvhost_channel_init(
 	struct nvhost_channel *ch,
 	struct nvhost_master *dev, int index);
 
-int nvhost_channel_submit(
-	struct nvhost_channel *channel,
-	struct nvhost_hwctx *hwctx,
-	struct nvmap_client *user_nvmap,
-	u32 *gather,
-	u32 *gather_end,
-	struct nvhost_waitchk *waitchk,
-	struct nvhost_waitchk *waitchk_end,
-	u32 waitchk_mask,
-	struct nvmap_handle **unpins,
-	int nr_unpins,
-	u32 syncpt_id,
-	u32 syncpt_incrs,
-	struct nvhost_userctx_timeout *timeout_ctx,
-	u32 priority,
-	u32 *syncpt_value,
-	bool null_kickoff);
+int nvhost_channel_submit(struct nvhost_job *job);
 
 struct nvhost_channel *nvhost_getchannel(struct nvhost_channel *ch);
 void nvhost_putchannel(struct nvhost_channel *ch, struct nvhost_hwctx *ctx);
-void nvhost_channel_suspend(struct nvhost_channel *ch);
+int nvhost_channel_suspend(struct nvhost_channel *ch);
 
 #define channel_cdma_op(ch) (ch->dev->op.cdma)
 #define channel_op(ch) (ch->dev->op.channel)

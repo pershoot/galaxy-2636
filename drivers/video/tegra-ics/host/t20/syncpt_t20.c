@@ -120,7 +120,7 @@ static int t20_syncpt_wait_check(struct nvhost_syncpt *sp,
 				 struct nvmap_client *nvmap,
 				 u32 waitchk_mask,
 				 struct nvhost_waitchk *wait,
-				 struct nvhost_waitchk *waitend)
+				 int num_waitchk)
 {
 	u32 idx;
 	int err = 0;
@@ -131,10 +131,10 @@ static int t20_syncpt_wait_check(struct nvhost_syncpt *sp,
 			nvhost_syncpt_update_min(sp, idx);
 	}
 
-	BUG_ON(!wait && !waitend);
+	BUG_ON(!wait && !num_waitchk);
 
 	/* compare syncpt vs wait threshold */
-	while (wait != waitend) {
+	while (num_waitchk) {
 		u32 syncpt, override;
 
 		BUG_ON(wait->syncpt_id >= NV_HOST1X_SYNCPT_NB_PTS);
@@ -152,7 +152,7 @@ static int t20_syncpt_wait_check(struct nvhost_syncpt *sp,
 			dev_dbg(&syncpt_to_dev(sp)->pdev->dev,
 			    "drop WAIT id %d (%s) thresh 0x%x, syncpt 0x%x\n",
 			    wait->syncpt_id,
-			    nvhost_syncpt_name(wait->syncpt_id),
+			    syncpt_op(sp).name(sp, wait->syncpt_id),
 			    wait->thresh, syncpt);
 
 			/* patch the wait */
@@ -164,7 +164,9 @@ static int t20_syncpt_wait_check(struct nvhost_syncpt *sp,
 			if (err)
 				break;
 		}
+
 		wait++;
+		num_waitchk--;
 	}
 	return err;
 }

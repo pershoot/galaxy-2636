@@ -23,8 +23,13 @@
 #ifndef __NVHOST_CHANNEL_T20_H
 #define __NVHOST_CHANNEL_T20_H
 
+#include "hardware_t20.h"
 #include "../nvhost_channel.h"
 
 extern const struct nvhost_channeldesc nvhost_t20_channelmap[];
+
+/* Reads words from FIFO */
+int nvhost_drain_read_fifo(void __iomem *chan_regs,
+		u32 *ptr, unsigned int count, unsigned int *pending);
 
 #endif

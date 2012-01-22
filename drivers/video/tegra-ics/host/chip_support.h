@@ -29,7 +29,6 @@ struct nvhost_userctx_timeout;
 struct nvhost_master;
 struct nvhost_channel;
 struct nvmap_handle;
-struct nvhost_waitchk;
 struct nvmap_client;
 struct nvhost_hwctx;
 struct nvhost_cdma;
@@ -40,30 +39,16 @@ struct nvhost_cpuaccess;
 struct nvhost_module;
 struct nvhost_master;
 struct dentry;
+struct nvhost_job;
 
 struct nvhost_chip_support {
 	struct {
 		int (*init)(struct nvhost_channel *,
 			    struct nvhost_master *,
 			    int chid);
-		int (*submit)(struct nvhost_channel *,
-			      struct nvhost_hwctx *,
-			      struct nvmap_client *,
-			      u32 *gather,
-			      u32 *gather_end,
-			      struct nvhost_waitchk *waitchk,
-			      struct nvhost_waitchk *waitchk_end,
-			      u32 waitchk_mask,
-			      struct nvmap_handle **unpins,
-			      int nr_unpins,
-			      u32 syncpt_id,
-			      u32 syncpt_incrs,
-			      struct nvhost_userctx_timeout *timeout,
-			      u32 *syncpt_value,
-			      bool null_kickoff);
+		int (*submit)(struct nvhost_job *job);
 		int (*read3dreg)(struct nvhost_channel *channel,
 				struct nvhost_hwctx *hwctx,
-				struct nvhost_userctx_timeout *timeout,
 				u32 offset,
 				u32 *value);
 	} channel;
@@ -127,7 +112,7 @@ struct nvhost_chip_support {
 				  struct nvmap_client *nvmap,
 				  u32 waitchk_mask,
 				  struct nvhost_waitchk *wait,
-				  struct nvhost_waitchk *waitend);
+				  int num_waitchk);
 		void (*debug)(struct nvhost_syncpt *);
 		const char * (*name)(struct nvhost_syncpt *, u32 id);
 	} syncpt;
@@ -135,13 +120,14 @@ struct nvhost_chip_support {
 	struct {
 		void (*init_host_sync)(struct nvhost_intr *);
 		void (*set_host_clocks_per_usec)(
-		        struct nvhost_intr *, u32 clocks);
+			struct nvhost_intr *, u32 clocks);
 		void (*set_syncpt_threshold)(
-		        struct nvhost_intr *, u32 id, u32 thresh);
+			struct nvhost_intr *, u32 id, u32 thresh);
 		void (*enable_syncpt_intr)(struct nvhost_intr *, u32 id);
 		void (*disable_all_syncpt_intrs)(struct nvhost_intr *);
 		int  (*request_host_general_irq)(struct nvhost_intr *);
 		void (*free_host_general_irq)(struct nvhost_intr *);
+		int (*request_syncpt_irq)(struct nvhost_intr_syncpt *syncpt);
 	} intr;
 
 	struct {

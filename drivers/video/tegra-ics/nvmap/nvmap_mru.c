@@ -174,7 +174,7 @@ int nvmap_mru_init(struct nvmap_share *share)
 	if (!share->mru_lists)
 		return -ENOMEM;
 
-	for (i = 0; i <= share->nr_mru; i++)
+	for (i = 0; i < share->nr_mru; i++)
 		INIT_LIST_HEAD(&share->mru_lists[i]);
 
 	return 0;
@@ -182,8 +182,6 @@ int nvmap_mru_init(struct nvmap_share *share)
 
 void nvmap_mru_destroy(struct nvmap_share *share)
 {
-	if (share->mru_lists)
-		kfree(share->mru_lists);
-
+	kfree(share->mru_lists);
 	share->mru_lists = NULL;
 }

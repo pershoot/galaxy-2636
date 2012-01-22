@@ -143,9 +143,9 @@ int tegra_dc_ext_set_cursor_image(struct tegra_dc_ext_user *user,
 	return 0;
 
 unlock:
-        mutex_unlock(&ext->cursor.lock);
+	mutex_unlock(&ext->cursor.lock);
 
-        return ret;
+	return ret;
 }
 
 int tegra_dc_ext_set_cursor(struct tegra_dc_ext_user *user,
@@ -197,7 +197,7 @@ int tegra_dc_ext_set_cursor(struct tegra_dc_ext_user *user,
 	return 0;
 
 unlock:
-        mutex_unlock(&ext->cursor.lock);
+	mutex_unlock(&ext->cursor.lock);
 
-        return ret;
+	return ret;
 }

@@ -30,6 +30,7 @@ struct tegra_edid_pvt {
 	struct kref			refcnt;
 	struct tegra_edid_hdmi_eld	eld;
 	bool				support_stereo;
+	bool				support_underscan;
 	/* Note: dc_edid must remain the last member */
 	struct tegra_dc_edid		dc_edid;
 };
@@ -210,6 +211,12 @@ int tegra_edid_parse_ext_block(const u8 *raw, int idx,
 			basic_audio = true;
 		}
 	}
+
+	if (raw[3] & 0x80)
+		edid->support_underscan = 1;
+	else
+		edid->support_underscan = 0;
+
 	ptr = &raw[4];
 
 	while (ptr < &raw[idx]) {
@@ -329,6 +336,81 @@ static void data_release(struct kref *ref)
 	vfree(data);
 }
 
+int tegra_edid_get_monspecs_test(struct tegra_edid *edid,
+			struct fb_monspecs *specs, unsigned char *edid_ptr)
+{
+	int i, j, ret;
+	int extension_blocks;
+	struct tegra_edid_pvt *new_data, *old_data;
+	u8 *data;
+
+	new_data = vmalloc(SZ_32K + sizeof(struct tegra_edid_pvt));
+	if (!new_data)
+		return -ENOMEM;
+
+	kref_init(&new_data->refcnt);
+
+	new_data->support_stereo = 0;
+	new_data->support_underscan = 0;
+
+	data = new_data->dc_edid.buf;
+	memcpy(data, edid_ptr, 128);
+
+	memset(specs, 0x0, sizeof(struct fb_monspecs));
+	memset(&new_data->eld, 0x0, sizeof(new_data->eld));
+	fb_edid_to_monspecs(data, specs);
+	if (specs->modedb == NULL) {
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	memcpy(new_data->eld.monitor_name, specs->monitor,
+					sizeof(specs->monitor));
+
+	new_data->eld.mnl = strlen(new_data->eld.monitor_name) + 1;
+	new_data->eld.product_id[0] = data[0x8];
+	new_data->eld.product_id[1] = data[0x9];
+	new_data->eld.manufacture_id[0] = data[0xA];
+	new_data->eld.manufacture_id[1] = data[0xB];
+
+	extension_blocks = data[0x7e];
+	for (i = 1; i <= extension_blocks; i++) {
+		memcpy(data+128, edid_ptr+128, 128);
+
+		if (data[i * 128] == 0x2) {
+			fb_edid_add_monspecs(data + i * 128, specs);
+
+			tegra_edid_parse_ext_block(data + i * 128,
+					data[i * 128 + 2], new_data);
+
+			if (new_data->support_stereo) {
+				for (j = 0; j < specs->modedb_len; j++) {
+					if (tegra_edid_mode_support_stereo(
+						&specs->modedb[j]))
+						specs->modedb[j].vmode |=
+						FB_VMODE_STEREO_FRAME_PACK;
+				}
+			}
+		}
+	}
+
+	new_data->dc_edid.len = i * 128;
+
+	mutex_lock(&edid->lock);
+	old_data = edid->data;
+	edid->data = new_data;
+	mutex_unlock(&edid->lock);
+
+	if (old_data)
+		kref_put(&old_data->refcnt, data_release);
+
+	tegra_edid_dump(edid);
+	return 0;
+fail:
+	vfree(new_data);
+	return ret;
+}
+
 int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 {
 	int i;
@@ -406,6 +488,14 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 fail:
 	vfree(new_data);
 	return ret;
+}
+
+int tegra_edid_underscan_supported(struct tegra_edid *edid)
+{
+	if ((!edid) || (!edid->data))
+		return 0;
+
+	return edid->data->support_underscan;
 }
 
 int tegra_edid_get_eld(struct tegra_edid *edid, struct tegra_edid_hdmi_eld *elddata)

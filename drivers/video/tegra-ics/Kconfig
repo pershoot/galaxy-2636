@@ -9,7 +9,7 @@ config TEGRA_GRHOST
 
 config TEGRA_DC
 	tristate "Tegra Display Contoller"
-	depends on ARCH_TEGRA
+	depends on ARCH_TEGRA && TEGRA_GRHOST
 	select FB_MODE_HELPERS
 	select I2C
 	help
@@ -18,7 +18,6 @@ config TEGRA_DC
 config TEGRA_OVERLAY
 	tristate "Tegra Overlay Device Node"
 	depends on TEGRA_DC && !TEGRA_DC_EXTENSIONS
-	default y
 	help
 	  Device node for multi-client overlay support.
 
@@ -35,6 +34,7 @@ config FB_TEGRA
 config TEGRA_DC_EXTENSIONS
 	bool "Tegra Display Controller Extensions"
 	depends on TEGRA_DC
+	default y
 	help
 	  This exposes support for extended capabilities of the Tegra display
 	  controller to userspace drivers.
@@ -91,16 +91,6 @@ config NVMAP_CARVEOUT_COMPACTOR
 	  heap and retries the failed allocation.
 	  Say Y here to let nvmap to keep carveout fragmentation under control.
 
-config NVMAP_SEARCH_GLOBAL_HANDLES
-	bool "Check global handle list when generating memory IDs"
-	depends on TEGRA_NVMAP
-	default n
-	help
-	  Say Y here to allow the system to search through memory handles not
-	  owned by the caller when generating a memory ID.  This shouldn't be
-	  necessary for well-written applications, but is provided for
-	  compatibility with legacy applications.
-	  If unsure, say N.
 
 config NVMAP_VPR
 	bool "Enable VPR Heap."
@@ -115,6 +105,21 @@ config TEGRA_DSI
 	default n
 	help
 	  Say Y here to enable the DSI panel.
+
+config NVMAP_CONVERT_CARVEOUT_TO_IOVMM
+	bool "Convert carveout to IOVMM"
+	depends on TEGRA_NVMAP && TEGRA_IOVMM_SMMU
+	default y
+	help
+	  Say Y here to force to convert carveout memory requests to
+	  I/O virtual memory requests.
+
+config TEGRA_NVHDCP
+	bool "Support NVHDCP content protection on HDMI"
+	default n
+	help
+	  Say Y here to support NVHDCP upstream and downstream protocols, this
+	  requires a correctly fused chip to negotiate keys.
 
 endif
 
