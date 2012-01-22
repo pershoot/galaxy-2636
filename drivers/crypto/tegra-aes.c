@@ -36,7 +36,11 @@
 
 #include <mach/arb_sema.h>
 #include <mach/clk.h>
+#if !defined(CONFIG_ICS)
 #include "../video/tegra/nvmap/nvmap.h"
+#else
+#include "../video/tegra-ics/nvmap/nvmap.h"
+#endif
 
 #include <crypto/scatterwalk.h>
 #include <crypto/aes.h>

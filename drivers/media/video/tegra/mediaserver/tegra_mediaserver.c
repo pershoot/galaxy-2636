@@ -21,8 +21,13 @@
 #include <linux/mm.h>
 
 #include <linux/tegra_mediaserver.h>
+#if !defined(CONFIG_ICS)
 #include "../avp/nvavp.h"
 #include "../../../../video/tegra/nvmap/nvmap.h"
+#else
+#include "../avp-ics/nvavp.h"
+#include "../../../../video/tegra-ics/nvmap/nvmap.h"
+#endif
 
 #define CHECK_STATUS(e, tag) \
 	do { if (e < 0) goto tag; } while (0)

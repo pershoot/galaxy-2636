@@ -31,7 +31,7 @@
 #include <mach/clk.h>
 #include <mach/nvmap.h>
 
-#include "../../../../video/tegra/nvmap/nvmap.h"
+#include "../../../../video/tegra-ics/nvmap/nvmap.h"
 
 #include "avp_msg.h"
 #include "trpc.h"
