@@ -131,6 +131,7 @@ void __init tegra_init_cache(void)
 {
 #ifdef CONFIG_CACHE_L2X0
 	void __iomem *p = IO_ADDRESS(TEGRA_ARM_PERIF_BASE) + 0x3000;
+	u32 aux_ctrl;
 
 #ifndef CONFIG_TRUSTED_FOUNDATIONS
    /*
@@ -143,13 +144,15 @@ void __init tegra_init_cache(void)
    The "l2x0_init" will in fact call an SMC intruction to switch from Normal context to Secure context.
    The configuration and activation will be done in Secure.
    */
-	writel(0x331, p + L2X0_TAG_LATENCY_CTRL);
-	writel(0x441, p + L2X0_DATA_LATENCY_CTRL);
-	writel(7, p + L2X0_PREFETCH_OFFSET);
+	writel_relaxed(0x331, p + L2X0_TAG_LATENCY_CTRL);
+	writel_relaxed(0x441, p + L2X0_DATA_LATENCY_CTRL);
 	writel(2, p + L2X0_PWR_CTRL);
 #endif
 
-	l2x0_init(p, 0x7C480001, 0x8200c3fe);
+	aux_ctrl = readl(p + L2X0_CACHE_TYPE);
+	aux_ctrl = (aux_ctrl & 0x700) << (17-8);
+	aux_ctrl |= 0x7C000001;
+	l2x0_init(p, aux_ctrl, 0x8200c3fe);
 #endif
 
 }
@@ -414,7 +417,7 @@ void tegra_move_framebuffer(unsigned long to, unsigned long from,
 		for (i = 0 ; i < size; i += PAGE_SIZE) {
 			page = phys_to_page(from + i);
 			from_virt = kmap(page);
-			memcpy_toio(to_io + i, from_virt, PAGE_SIZE);
+			memcpy(to_io + i, from_virt, PAGE_SIZE);
 			kunmap(page);
 		}
 	} else {
