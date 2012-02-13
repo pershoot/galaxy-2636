@@ -189,7 +189,8 @@ static void __clk_set_cansleep(struct clk *c)
 		if (child->parent != c)
 			continue;
 
-		WARN(child->ops && child->ops->set_parent,
+		WARN(child->ops && child->ops->set_parent
+			&& (child->flags & MUX),
 			"can't make child clock %s of %s "
 			"sleepable if it's parent could change",
 			child->name, c->name);
