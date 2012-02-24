@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-harmony-panel.c
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2012, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -208,7 +208,6 @@ static struct platform_device harmony_nvmap_device = {
 
 static struct platform_device *harmony_gfx_devices[] __initdata = {
 	&harmony_nvmap_device,
-	&tegra_grhost_device,
 	&tegra_pwfm0_device,
 	&harmony_backlight_device,
 };
