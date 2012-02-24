@@ -321,7 +321,6 @@ static struct platform_device ventana_nvmap_device = {
 
 static struct platform_device *ventana_gfx_devices[] __initdata = {
 	&ventana_nvmap_device,
-	&tegra_grhost_device,
 	&tegra_pwfm2_device,
 	&ventana_backlight_device,
 };

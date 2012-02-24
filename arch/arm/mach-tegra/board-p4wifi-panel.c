@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-p3-panel.c
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2012, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -318,7 +318,9 @@ static struct platform_device p3_device_cmc623 = {
 
 static struct platform_device *p3_gfx_devices[] __initdata = {
 	&p3_nvmap_device,
+#if !defined(CONFIG_ICS)
 	&tegra_grhost_device,
+#endif
 	&tegra_pwfm2_device,
 	&p3_backlight_device,
 	&p3_device_cmc623,

@@ -295,7 +295,9 @@ static struct platform_device p3_device_cmc623 = {
 
 static struct platform_device *p3_gfx_devices[] __initdata = {
 	&p3_nvmap_device,
-	&tegra_grhost_device,
+#if !defined(CONFIG_ICS)
+        &tegra_grhost_device,
+#endif
 	&tegra_pwfm2_device,
 	&p3_backlight_device,
 	&p3_device_cmc623,

@@ -284,7 +284,6 @@ static struct platform_device whistler_nvmap_device = {
 
 static struct platform_device *whistler_gfx_devices[] __initdata = {
 	&whistler_nvmap_device,
-	&tegra_grhost_device,
 	&whistler_disp1_backlight_device,
 };
 

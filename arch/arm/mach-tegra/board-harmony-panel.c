@@ -208,7 +208,6 @@ static struct platform_device harmony_nvmap_device = {
 
 static struct platform_device *harmony_gfx_devices[] __initdata = {
 	&harmony_nvmap_device,
-	&tegra_grhost_device,
 	&tegra_pwfm0_device,
 	&harmony_backlight_device,
 };

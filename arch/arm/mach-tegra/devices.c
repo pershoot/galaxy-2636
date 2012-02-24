@@ -778,6 +778,7 @@ struct platform_device tegra_uarte_device = {
 	},
 };
 
+#if !defined(CONFIG_ICS)
 static struct resource tegra_grhost_resources[] = {
 	{
 		.start = TEGRA_HOST1X_BASE,
@@ -827,6 +828,7 @@ struct platform_device tegra_grhost_device = {
 	.resource = tegra_grhost_resources,
 	.num_resources = ARRAY_SIZE(tegra_grhost_resources),
 };
+#endif
 
 static struct resource tegra_avp_resources[] = {
 	[0] = {
