@@ -1307,7 +1307,6 @@ static inline void unregister_netdevice(struct net_device *dev)
 	unregister_netdevice_queue(dev, NULL);
 }
 
-extern int 		netdev_refcnt_read(const struct net_device *dev);
 extern void		free_netdev(struct net_device *dev);
 extern void		synchronize_net(void);
 extern int 		register_netdevice_notifier(struct notifier_block *nb);
@@ -2173,6 +2172,8 @@ extern void dev_seq_stop(struct seq_file *seq, void *v);
 
 extern int netdev_class_create_file(struct class_attribute *class_attr);
 extern void netdev_class_remove_file(struct class_attribute *class_attr);
+
+extern struct kobj_ns_type_operations net_ns_type_operations;
 
 extern char *netdev_drivername(const struct net_device *dev, char *buffer, int len);
 

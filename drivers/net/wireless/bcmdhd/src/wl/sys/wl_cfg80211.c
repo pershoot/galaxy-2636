@@ -4495,9 +4495,6 @@ static struct wireless_dev *wl_alloc_wdev(struct device *dev)
 #endif				/* !WL_POWERSAVE_DISABLED */
 	wdev->wiphy->flags |= WIPHY_FLAG_NETNS_OK |
 		WIPHY_FLAG_4ADDR_AP |
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)
-		WIPHY_FLAG_SUPPORTS_SEPARATE_DEFAULT_KEYS |
-#endif
 		WIPHY_FLAG_4ADDR_STATION;
 
 	WL_DBG(("Registering custom regulatory)\n"));
