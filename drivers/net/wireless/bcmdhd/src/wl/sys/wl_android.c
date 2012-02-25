@@ -828,7 +828,11 @@ int wl_android_init(void)
 #if defined(CUSTOMER_HW2) || defined(CUSTOMER_HW_SAMSUNG)
 	if (!iface_name[0]) {
 		memset(iface_name, 0, IFNAMSIZ);
+#if !defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA)
 		bcm_strncpy_s(iface_name, IFNAMSIZ, "wlan", IFNAMSIZ);
+#else
+		bcm_strncpy_s(iface_name, IFNAMSIZ, "eth", IFNAMSIZ);
+#endif
 	}
 #endif /* CUSTOMER_HW2 || CUSTOMER_HW_SAMSUNG */
 	return ret;

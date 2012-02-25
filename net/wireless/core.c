@@ -235,7 +235,11 @@ int cfg80211_switch_netns(struct cfg80211_registered_device *rdev,
 
 	list_for_each_entry(wdev, &rdev->netdev_list, list) {
 		wdev->netdev->features &= ~NETIF_F_NETNS_LOCAL;
+#if !defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA)
 		err = dev_change_net_namespace(wdev->netdev, net, "wlan%d");
+#else
+		err = dev_change_net_namespace(wdev->netdev, net, "eth%d");
+#endif
 		if (err)
 			break;
 		wdev->netdev->features |= NETIF_F_NETNS_LOCAL;
@@ -248,8 +252,13 @@ int cfg80211_switch_netns(struct cfg80211_registered_device *rdev,
 		list_for_each_entry_continue_reverse(wdev, &rdev->netdev_list,
 						     list) {
 			wdev->netdev->features &= ~NETIF_F_NETNS_LOCAL;
+#if !defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA)
 			err = dev_change_net_namespace(wdev->netdev, net,
 							"wlan%d");
+#else
+			err = dev_change_net_namespace(wdev->netdev, net,
+							"eth%d");
+#endif
 			WARN_ON(err);
 			wdev->netdev->features |= NETIF_F_NETNS_LOCAL;
 		}
