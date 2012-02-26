@@ -386,7 +386,6 @@ static int unlock_bootloader(struct i2c_client *client)
 
 int mxt_check_firmware(struct device *dev, int *ver)
 {
-	int ret;
 #if READ_FW_FROM_HEADER
 	struct firmware *fw = NULL;
 	fw = kzalloc(sizeof(struct firmware), GFP_KERNEL);
@@ -396,6 +395,7 @@ int mxt_check_firmware(struct device *dev, int *ver)
 	/*pr_info("size of firmware: %d", fw->size);*/
 #else
 	const struct firmware *fw = NULL;
+	int ret;
 
 	ret = request_firmware(&fw, fn, dev);
 	if (ret < 0) {
