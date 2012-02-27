@@ -70,6 +70,8 @@
 
 static int no_vsync;
 
+static void _tegra_dc_controller_disable(struct tegra_dc *dc);
+
 module_param_named(no_vsync, no_vsync, int, S_IRUGO | S_IWUSR);
 
 static int use_dynamic_emc = 1;
@@ -1449,15 +1451,13 @@ void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk)
 			clk_get_sys(NULL, dc->out->parent_clk ? : "pll_d_out0");
 		struct clk *base_clk = clk_get_parent(parent_clk);
 
-		/* needs to match tegra_dc_hdmi_supported_modes[]
-		and tegra_pll_d_freq_table[] */
-		if (dc->mode.pclk > 70000000)
-			rate = 594000000;
-		else if (dc->mode.pclk > 25200000)
-			rate = 216000000;
-		else
-			rate = 504000000;
+		/*
+		 * Providing dynamic frequency rate setting for T20/T30 HDMI.
+		 * The required rate needs to be setup at 4x multiplier,
+		 * as out0 is 1/2 of the actual PLL output.
+		 */
 
+		rate = dc->mode.pclk * 4;
 		if (rate != clk_get_rate(base_clk))
 			clk_set_rate(base_clk, rate);
 
@@ -2415,7 +2415,7 @@ static u32 get_syncpt(struct tegra_dc *dc, int idx)
 	return syncpt_id;
 }
 
-static void tegra_dc_init(struct tegra_dc *dc)
+static int tegra_dc_init(struct tegra_dc *dc)
 {
 	int i;
 
@@ -2481,11 +2481,14 @@ static void tegra_dc_init(struct tegra_dc *dc)
 	print_mode(dc, &dc->mode, __func__);
 
 	if (dc->mode.pclk)
-		tegra_dc_program_mode(dc, &dc->mode);
+		if (tegra_dc_program_mode(dc, &dc->mode))
+			return -EINVAL;
 
 	/* Initialize SD AFTER the modeset.
 	   nvsd_init handles the sd_settings = NULL case. */
 	nvsd_init(dc, dc->out->sd_settings);
+
+	return 0;
 }
 
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
@@ -2494,6 +2497,8 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc, bool no_reset)
 static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 #endif
 {
+	int failed_init = 0;
+
 	if (dc->out->enable)
 		dc->out->enable();
 
@@ -2506,7 +2511,11 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 
 	enable_dc_irq(dc->irq);
 
-	tegra_dc_init(dc);
+	failed_init = tegra_dc_init(dc);
+	if (failed_init) {
+		_tegra_dc_controller_disable(dc);
+		return false;
+	}
 
 	if (dc->out_ops && dc->out_ops->enable)
 		dc->out_ops->enable(dc);
@@ -2544,6 +2553,8 @@ static bool _tegra_dc_enable_noreset(struct tegra_dc *dc)
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 static bool _tegra_dc_controller_reset_enable(struct tegra_dc *dc)
 {
+	bool ret = true;
+
 	if (dc->out->enable)
 		dc->out->enable();
 
@@ -2576,7 +2587,10 @@ static bool _tegra_dc_controller_reset_enable(struct tegra_dc *dc)
 
 	enable_dc_irq(dc->irq);
 
-	tegra_dc_init(dc);
+	if (tegra_dc_init(dc)) {
+		dev_err(&dc->ndev->dev, "cannot initialize\n");
+		ret = false;
+	}
 
 	if (dc->out_ops && dc->out_ops->enable)
 		dc->out_ops->enable(dc);
@@ -2589,7 +2603,12 @@ static bool _tegra_dc_controller_reset_enable(struct tegra_dc *dc)
 
 	tegra_dc_ext_enable(dc->ext);
 
-	return true;
+	if (!ret) {
+		dev_err(&dc->ndev->dev, "initialization failed,disabling");
+		_tegra_dc_controller_disable(dc);
+	}
+
+	return ret;
 }
 #endif
 
