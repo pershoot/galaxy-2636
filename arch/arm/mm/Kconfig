@@ -834,3 +834,11 @@ config ARCH_HAS_BARRIERS
 	help
 	  This option allows the use of custom mandatory barriers
 	  included via the mach/barriers.h file.
+
+config CPA
+        bool "Change Page Attributes"
+        depends on CPU_V7
+        help
+          This option enables Changing Page Attibutes for low memory.
+          This is needed to avoid conflicting memory mappings for low memory,
+          One from kernel page table and others from user process page tables.
