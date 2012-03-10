@@ -399,7 +399,11 @@ static int mediasrv_update_block_info(
 )
 {
 	struct tegra_mediasrv_block *entry = NULL;
+#if defined(CONFIG_ICS)
+	struct tegra_mediasrv_block *block = NULL;
+#else
 	struct tegra_mediasrv_block *block;
+#endif
 	int e;
 
 	list_for_each_entry(entry, &node->blocks, entry) {
