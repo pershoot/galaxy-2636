@@ -1071,9 +1071,10 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	ret = switch_dev_register(&hdmi->hpd_switch);
 
 	if (!ret)
+		device_create_file(hdmi->hpd_switch.dev, &dev_attr_underscan);
 		ret = device_create_file(hdmi->hpd_switch.dev,
 			&dev_attr_underscan);
-	WARN(ret, "could not create dev_attr_underscan\n");
+	BUG_ON(ret != 0);
 #endif
 
 	dc->out->depth = 24;
@@ -1082,13 +1083,12 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 
 	dc_hdmi = hdmi;
 	/* boards can select default content protection policy */
-	if (dc->out->flags & TEGRA_DC_OUT_NVHDCP_POLICY_ON_DEMAND) {
+	if (dc->out->flags & TEGRA_DC_OUT_NVHDCP_POLICY_ON_DEMAND)
 		tegra_nvhdcp_set_policy(hdmi->nvhdcp,
 			TEGRA_NVHDCP_POLICY_ON_DEMAND);
-	} else {
+	else
 		tegra_nvhdcp_set_policy(hdmi->nvhdcp,
 			TEGRA_NVHDCP_POLICY_ALWAYS_ON);
-	}
 
 	tegra_dc_hdmi_debug_create(hdmi);
 
