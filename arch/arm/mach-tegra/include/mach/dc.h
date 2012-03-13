@@ -154,6 +154,7 @@ struct tegra_dsi_out {
 	u8		pixel_format;			/* required*/
 	u8		refresh_rate;			/* required*/
 #if defined(CONFIG_ICS)
+	u8              rated_refresh_rate;
         u8              panel_reset;                    /* required */
 	u8		virtual_channel;		/* required*/
         u8              dsi_instance;
@@ -234,6 +235,7 @@ struct tegra_stereo_out {
 
 struct tegra_dc_mode {
 	int	pclk;
+	int	rated_pclk;
 	int	h_ref_to_sync;
 	int	v_ref_to_sync;
 	int	h_sync_width;
