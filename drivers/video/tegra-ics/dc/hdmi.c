@@ -777,7 +777,7 @@ bool tegra_dc_hdmi_detect_test(struct tegra_dc *dc, unsigned char *edid_ptr)
 	struct fb_monspecs specs;
 	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc);
 
-	if (!dc || !hdmi || !edid_ptr) {
+	if (!hdmi || !edid_ptr) {
 		dev_err(&dc->ndev->dev, "HDMI test failed to get arguments.\n");
 		return false;
 	}
@@ -1266,7 +1266,7 @@ static int tegra_dc_hdmi_setup_audio(struct tegra_dc *dc, unsigned audio_freq,
 		a_source = AUDIO_CNTRL0_SOURCE_SELECT_SPDIF;
 
 #if !defined(CONFIG_ARCH_TEGRA_2x_SOC)
-	tegra_hdmi_writel(hdmi,a_source,
+	tegra_hdmi_writel(hdmi,a_source | AUDIO_CNTRL0_INJECT_NULLSMPL,
 			  HDMI_NV_PDISP_SOR_AUDIO_CNTRL0_0);
 	tegra_hdmi_writel(hdmi,
 			  AUDIO_CNTRL0_ERROR_TOLERANCE(6) |

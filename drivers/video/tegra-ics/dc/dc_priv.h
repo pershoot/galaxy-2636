@@ -27,7 +27,7 @@
 #include <mach/dc.h>
 
 #include "../host/dev.h"
-#include "../host/t20/syncpt_t20.h"
+#include "../host/host1x/host1x_syncpt.h"
 
 #include <mach/tegra_dc_ext.h>
 
@@ -78,11 +78,11 @@ struct tegra_dc {
 	void __iomem			*base;
 	int				irq;
 
-	int				pixel_clk;
 	struct clk			*clk;
 	struct clk			*emc_clk;
 	int				emc_clk_rate;
 	int				new_emc_clk_rate;
+	u32				shift_clk_div;
 
 	bool				connected;
 	bool				enabled;
@@ -138,29 +138,32 @@ struct tegra_dc {
 	struct dentry			*debugdir;
 #endif
 	struct tegra_dc_lut		fb_lut;
+	struct delayed_work		underflow_work;
+	u32				one_shot_delay_ms;
+	struct delayed_work		one_shot_work;
 };
 
 static inline void tegra_dc_io_start(struct tegra_dc *dc)
 {
-	nvhost_module_busy(&dc->ndev->host->mod);
+	nvhost_module_busy(nvhost_get_host(dc->ndev)->dev);
 }
 
 static inline void tegra_dc_io_end(struct tegra_dc *dc)
 {
-	nvhost_module_idle(&dc->ndev->host->mod);
+	nvhost_module_idle(nvhost_get_host(dc->ndev)->dev);
 }
 
 static inline unsigned long tegra_dc_readl(struct tegra_dc *dc,
 					   unsigned long reg)
 {
-	BUG_ON(!nvhost_module_powered(&dc->ndev->host->mod));
+	BUG_ON(!nvhost_module_powered(nvhost_get_host(dc->ndev)->dev));
 	return readl(dc->base + reg * 4);
 }
 
 static inline void tegra_dc_writel(struct tegra_dc *dc, unsigned long val,
 				   unsigned long reg)
 {
-	BUG_ON(!nvhost_module_powered(&dc->ndev->host->mod));
+	BUG_ON(!nvhost_module_powered(nvhost_get_host(dc->ndev)->dev));
 	writel(val, dc->base + reg * 4);
 }
 

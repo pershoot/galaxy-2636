@@ -49,9 +49,9 @@ int syscore_suspend(void)
 	struct syscore_ops *ops;
 	int ret = 0;
 
-	pr_debug("Checking wake-up interrupts\n");
+	pr_debug("Checking wakeup interrupts\n");
 
-	/* Return error code if there are any wake-up interrupts pending */
+	/* Return error code if there are any wakeup interrupts pending. */
 	ret = check_wakeup_irqs();
 	if (ret)
 		return ret;

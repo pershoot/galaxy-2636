@@ -365,6 +365,7 @@ struct tegra_dc_out {
 	int			hotplug_gpio;
 #if defined(CONFIG_ICS)
 	const char              *parent_clk;
+	const char              *parent_clk_backup;
 #endif
 
 	unsigned		max_pixclock;

@@ -224,10 +224,11 @@ static int tegra_dc_ext_set_windowattr(struct tegra_dc_ext *ext,
 	win->stride_uv = flip_win->attr.stride_uv;
 
 	if ((s32)flip_win->attr.pre_syncpt_id >= 0) {
-		nvhost_syncpt_wait_timeout(&ext->dc->ndev->host->syncpt,
-					   flip_win->attr.pre_syncpt_id,
-					   flip_win->attr.pre_syncpt_val,
-					   msecs_to_jiffies(500), NULL);
+		nvhost_syncpt_wait_timeout(
+				&nvhost_get_host(ext->dc->ndev)->syncpt,
+				flip_win->attr.pre_syncpt_id,
+				flip_win->attr.pre_syncpt_val,
+				msecs_to_jiffies(500), NULL);
 	}
 
 
@@ -300,16 +301,25 @@ static int lock_windows_for_flip(struct tegra_dc_ext_user *user,
 				 struct tegra_dc_ext_flip *args)
 {
 	struct tegra_dc_ext *ext = user->ext;
+	u8 idx_mask = 0;
 	int i;
 
 	for (i = 0; i < DC_N_WINDOWS; i++) {
 		int index = args->win[i].index;
-		struct tegra_dc_ext_win *win;
 
 		if (index < 0)
 			continue;
 
-		win = &ext->win[index];
+		idx_mask |= BIT(index);
+	}
+
+	for (i = 0; i < DC_N_WINDOWS; i++) {
+		struct tegra_dc_ext_win *win;
+
+		if (!(idx_mask & BIT(i)))
+			continue;
+
+		win = &ext->win[i];
 
 		mutex_lock(&win->lock);
 
@@ -321,12 +331,10 @@ static int lock_windows_for_flip(struct tegra_dc_ext_user *user,
 
 fail_unlock:
 	do {
-		int index = args->win[i].index;
-
-		if (index < 0)
+		if (!(idx_mask & BIT(i)))
 			continue;
 
-		mutex_unlock(&ext->win[index].lock);
+		mutex_unlock(&ext->win[i].lock);
 	} while (i--);
 
 	return -EACCES;
@@ -336,6 +344,7 @@ static void unlock_windows_for_flip(struct tegra_dc_ext_user *user,
 				    struct tegra_dc_ext_flip *args)
 {
 	struct tegra_dc_ext *ext = user->ext;
+	u8 idx_mask = 0;
 	int i;
 
 	for (i = 0; i < DC_N_WINDOWS; i++) {
@@ -344,7 +353,14 @@ static void unlock_windows_for_flip(struct tegra_dc_ext_user *user,
 		if (index < 0)
 			continue;
 
-		mutex_unlock(&ext->win[index].lock);
+		idx_mask |= BIT(index);
+	}
+
+	for (i = DC_N_WINDOWS - 1; i >= 0; i--) {
+		if (!(idx_mask & BIT(i)))
+			continue;
+
+		mutex_unlock(&ext->win[i].lock);
 	}
 }
 
