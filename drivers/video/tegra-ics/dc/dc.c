@@ -135,14 +135,14 @@ static inline int tegra_dc_fmt_bpp(int fmt)
 	case TEGRA_WIN_FMT_YUV420P:
 	case TEGRA_WIN_FMT_YCbCr422P:
 	case TEGRA_WIN_FMT_YUV422P:
-		return 8;
-
-	case TEGRA_WIN_FMT_YCbCr422:
-	case TEGRA_WIN_FMT_YUV422:
 	case TEGRA_WIN_FMT_YCbCr422R:
 	case TEGRA_WIN_FMT_YUV422R:
 	case TEGRA_WIN_FMT_YCbCr422RA:
 	case TEGRA_WIN_FMT_YUV422RA:
+		return 8;
+
+	case TEGRA_WIN_FMT_YCbCr422:
+	case TEGRA_WIN_FMT_YUV422:
 		/* FIXME: need to know the bpp of these formats */
 		return 0;
 	}
@@ -156,6 +156,10 @@ static inline bool tegra_dc_is_yuv_planar(int fmt)
 	case TEGRA_WIN_FMT_YCbCr420P:
 	case TEGRA_WIN_FMT_YCbCr422P:
 	case TEGRA_WIN_FMT_YUV422P:
+	case TEGRA_WIN_FMT_YCbCr422R:
+	case TEGRA_WIN_FMT_YUV422R:
+	case TEGRA_WIN_FMT_YCbCr422RA:
+	case TEGRA_WIN_FMT_YUV422RA:
 		return true;
 	}
 	return false;
@@ -942,7 +946,7 @@ static unsigned long tegra_dc_calc_win_bandwidth(struct tegra_dc *dc,
 		2 * tegra_dc_fmt_bpp(w->fmt) : tegra_dc_fmt_bpp(w->fmt);
 	/* perform calculations with most significant bits of pixel clock
 	 * to prevent overflow of long. */
-	ret = (unsigned long)(dc->pixel_clk >> 16) *
+	ret = (unsigned long)(dc->mode.pclk >> 16) *
 		bpp / 8 *
 		(win_use_v_filter(w) ? 2 : 1) * dfixed_trunc(w->w) / w->out_w *
 		(WIN_IS_TILED(w) ? tiled_windows_bw_multiplier : 1);
@@ -977,11 +981,21 @@ unsigned long tegra_dc_get_bandwidth(struct tegra_dc_win *windows[], int n)
 	return tegra_dc_find_max_bandwidth(windows, n);
 }
 
+/* to save power, call when display memory clients would be idle */
+static void tegra_dc_clear_bandwidth(struct tegra_dc *dc)
+{
+	if (dc->emc_clk_rate)
+		clk_disable(dc->emc_clk);
+	dc->emc_clk_rate = 0;
+}
+
 static void tegra_dc_program_bandwidth(struct tegra_dc *dc)
 {
 	unsigned i;
 
 	if (dc->emc_clk_rate != dc->new_emc_clk_rate) {
+		if (!dc->emc_clk_rate) /* going from 0 to non-zero */
+			clk_enable(dc->emc_clk);
 		dc->emc_clk_rate = dc->new_emc_clk_rate;
 		clk_set_rate(dc->emc_clk, dc->emc_clk_rate);
 	}
@@ -1072,6 +1086,9 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 	int i;
 
 	dc = windows[0]->dc;
+
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		cancel_delayed_work_sync(&dc->one_shot_work);
 
 	mutex_lock(&dc->lock);
 
@@ -1248,10 +1265,17 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 		tegra_dc_writel(dc, val, DC_CMD_INT_MASK);
 	}
 
-	tegra_dc_writel(dc, update_mask, DC_CMD_STATE_CONTROL);
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		schedule_delayed_work(&dc->one_shot_work,
+				msecs_to_jiffies(dc->one_shot_delay_ms));
+
+	/* update EMC clock if calculated bandwidth has changed */
+	tegra_dc_program_bandwidth(dc);
 
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
-		tegra_dc_writel(dc, NC_HOST_TRIG, DC_CMD_STATE_CONTROL);
+		update_mask |= NC_HOST_TRIG;
+
+	tegra_dc_writel(dc, update_mask, DC_CMD_STATE_CONTROL);
 
 	mutex_unlock(&dc->lock);
 
@@ -1270,7 +1294,7 @@ u32 tegra_dc_incr_syncpt_max(struct tegra_dc *dc, int i)
 	u32 max;
 
 	mutex_lock(&dc->lock);
-	max = nvhost_syncpt_incr_max(&dc->ndev->host->syncpt,
+	max = nvhost_syncpt_incr_max(&nvhost_get_host(dc->ndev)->syncpt,
 		dc->syncpt[i].id, ((dc->enabled) ? 1 : 0));
 	dc->syncpt[i].max = max;
 	mutex_unlock(&dc->lock);
@@ -1284,7 +1308,8 @@ void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, int i, u32 val)
 	if ( dc->enabled )
 		while (dc->syncpt[i].min < val) {
 			dc->syncpt[i].min++;
-			nvhost_syncpt_cpu_incr(&dc->ndev->host->syncpt,
+			nvhost_syncpt_cpu_incr(
+					&nvhost_get_host(dc->ndev)->syncpt,
 					dc->syncpt[i].id);
 		}
 	mutex_unlock(&dc->lock);
@@ -1348,6 +1373,21 @@ static unsigned long tegra_dc_pclk_round_rate(struct tegra_dc *dc, int pclk)
 	return rate * 2 / div;
 }
 
+static unsigned long tegra_dc_pclk_predict_rate(struct clk *parent, int pclk)
+{
+	unsigned long rate;
+	unsigned long div;
+
+	rate = clk_get_rate(parent);
+
+	div = DIV_ROUND_CLOSEST(rate * 2, pclk);
+
+	if (div < 2)
+		return 0;
+
+	return rate * 2 / div;
+}
+
 void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk)
 {
 	int pclk;
@@ -1356,6 +1396,17 @@ void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk)
 		unsigned long rate;
 		struct clk *parent_clk =
 			clk_get_sys(NULL, dc->out->parent_clk ? : "pll_p");
+
+		if (dc->out->parent_clk_backup &&
+		    (parent_clk == clk_get_sys(NULL, "pll_p"))) {
+			rate = tegra_dc_pclk_predict_rate(
+				parent_clk, dc->mode.pclk);
+			/* use pll_d as last resort */
+			if (rate < (dc->mode.pclk / 100 * 99) ||
+			    rate > (dc->mode.pclk / 100 * 109))
+				parent_clk = clk_get_sys(
+					NULL, dc->out->parent_clk_backup);
+		}
 
 		if (clk_get_parent(clk) != parent_clk)
 			clk_set_parent(clk, parent_clk);
@@ -1457,7 +1508,7 @@ void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk)
 			}
 		}
 
-		rate = dc->mode.pclk * 2;
+		rate = dc->mode.pclk * dc->shift_clk_div * 2;
 		if (rate != clk_get_rate(base_clk))
 			clk_set_rate(base_clk, rate);
 
@@ -1582,14 +1633,14 @@ static bool check_ref_to_sync(struct tegra_dc_mode *mode)
 
 #ifdef DEBUG
 /* return in 1000ths of a Hertz */
-static int calc_refresh(struct tegra_dc *dc, const struct tegra_dc_mode *m)
+static int calc_refresh(const struct tegra_dc_mode *m)
 {
 	long h_total, v_total, refresh;
 	h_total = m->h_active + m->h_front_porch + m->h_back_porch +
 		m->h_sync_width;
 	v_total = m->v_active + m->v_front_porch + m->v_back_porch +
 		m->v_sync_width;
-	refresh = dc->pixel_clk / h_total;
+	refresh = m->pclk / h_total;
 	refresh *= 1000;
 	refresh /= v_total;
 	return refresh;
@@ -1695,8 +1746,6 @@ static int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode
 	switch_set_state(&dc->modeset_switch,
 			 (mode->h_active << 16) | mode->v_active);
 #endif
-
-	dc->pixel_clk = dc->mode.pclk;
 
 	return 0;
 }
@@ -1991,9 +2040,6 @@ static void tegra_dc_vblank(struct work_struct *work)
 
 	mutex_lock(&dc->lock);
 
-	/* update EMC clock if calculated bandwidth has changed */
-	tegra_dc_program_bandwidth(dc);
-
 	/* Update the SD brightness */
 	if (dc->enabled && dc->out->sd_settings)
 		nvsd_updated = nvsd_update_brightness(dc);
@@ -2011,10 +2057,54 @@ static void tegra_dc_vblank(struct work_struct *work)
 	}
 }
 
-#ifndef CONFIG_TEGRA_FPGA_PLATFORM
+/* Must acquire dc lock before invoking this function. */
+void tegra_dc_host_trigger(struct tegra_dc *dc)
+{
+	/* We release the lock here to prevent deadlock between
+	 * cancel_delayed_work_sync and one-shot work. */
+	mutex_unlock(&dc->lock);
+	cancel_delayed_work_sync(&dc->one_shot_work);
+	mutex_lock(&dc->lock);
+	schedule_delayed_work(&dc->one_shot_work,
+				msecs_to_jiffies(dc->one_shot_delay_ms));
+	tegra_dc_program_bandwidth(dc);
+	tegra_dc_writel(dc, NC_HOST_TRIG, DC_CMD_STATE_CONTROL);
+}
+
+static void tegra_dc_one_shot_worker(struct work_struct *work)
+{
+	struct tegra_dc *dc = container_of(
+		to_delayed_work(work), struct tegra_dc, one_shot_work);
+	mutex_lock(&dc->lock);
+	/* memory client has gone idle */
+	tegra_dc_clear_bandwidth(dc);
+	mutex_unlock(&dc->lock);
+}
+
+/* return an arbitrarily large number if count overflow occurs.
+ * make it a nice base-10 number to show up in stats output */
+static u64 tegra_dc_underflow_count(struct tegra_dc *dc, unsigned reg)
+{
+	unsigned count = tegra_dc_readl(dc, reg);
+	tegra_dc_writel(dc, 0, reg);
+	return ((count & 0x80000000) == 0) ? count : 10000000000ll;
+}
+
 static void tegra_dc_underflow_handler(struct tegra_dc *dc)
 {
-	u32 val, i;
+	u32 val;
+	int i;
+
+	dc->stats.underflows++;
+	if (dc->underflow_mask & WIN_A_UF_INT)
+		dc->stats.underflows_a += tegra_dc_underflow_count(dc,
+			DC_WINBUF_AD_UFLOW_STATUS);
+	if (dc->underflow_mask & WIN_B_UF_INT)
+		dc->stats.underflows_b += tegra_dc_underflow_count(dc,
+			DC_WINBUF_BD_UFLOW_STATUS);
+	if (dc->underflow_mask & WIN_C_UF_INT)
+		dc->stats.underflows_c += tegra_dc_underflow_count(dc,
+			DC_WINBUF_CD_UFLOW_STATUS);
 
 	/* Check for any underflow reset conditions */
 	for (i = 0; i < DC_N_WINDOWS; i++) {
@@ -2030,21 +2120,14 @@ static void tegra_dc_underflow_handler(struct tegra_dc *dc)
 		}
 	}
 
-	if (!dc->underflow_mask) {
-		/* If we have no underflow to check, go ahead
-		   and disable the interrupt */
-		val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
-		if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
-			val &= ~FRAME_END_INT;
-		else
-			val &= ~V_BLANK_INT;
-		tegra_dc_writel(dc, val, DC_CMD_INT_MASK);
-	}
-
 	/* Clear the underflow mask now that we've checked it. */
+	tegra_dc_writel(dc, dc->underflow_mask, DC_CMD_INT_STATUS);
 	dc->underflow_mask = 0;
+	val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
+	tegra_dc_writel(dc, val | ALL_UF_INT, DC_CMD_INT_MASK);
 }
 
+#ifndef CONFIG_TEGRA_FPGA_PLATFORM
 static void tegra_dc_trigger_windows(struct tegra_dc *dc)
 {
 	u32 val, i;
@@ -2100,10 +2183,7 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 		schedule_work(&dc->vblank_work);
 	}
 
-	/* Check underflow at frame end */
 	if (status & FRAME_END_INT) {
-		tegra_dc_underflow_handler(dc);
-
 		/* Mark the frame_end as complete. */
 		if (!completion_done(&dc->frame_end_complete))
 			complete(&dc->frame_end_complete);
@@ -2113,9 +2193,6 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 static void tegra_dc_continuous_irq(struct tegra_dc *dc, unsigned long status)
 {
 	if (status & V_BLANK_INT) {
-		/* Check underflow */
-		tegra_dc_underflow_handler(dc);
-
 		/* Schedule any additional bottom-half vblank actvities. */
 		schedule_work(&dc->vblank_work);
 	}
@@ -2130,24 +2207,15 @@ static void tegra_dc_continuous_irq(struct tegra_dc *dc, unsigned long status)
 }
 #endif
 
-/* return an arbitrarily large number if count overflow occurs.
- * make it a nice base-10 number to show up in stats output */
-static u64 tegra_dc_underflow_count(struct tegra_dc *dc, unsigned reg)
-{
-	unsigned count = tegra_dc_readl(dc, reg);
-	tegra_dc_writel(dc, 0, reg);
-	return ((count & 0x80000000) == 0) ? count : 10000000000ll;
-}
-
 static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 {
 #ifndef CONFIG_TEGRA_FPGA_PLATFORM
 	struct tegra_dc *dc = ptr;
 	unsigned long status;
-	unsigned long val;
 	unsigned long underflow_mask;
+	u32 val;
 
-	if (!nvhost_module_powered(&dc->ndev->host->mod)) {
+	if (!nvhost_module_powered(nvhost_get_host(dc->ndev)->dev)) {
 		WARN(1, "IRQ when DC not powered!\n");
 		tegra_dc_io_start(dc);
 		status = tegra_dc_readl(dc, DC_CMD_INT_STATUS);
@@ -2156,8 +2224,11 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 		return IRQ_HANDLED;
 	}
 
+	/* clear all status flags except underflow, save those for the worker */
 	status = tegra_dc_readl(dc, DC_CMD_INT_STATUS);
-	tegra_dc_writel(dc, status, DC_CMD_INT_STATUS);
+	tegra_dc_writel(dc, status & ~ALL_UF_INT, DC_CMD_INT_STATUS);
+	val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
+	tegra_dc_writel(dc, val & ~ALL_UF_INT, DC_CMD_INT_MASK);
 
 	/*
 	 * Overlays can get thier internal state corrupted during and underflow
@@ -2167,21 +2238,11 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	 */
 	underflow_mask = status & ALL_UF_INT;
 
+	/* Check underflow */
 	if (underflow_mask) {
-		val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
-		val |= V_BLANK_INT;
-		tegra_dc_writel(dc, val, DC_CMD_INT_MASK);
 		dc->underflow_mask |= underflow_mask;
-		dc->stats.underflows++;
-		if (status & WIN_A_UF_INT)
-			dc->stats.underflows_a += tegra_dc_underflow_count(dc,
-				DC_WINBUF_AD_UFLOW_STATUS);
-		if (status & WIN_B_UF_INT)
-			dc->stats.underflows_b += tegra_dc_underflow_count(dc,
-				DC_WINBUF_BD_UFLOW_STATUS);
-		if (status & WIN_C_UF_INT)
-			dc->stats.underflows_c += tegra_dc_underflow_count(dc,
-				DC_WINBUF_CD_UFLOW_STATUS);
+		schedule_delayed_work(&dc->underflow_work,
+			msecs_to_jiffies(1));
 	}
 
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
@@ -2362,7 +2423,8 @@ static void tegra_dc_init(struct tegra_dc *dc)
 		dc->syncpt[i].id = syncpt;
 
 		dc->syncpt[i].min = dc->syncpt[i].max =
-			nvhost_syncpt_read(&dc->ndev->host->syncpt, syncpt);
+			nvhost_syncpt_read(&nvhost_get_host(dc->ndev)->syncpt,
+					syncpt);
 	}
 
 	print_mode(dc, &dc->mode, __func__);
@@ -2386,7 +2448,6 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 
 	tegra_dc_setup_clk(dc, dc->clk);
 	clk_enable(dc->clk);
-	clk_enable(dc->emc_clk);
 
 	/* do not accept interrupts during initialization */
 	tegra_dc_writel(dc, 0, DC_CMD_INT_ENABLE);
@@ -2437,7 +2498,6 @@ static bool _tegra_dc_controller_reset_enable(struct tegra_dc *dc)
 
 	tegra_dc_setup_clk(dc, dc->clk);
 	clk_enable(dc->clk);
-	clk_enable(dc->emc_clk);
 
 	if (dc->ndev->id == 0 && tegra_dcs[1] != NULL) {
 		mutex_lock(&tegra_dcs[1]->lock);
@@ -2476,6 +2536,8 @@ static bool _tegra_dc_controller_reset_enable(struct tegra_dc *dc)
 	/* force a full blending update */
 	dc->blend.z[0] = -1;
 
+	tegra_dc_ext_enable(dc->ext);
+
 	return true;
 }
 #endif
@@ -2511,32 +2573,35 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 {
 	unsigned i;
 
+	if (dc->out_ops && dc->out_ops->disable)
+		dc->out_ops->disable(dc);
+
 	tegra_dc_writel(dc, 0, DC_CMD_INT_MASK);
 	tegra_dc_writel(dc, 0, DC_CMD_INT_ENABLE);
 	disable_irq(dc->irq);
 
-	if (dc->out_ops && dc->out_ops->disable)
-		dc->out_ops->disable(dc);
-
-	clk_disable(dc->emc_clk);
+	tegra_dc_clear_bandwidth(dc);
 	clk_disable(dc->clk);
 	tegra_dvfs_set_rate(dc->clk, 0);
-
-	for (i = 0; i < DC_N_WINDOWS; i++) {
-		struct tegra_dc_win *w = &dc->windows[i];
-
-		w->bandwidth = 0;
-		w->new_bandwidth = 0;
-	}
 
 	if (dc->out && dc->out->disable)
 		dc->out->disable();
 
-	/* flush any pending syncpt waits */
 	for (i = 0; i < dc->n_windows; i++) {
+		struct tegra_dc_win *w = &dc->windows[i];
+
+		/* reset window bandwidth */
+		w->bandwidth = 0;
+		w->new_bandwidth = 0;
+
+		/* disable windows */
+		w->flags &= ~TEGRA_WIN_FLAG_ENABLED;
+
+		/* flush any pending syncpt waits */
 		while (dc->syncpt[i].min < dc->syncpt[i].max) {
 			dc->syncpt[i].min++;
-			nvhost_syncpt_cpu_incr(&dc->ndev->host->syncpt,
+			nvhost_syncpt_cpu_incr(
+				&nvhost_get_host(dc->ndev)->syncpt,
 				dc->syncpt[i].id);
 		}
 	}
@@ -2603,6 +2668,12 @@ void tegra_dc_disable(struct tegra_dc *dc)
 
 	tegra_dc_ext_disable(dc->ext);
 
+	/* it's important that new underflow work isn't scheduled before the
+	 * lock is acquired. */
+	cancel_delayed_work_sync(&dc->underflow_work);
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		cancel_delayed_work_sync(&dc->one_shot_work);
+
 	mutex_lock(&dc->lock);
 
 	if (dc->enabled) {
@@ -2627,11 +2698,12 @@ static void tegra_dc_reset_worker(struct work_struct *work)
 
 	unsigned long val = 0;
 
+	mutex_lock(&shared_lock);
+
 	dev_warn(&dc->ndev->dev, "overlay stuck in underflow state.  resetting.\n");
 
 	tegra_dc_ext_disable(dc->ext);
 
-	mutex_lock(&shared_lock);
 	mutex_lock(&dc->lock);
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
         cmc623_suspend(NULL);
@@ -2670,6 +2742,18 @@ unlock:
 	mutex_unlock(&shared_lock);
 }
 #endif
+
+static void tegra_dc_underflow_worker(struct work_struct *work)
+{
+	struct tegra_dc *dc = container_of(
+		to_delayed_work(work), struct tegra_dc, underflow_work);
+
+	mutex_lock(&dc->lock);
+	if (dc->enabled) {
+		tegra_dc_underflow_handler(dc);
+	}
+	mutex_unlock(&dc->lock);
+}
 
 #ifdef CONFIG_SWITCH
 static ssize_t switch_modeset_print_mode(struct switch_dev *sdev, char *buf)
@@ -2754,6 +2838,10 @@ static int tegra_dc_probe(struct nvhost_device *ndev)
 
 	dc->clk = clk;
 	dc->emc_clk = emc_clk;
+	dc->shift_clk_div = 1;
+	/* Initialize one shot work delay, it will be assigned by dsi
+	 * according to refresh rate later. */
+	dc->one_shot_delay_ms = 40;
 
 	dc->base_res = base_res;
 	dc->base = base;
@@ -2765,8 +2853,7 @@ static int tegra_dc_probe(struct nvhost_device *ndev)
 	 * The emc is a shared clock, it will be set based on
 	 * the requirements for each user on the bus.
 	 */
-	dc->emc_clk_rate = tegra_dc_get_default_emc_clk_rate(dc);
-	clk_set_rate(emc_clk, dc->emc_clk_rate);
+	dc->emc_clk_rate = 0;
 
 	if (dc->pdata->flags & TEGRA_DC_FLAG_ENABLED)
 		dc->enabled = true;
@@ -2778,6 +2865,8 @@ static int tegra_dc_probe(struct nvhost_device *ndev)
 	INIT_WORK(&dc->reset_work, tegra_dc_reset_worker);
 #endif
 	INIT_WORK(&dc->vblank_work, tegra_dc_vblank);
+	INIT_DELAYED_WORK(&dc->underflow_work, tegra_dc_underflow_worker);
+	INIT_DELAYED_WORK(&dc->one_shot_work, tegra_dc_one_shot_worker);
 
 	tegra_dc_init_lut_defaults(&dc->fb_lut);
 
@@ -3068,6 +3157,7 @@ const struct dev_pm_ops tegra_dc_pm_ops = {
         .complete = tegra_dc_complete,
 };
 #endif
+
 struct nvhost_driver tegra_dc_driver = {
 	.driver = {
 		.name = "tegradc",
