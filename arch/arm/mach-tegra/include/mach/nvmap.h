@@ -63,9 +63,6 @@ struct nvmap_handle_ref;
 struct nvmap_handle;
 struct nvmap_client;
 struct nvmap_device;
-#if defined(CONFIG_ICS)
-#define nvmap_convert_handle_u2k(h) (h)
-#endif
 
 #define nvmap_ref_to_handle(_ref) (*(struct nvmap_handle **)(_ref))
 #define nvmap_id_to_handle(_id) ((struct nvmap_handle *)(_id))

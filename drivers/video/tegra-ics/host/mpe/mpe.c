@@ -22,9 +22,9 @@
 
 #include "nvhost_hwctx.h"
 #include "dev.h"
-#include "host1x/host1x_hardware.h"
-#include "host1x/host1x_channel.h"
-#include "host1x/host1x_syncpt.h"
+#include "t20/hardware_t20.h"
+#include "t20/channel_t20.h"
+#include "t20/syncpt_t20.h"
 #include "t20/t20.h"
 #include <linux/slab.h>
 
@@ -399,7 +399,7 @@ static u32 *save_regs(u32 *ptr, unsigned int *pending,
 		u32 count = regs->count;
 		++ptr; /* restore incr */
 		if (regs->type == HWCTX_REGINFO_NORMAL) {
-			host1x_drain_read_fifo(channel->aperture,
+			nvhost_drain_read_fifo(channel->aperture,
 						ptr, count, pending);
 			ptr += count;
 		} else {
@@ -408,7 +408,7 @@ static u32 *save_regs(u32 *ptr, unsigned int *pending,
 				BUG_ON(msi->out_pos >= NR_WRITEBACKS);
 				word = msi->out[msi->out_pos++];
 			} else {
-				host1x_drain_read_fifo(channel->aperture,
+				nvhost_drain_read_fifo(channel->aperture,
 							&word, 1, pending);
 				if (regs->type == HWCTX_REGINFO_STASH) {
 					BUG_ON(msi->in_pos >= NR_STASHES);
@@ -429,7 +429,7 @@ static u32 *save_ram(u32 *ptr, unsigned int *pending,
 {
 	int err = 0;
 	ptr += RESTORE_RAM_SIZE;
-	err = host1x_drain_read_fifo(channel->aperture, ptr, words, pending);
+	err = nvhost_drain_read_fifo(channel->aperture, ptr, words, pending);
 	WARN_ON(err);
 	return ptr + words;
 }
@@ -439,7 +439,7 @@ static u32 *save_ram(u32 *ptr, unsigned int *pending,
 
 static struct nvhost_hwctx *ctxmpe_alloc(struct nvhost_channel *ch)
 {
-	struct nvmap_client *nvmap = nvhost_get_host(ch->dev)->nvmap;
+	struct nvmap_client *nvmap = ch->dev->nvmap;
 	struct nvhost_hwctx *ctx;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
@@ -482,7 +482,7 @@ static void ctxmpe_get(struct nvhost_hwctx *ctx)
 static void ctxmpe_free(struct kref *ref)
 {
 	struct nvhost_hwctx *ctx = container_of(ref, struct nvhost_hwctx, ref);
-	struct nvmap_client *nvmap = nvhost_get_host(ctx->channel->dev)->nvmap;
+	struct nvmap_client *nvmap = ctx->channel->dev->nvmap;
 
 	if (ctx->restore_virt)
 		nvmap_munmap(ctx->restore, ctx->restore_virt);
@@ -522,8 +522,7 @@ static void ctxmpe_save_service(struct nvhost_hwctx *ctx)
 		IRFR_RAM_SIZE, IRFR_RAM_READ_CMD, IRFR_RAM_READ_DATA);
 
 	wmb();
-	nvhost_syncpt_cpu_incr(&nvhost_get_host(ctx->channel->dev)->syncpt,
-			NVSYNCPT_MPE);
+	nvhost_syncpt_cpu_incr(&ctx->channel->dev->syncpt, NVSYNCPT_MPE);
 }
 
 int __init nvhost_mpe_ctxhandler_init(struct nvhost_hwctx_handler *h)
@@ -533,7 +532,7 @@ int __init nvhost_mpe_ctxhandler_init(struct nvhost_hwctx_handler *h)
 	u32 *save_ptr;
 
 	ch = container_of(h, struct nvhost_channel, ctxhandler);
-	nvmap = nvhost_get_host(ch->dev)->nvmap;
+	nvmap = ch->dev->nvmap;
 
 	setup_save(NULL);
 
@@ -565,7 +564,7 @@ int __init nvhost_mpe_ctxhandler_init(struct nvhost_hwctx_handler *h)
 	return 0;
 }
 
-int nvhost_mpe_prepare_power_off(struct nvhost_device *dev)
+int nvhost_mpe_prepare_power_off(struct nvhost_module *mod)
 {
-	return host1x_save_context(dev, NVSYNCPT_MPE);
+	return nvhost_t20_save_context(mod, NVSYNCPT_MPE);
 }

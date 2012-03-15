@@ -89,13 +89,13 @@ static void show_syncpts(struct nvhost_master *m, struct output *o)
 
 static void show_all(struct nvhost_master *m, struct output *o)
 {
-	nvhost_module_busy(m->dev);
+	nvhost_module_busy(&m->mod);
 
 	m->op.debug.show_mlocks(m, o);
 	show_syncpts(m, o);
 	show_channels(m, o);
 
-	nvhost_module_idle(m->dev);
+	nvhost_module_idle(&m->mod);
 }
 
 
