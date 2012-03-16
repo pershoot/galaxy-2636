@@ -627,6 +627,8 @@ int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n);
 int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode);
 #if defined(CONFIG_ICS)
 struct fb_videomode;
+int tegra_dc_to_fb_videomode(struct fb_videomode *fbmode,
+	const struct tegra_dc_mode *mode);
 int tegra_dc_set_fb_mode(struct tegra_dc *dc, const struct fb_videomode *fbmode,
         bool stereo_mode);
 #endif
