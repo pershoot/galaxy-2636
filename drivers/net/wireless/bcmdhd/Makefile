@@ -3,7 +3,7 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Dlinux -DBCMDRIVER                     \
         -DBCMDONGLEHOST -DUNRELEASEDCHIP -DBCMDMA32 -DWLBTAMP -DBCMFILEIMAGE  \
         -DDHDTHREAD -DDHD_GPL -DDHD_SCHED -DDHD_DEBUG -DSDTEST -DBDC -DTOE    \
         -DDHD_BCMEVENTS -DSHOW_EVENTS -DDONGLEOVERLAYS -DBCMDBG               \
-        -DCUSTOMER_HW_SAMSUNG -DOOB_INTR_ONLY                                 \
+        -DCUSTOMER_HW_SAMSUNG                                                 \
         -DMMC_SDIO_ABORT -DBCMSDIO -DBCMLXSDMMC -DBCMPLATFORM_BUS -DWLP2P     \
         -DNEW_COMPAT_WIRELESS -DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT          \
         -DKEEP_ALIVE -DCSCAN -DPKT_FILTER_SUPPORT                             \
@@ -22,11 +22,11 @@ DHDCFLAGS += -DPROP_TXSTATUS
 endif
 
 ifeq ($(CONFIG_BCM4330),m)
-DHDCFLAGS += -DCONFIG_CONTROL_PM -DPOWER_ON_DELAY_4330
+DHDCFLAGS += -DCONFIG_CONTROL_PM -DPOWER_ON_DELAY_4330 -DRDWR_MACADDR
 endif
 
 ifeq ($(CONFIG_BCM4330),y)
-DHDCFLAGS += -DCONFIG_CONTROL_PM -DPOWER_ON_DELAY_4330
+DHDCFLAGS += -DCONFIG_CONTROL_PM -DPOWER_ON_DELAY_4330 -DRDWR_MACADDR
 endif
 
 ifeq ($(CONFIG_MACH_U1),y)
@@ -90,7 +90,7 @@ dhd-y := src/bcmsdio/sys/bcmsdh.o	src/bcmsdio/sys/bcmsdh_linux.o \
 	 src/shared/sbutils.o		src/shared/siutils.o \
 	 src/wl/sys/wl_android.o	src/wl/sys/wl_cfg80211.o \
 	 src/wl/sys/wl_cfgp2p.o		src/wl/sys/wldev_common.o \
-	 src/wl/sys/wl_linux_mon.o
+	 src/wl/sys/wl_linux_mon.o      src/dhd/sys/wlan_gpio.o
 
 all:
 	@echo "$(MAKE) --no-print-directory -C $(KDIR) SUBDIRS=$(CURDIR) modules"
