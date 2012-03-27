@@ -843,20 +843,8 @@ static void nvhost_remove_chip_support(struct nvhost_master *host)
 	kfree(host->channels);
 	host->channels = 0;
 
-	kfree(host->syncpt.min_val);
-	host->syncpt.min_val = 0;
-
-	kfree(host->syncpt.max_val);
-	host->syncpt.max_val = 0;
-
-	kfree(host->syncpt.base_val);
-	host->syncpt.base_val = 0;
-
 	kfree(host->intr.syncpt);
 	host->intr.syncpt = 0;
-
-	kfree(host->syncpt.lock_counts);
-	host->syncpt.lock_counts = 0;
 }
 
 static int __devinit nvhost_init_chip_support(struct nvhost_master *host)
@@ -878,24 +866,10 @@ static int __devinit nvhost_init_chip_support(struct nvhost_master *host)
 	host->channels = kzalloc(sizeof(struct nvhost_channel) *
 				 host->nb_channels, GFP_KERNEL);
 
-	host->syncpt.min_val = kzalloc(sizeof(atomic_t) *
-				       host->syncpt.nb_pts, GFP_KERNEL);
-
-	host->syncpt.max_val = kzalloc(sizeof(atomic_t) *
-				       host->syncpt.nb_pts, GFP_KERNEL);
-
-	host->syncpt.base_val = kzalloc(sizeof(u32) *
-					host->syncpt.nb_bases, GFP_KERNEL);
-
 	host->intr.syncpt = kzalloc(sizeof(struct nvhost_intr_syncpt) *
 				    host->syncpt.nb_pts, GFP_KERNEL);
 
-	host->syncpt.lock_counts = kzalloc(sizeof(atomic_t) *
-				       host->syncpt.nb_mlocks, GFP_KERNEL);
-
-	if (!(host->channels && host->syncpt.min_val &&
-	      host->syncpt.max_val && host->syncpt.base_val &&
-	      host->intr.syncpt && host->syncpt.lock_counts)) {
+	if (!(host->channels && host->intr.syncpt)) {
 		/* frees happen in the support removal phase */
 		return -ENOMEM;
 	}
@@ -976,6 +950,10 @@ static int __devinit nvhost_probe(struct platform_device *pdev)
 			goto fail;
 	}
 
+	err = nvhost_syncpt_init(&hostdev, &host->syncpt);
+	if (err)
+		goto fail;
+
 	err = nvhost_intr_init(&host->intr, intr1->start, intr0->start);
 	if (err)
 		goto fail;
@@ -1015,6 +993,7 @@ fail:
 static int __exit nvhost_remove(struct platform_device *pdev)
 {
 	struct nvhost_master *host = platform_get_drvdata(pdev);
+	nvhost_syncpt_deinit(&host->syncpt);
 	nvhost_remove_chip_support(host);
 	return 0;
 }
