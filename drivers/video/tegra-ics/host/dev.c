@@ -1056,7 +1056,7 @@ static int nvhost_suspend(struct nvhost_device *dev, pm_message_t state)
 			return ret;
 	}
 
-	ret = nvhost_module_suspend(host->dev, true);
+	ret = nvhost_module_suspend(host->dev);
 	dev_info(&dev->dev, "suspend status: %d\n", ret);
 
 	return ret;
