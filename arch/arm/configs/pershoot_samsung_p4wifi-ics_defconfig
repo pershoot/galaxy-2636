@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.36.4
-# Mon Mar 26 09:33:28 2012
+# Mon Mar 26 20:58:44 2012
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -1140,7 +1140,7 @@ CONFIG_DUMMY=y
 # CONFIG_BONDING is not set
 # CONFIG_MACVLAN is not set
 # CONFIG_EQUALIZER is not set
-CONFIG_TUN=m
+CONFIG_TUN=y
 # CONFIG_VETH is not set
 # CONFIG_PHYLIB is not set
 CONFIG_NET_ETHERNET=y
@@ -1171,7 +1171,7 @@ CONFIG_WLAN=y
 # CONFIG_ATH_COMMON is not set
 CONFIG_BCM4330=m
 # CONFIG_BCM4334 is not set
-# CONFIG_BROADCOM_WIFI_RESERVED_MEM is not set
+CONFIG_BROADCOM_WIFI_RESERVED_MEM=y
 # CONFIG_HOSTAP is not set
 # CONFIG_IWM is not set
 # CONFIG_LIBERTAS is not set
