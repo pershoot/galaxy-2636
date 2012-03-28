@@ -1793,6 +1793,10 @@ static inline int pskb_trim_rcsum(struct sk_buff *skb, unsigned int len)
 		     prefetch(skb->prev), (skb != (struct sk_buff *)(queue));	\
 		     skb = skb->prev)
 
+#define skb_queue_reverse_walk_from_safe(queue, skb, tmp)                       \
+                for (tmp = skb->prev;                                           \
+                     skb != (struct sk_buff *)(queue);                          \
+                     skb = tmp, tmp = skb->prev)
 
 static inline bool skb_has_frags(const struct sk_buff *skb)
 {
