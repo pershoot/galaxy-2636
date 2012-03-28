@@ -49,7 +49,6 @@
 
 #include "dc_reg.h"
 #include "dc_priv.h"
-#include "overlay.h"
 #include "nvsd.h"
 
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
@@ -523,7 +522,7 @@ out:
 	return ret;
 }
 
-unsigned int tegra_dc_has_multiple_dc(void)
+static unsigned int tegra_dc_has_multiple_dc(void)
 {
 	unsigned int idx;
 	unsigned int cnt = 0;
@@ -966,7 +965,8 @@ static unsigned long tegra_dc_calc_win_bandwidth(struct tegra_dc *dc,
 	return ret << 16; /* restore the scaling we did above */
 }
 
-unsigned long tegra_dc_get_bandwidth(struct tegra_dc_win *windows[], int n)
+static unsigned long tegra_dc_get_bandwidth(
+	struct tegra_dc_win *windows[], int n)
 {
 	int i;
 
@@ -2733,9 +2733,6 @@ static void _tegra_dc_disable(struct tegra_dc *dc)
 
 void tegra_dc_disable(struct tegra_dc *dc)
 {
-	if (dc->overlay)
-		tegra_overlay_disable(dc->overlay);
-
 	tegra_dc_ext_disable(dc->ext);
 
 	/* it's important that new underflow work isn't scheduled before the
@@ -3025,12 +3022,6 @@ static int tegra_dc_probe(struct nvhost_device *ndev)
 			dc->fb = NULL;
 	}
 
-	if (dc->fb) {
-		dc->overlay = tegra_overlay_register(ndev, dc);
-		if (IS_ERR_OR_NULL(dc->overlay))
-			dc->overlay = NULL;
-	}
-
 	if (dc->out && dc->out->hotplug_init)
 		dc->out->hotplug_init();
 
@@ -3068,10 +3059,6 @@ static int tegra_dc_remove(struct nvhost_device *ndev)
 	tegra_dc_remove_sysfs(&dc->ndev->dev);
 	tegra_dc_remove_debugfs(dc);
 
-	if (dc->overlay) {
-		tegra_overlay_unregister(dc->overlay);
-	}
-
 	if (dc->fb) {
 		tegra_fb_unregister(dc->fb);
 		if (dc->fb_mem)
@@ -3107,9 +3094,6 @@ static int tegra_dc_suspend(struct nvhost_device *ndev, pm_message_t state)
 	struct tegra_dc *dc = nvhost_get_drvdata(ndev);
 
 	dev_info(&ndev->dev, "suspend\n");
-
-	if (dc->overlay)
-		tegra_overlay_disable(dc->overlay);
 
 	tegra_dc_ext_disable(dc->ext);
 
@@ -3195,9 +3179,6 @@ static int tegra_dc_prepare(struct device *dev)
         struct tegra_dc *dc = nvhost_get_drvdata(ndev);
 
         dev_info(&ndev->dev, "prepare\n");
-
-        if (dc->overlay)
-                tegra_overlay_disable(dc->overlay);
 
         mutex_lock(&dc->lock);
         if (dc->out_ops && dc->out_ops->suspend)

@@ -31,13 +31,6 @@ config TEGRA_OVERLAY
 	help
 	  Device node for multi-client overlay support.
 
-config TEGRA_OVERLAY_ICS
-        tristate "Tegra Overlay Device Node"
-        depends on ICS && TEGRA_DC && !TEGRA_DC_EXTENSIONS
-        default y
-        help
-          Device node for multi-client overlay support.
-
 config FB_TEGRA
 	tristate "Tegra Framebuffer driver"
 	depends on TEGRA_DC && FB = y
