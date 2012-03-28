@@ -39,12 +39,12 @@ struct nvhost_channel;
 struct kref;
 
 /* Functions used commonly by all 3D context switch modules */
-extern void nvhost_3dctx_restore_begin(u32 *ptr);
-extern void nvhost_3dctx_restore_direct(u32 *ptr, u32 start_reg, u32 count);
-extern void nvhost_3dctx_restore_indirect(u32 *ptr, u32 offset_reg,
+void nvhost_3dctx_restore_begin(u32 *ptr);
+void nvhost_3dctx_restore_direct(u32 *ptr, u32 start_reg, u32 count);
+void nvhost_3dctx_restore_indirect(u32 *ptr, u32 offset_reg,
 		u32 offset,	u32 data_reg, u32 count);
-extern void nvhost_3dctx_restore_end(u32 *ptr);
-extern struct nvhost_hwctx *nvhost_3dctx_alloc_common(
+void nvhost_3dctx_restore_end(u32 *ptr);
+struct nvhost_hwctx *nvhost_3dctx_alloc_common(
 		struct nvhost_channel *ch, bool map_restore);
 void nvhost_3dctx_get(struct nvhost_hwctx *ctx);
 void nvhost_3dctx_free(struct kref *ref);

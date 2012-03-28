@@ -4,7 +4,7 @@
  * Tegra I/O VMM implementation for GART devices in Tegra and Tegra 2 series
  * systems-on-a-chip.
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,12 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
+#if !defined(CONFIG_ICS)
 #include <asm/io.h>
+#else
+#include <linux/io.h>
+#endif
+
 #include <asm/cacheflush.h>
 
 #include <mach/iovmm.h>
@@ -53,7 +58,9 @@ struct gart_device {
 	struct tegra_iovmm_device iovmm;
 	struct tegra_iovmm_domain domain;
 	bool			enable;
+#if !defined(CONFIG_ICS)
 	bool			needs_barrier; /* emulator WAR */
+#endif
 };
 
 #if !defined(CONFIG_ICS)
@@ -133,7 +140,9 @@ static void do_gart_setup(struct gart_device *gart, const u32 *data)
 		wmb();
 		reg += 1 << GART_PAGE_SHIFT;
 	}
+#if !defined(CONFIG_ICS)
 	wmb();
+#endif
 }
 
 static void gart_resume(struct tegra_iovmm_device *dev)
@@ -235,12 +244,16 @@ static int gart_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+#if !defined(CONFIG_ICS)
 	spin_lock(&gart->pte_lock);
+#endif
 
 	do_gart_setup(gart, NULL);
 	gart->enable = 1;
 
+#if !defined(CONFIG_ICS)
 	spin_unlock(&gart->pte_lock);
+#endif
 	return 0;
 
 fail:
@@ -248,8 +261,12 @@ fail:
 		iounmap(gart_regs);
 	if (gart && gart->savedata)
 		vfree(gart->savedata);
+#if !defined(CONFIG_ICS)
 	if (gart)
 		kfree(gart);
+#else
+	kfree(gart);
+#endif
 	return e;
 }
 
@@ -299,7 +316,9 @@ static int gart_map(struct tegra_iovmm_domain *domain,
 
 		spin_unlock(&gart->pte_lock);
 	}
+#if !defined(CONFIG_ICS)
 	wmb();
+#endif
 	return 0;
 
 fail:
@@ -312,7 +331,9 @@ fail:
 		wmb();
 	}
 	spin_unlock(&gart->pte_lock);
+#if !defined(CONFIG_ICS)
 	wmb();
+#endif
 	return -ENOMEM;
 }
 
@@ -344,7 +365,9 @@ static void gart_unmap(struct tegra_iovmm_domain *domain,
 		gart_page += 1 << GART_PAGE_SHIFT;
 	}
 	spin_unlock(&gart->pte_lock);
+#if !defined(CONFIG_ICS)
 	wmb();
+#endif
 }
 
 #if !defined(CONFIG_ICS)
@@ -367,7 +390,9 @@ static void gart_map_pfn(struct tegra_iovmm_domain *domain,
 	writel(GART_PTE(pfn), gart->regs + GART_ENTRY_DATA);
 	wmb();
 	spin_unlock(&gart->pte_lock);
+#if !defined(CONFIG_ICS)
 	wmb();
+#endif
 }
 
 static struct tegra_iovmm_domain *gart_alloc_domain(

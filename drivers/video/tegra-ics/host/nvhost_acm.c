@@ -490,6 +490,9 @@ int nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 	if (mod->desc->suspend)
 		mod->desc->suspend(mod);
 
+	if (nvhost_module_powered(mod))
+		printk("nvhost_module_suspend: \"%s\" is still powered\n", mod->name);
+
 	return 0;
 }
 
