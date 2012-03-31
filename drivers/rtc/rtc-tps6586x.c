@@ -329,11 +329,6 @@ static int __devinit tps6586x_rtc_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	if (!pdata) {
-		dev_err(&pdev->dev, "no platform_data specified\n");
-		return -EINVAL;
-	}
-
 	rtc = kzalloc(sizeof(*rtc), GFP_KERNEL);
 
 	if (!rtc)
