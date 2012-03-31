@@ -146,6 +146,11 @@ static int debug = DEBUG_TRACE;  /* for debugging*/
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activate debugging output");
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void mxt_early_suspend(struct early_suspend *h);
+static void mxt_late_resume(struct early_suspend *h);
+#endif
+
 static struct class *touch_class;
 
 #define I2C_RETRY_COUNT 5
@@ -2877,6 +2882,85 @@ u8 mxt_valid_interrupt(void)
 	return 1;
 }
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void mxt_early_suspend(struct early_suspend *h)
+{
+#ifndef MXT_SLEEP_POWEROFF
+	u8 cmd_sleep[2] = {0};
+	u16 addr;
+#endif
+	struct	mxt_data *mxt = container_of(h, struct mxt_data, early_suspend);
+
+	pr_info("%s has been called!\n", __func__);
+#if defined(MXT_FACTORY_TEST)
+	/*start firmware updating : not yet finished*/
+	while (mxt->firm_status_data == 1) {
+		pr_info("mxt firmware is Downloading : mxt suspend must be delayed!");
+		msleep(1000);
+	}
+#endif
+	disable_irq(mxt->client->irq);
+	mxt->enabled = false;
+
+	/* cancel and wait for all works to stop so they don't try to
+	 * communicate with the controller after we turn it off
+	 */
+#ifdef MXT_CALIBRATE_WORKAROUND
+	cancel_delayed_work_sync(&mxt->calibrate_dwork);
+#endif
+	cancel_work_sync(&mxt->ta_work);
+#ifdef MXT_SLEEP_POWEROFF
+	if (mxt->pdata->suspend_platform_hw != NULL)
+		mxt->pdata->suspend_platform_hw();
+#else
+	/*
+	  * a setting of zeros to IDLEACQINT and ACTVACQINT
+	  * forces the chip set to enter Deep Sleep mode.
+	  */
+	addr = get_object_address(MXT_GEN_POWERCONFIG_T7, 0,
+			mxt->object_table, mxt->device_info.num_objs);
+	pr_info("addr: 0x%02x, buf[0]=0x%x, buf[1]=0x%x",
+				addr, cmd_sleep[0], cmd_sleep[1]);
+	mxt_write_block(mxt->client, addr, 2, (u8 *)cmd_sleep);
+#endif
+	mxt_forced_release(mxt);
+}
+
+static void mxt_late_resume(struct early_suspend *h)
+{
+#ifndef MXT_SLEEP_POWEROFF
+	int cnt;
+#endif
+	struct	mxt_data *mxt = container_of(h, struct mxt_data, early_suspend);
+
+	pr_info("%s has been called!\n", __func__);
+#ifdef MXT_SLEEP_POWEROFF
+	if (mxt->pdata->resume_platform_hw != NULL)
+		mxt->pdata->resume_platform_hw();
+#else
+	for (cnt = 10; cnt > 0; cnt--) {
+		if (mxt_power_config(mxt) < 0)
+			continue;
+		if (reset_chip(mxt, RESET_TO_NORMAL) == 0)/* soft reset*/
+			break;
+	}
+	if (cnt == 0)
+		pr_err("%s : reset_chip failed!!!\n", __func__);
+	/*typical atmel spec. value is 250ms,
+	but it sometimes fails to recover so it needs more*/
+	msleep(300);
+#endif
+	if (mxt->set_mode_for_ta && !work_pending(&mxt->ta_work))
+		schedule_work(&mxt->ta_work);
+	mxt->enabled = true;
+	mxt->pdata->fherr_cnt = 0;
+	enable_irq(mxt->client->irq);
+#ifdef MXT_CALIBRATE_WORKAROUND
+	schedule_delayed_work(&mxt->calibrate_dwork, msecs_to_jiffies(4000));
+#endif
+}
+#endif
+
 static int __devinit mxt_probe(struct i2c_client *client,
 			       const struct i2c_device_id *id)
 {
@@ -3100,6 +3184,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	if (debug > DEBUG_INFO)
 		dev_info(&client->dev, "touchscreen, irq %d\n", mxt->irq);
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	mxt->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	mxt->early_suspend.suspend = mxt_early_suspend;
+	mxt->early_suspend.resume = mxt_late_resume;
+	register_early_suspend(&mxt->early_suspend);
+#endif  /* CONFIG_HAS_EARLYSUSPEND */
+
 	touch_class = class_create(THIS_MODULE, "touch_debug");
 	if (IS_ERR(touch_class)) {
 		pr_err("Failed to create device class\n");
@@ -3144,6 +3235,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	return 0;
 
 err_sysfs_create_group:
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&mxt->early_suspend);
+#endif
+
 	if (mxt->irq)
 		free_irq(mxt->irq, mxt);
 err_irq:
@@ -3185,7 +3280,10 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	/* Close down sysfs entries */
 	sysfs_remove_group(&client->dev.kobj, &maxtouch_attr_group);
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
 	wake_lock_destroy(&mxt->wakelock);
+	unregister_early_suspend(&mxt->early_suspend);
+#endif  /* CONFIG_HAS_EARLYSUSPEND */
 
 	/* Release IRQ so no queue will be scheduled */
 	if (mxt->irq)
