@@ -472,4 +472,4 @@ module_exit(tps6586x_rtc_exit);
 MODULE_DESCRIPTION("TI TPS6586x RTC driver");
 MODULE_AUTHOR("NVIDIA Corporation");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:rtc-tps6586x")
+MODULE_ALIAS("platform:rtc-tps6586x");
