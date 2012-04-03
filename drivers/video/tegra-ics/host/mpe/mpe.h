@@ -1,7 +1,7 @@
 /*
- * drivers/video/tegra/host/t20/channel_t20.h
+ * drivers/video/tegra/host/mpe/mpe.h
  *
- * Tegra Graphics Host Channel
+ * Tegra Graphics Host MPE
  *
  * Copyright (c) 2011, NVIDIA Corporation.
  *
@@ -20,16 +20,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __NVHOST_CHANNEL_T20_H
-#define __NVHOST_CHANNEL_T20_H
+#ifndef __NVHOST_MPE_MPE_H
+#define __NVHOST_MPE_MPE_H
 
-#include "hardware_t20.h"
-#include "../nvhost_channel.h"
+struct nvhost_hwctx_handler;
 
-extern const struct nvhost_channeldesc nvhost_t20_channelmap[];
-
-/* Reads words from FIFO */
-int nvhost_drain_read_fifo(void __iomem *chan_regs,
-		u32 *ptr, unsigned int count, unsigned int *pending);
+int nvhost_mpe_ctxhandler_init(struct nvhost_hwctx_handler *h);
+int nvhost_mpe_prepare_power_off(struct nvhost_module *mod);
 
 #endif
