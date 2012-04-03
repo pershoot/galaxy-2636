@@ -350,7 +350,6 @@ static void do_svc_module_clock(struct avp_svc_info *avp_svc,
 	struct svc_common_resp resp;
 	struct avp_module *mod;
 	struct avp_clk *aclk;
-	unsigned long emc_rate;
 
 	mod = find_avp_module(avp_svc, msg->module_id);
 	if (!mod) {
@@ -360,14 +359,10 @@ static void do_svc_module_clock(struct avp_svc_info *avp_svc,
 		goto send_response;
 	}
 
-	if (msg->module_id == AVP_MODULE_ID_VDE)
-		emc_rate = ULONG_MAX;
-
 	mutex_lock(&avp_svc->clk_lock);
 	aclk = &avp_svc->clks[mod->clk_req];
 	if (msg->enable) {
 		if (aclk->refcnt++ == 0) {
-			clk_set_rate(avp_svc->emcclk, emc_rate);
 			clk_enable(avp_svc->emcclk);
 			clk_enable(avp_svc->sclk);
 			clk_enable(aclk->clk);
@@ -378,9 +373,7 @@ static void do_svc_module_clock(struct avp_svc_info *avp_svc,
 			       aclk->mod->name);
 		} else if (--aclk->refcnt == 0) {
 			clk_disable(aclk->clk);
-			clk_set_rate(avp_svc->sclk, 0);
 			clk_disable(avp_svc->sclk);
-			clk_set_rate(avp_svc->emcclk, 0);
 			clk_disable(avp_svc->emcclk);
 		}
 	}
@@ -530,6 +523,7 @@ static void do_svc_module_clock_get(struct avp_svc_info *avp_svc,
 	struct svc_clock_ctrl_response resp;
 	struct avp_module *mod;
 	struct avp_clk *aclk;
+	int ret = 0;
 
 	mod = find_avp_module(avp_svc, msg->module_id);
 	if (!mod) {
@@ -772,9 +766,7 @@ void avp_svc_stop(struct avp_svc_info *avp_svc)
 				aclk->mod->name);
 			clk_disable(aclk->clk);
 			/* sclk/emcclk was enabled once for every clock */
-			clk_set_rate(avp_svc->sclk, 0);
 			clk_disable(avp_svc->sclk);
-			clk_set_rate(avp_svc->emcclk, 0);
 			clk_disable(avp_svc->emcclk);
 		}
 		aclk->refcnt = 0;
