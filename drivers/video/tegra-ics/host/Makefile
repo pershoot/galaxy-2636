@@ -9,8 +9,9 @@ nvhost-objs = \
 	nvhost_job.o \
 	dev.o \
 	bus.o \
-	3dctx_common.o \
 	debug.o
 
+obj-$(CONFIG_TEGRA_GRHOST_ICS) += mpe/
+obj-$(CONFIG_TEGRA_GRHOST_ICS) += gr3d/
 obj-$(CONFIG_TEGRA_GRHOST_ICS) += t20/
 obj-$(CONFIG_TEGRA_GRHOST_ICS) += nvhost.o

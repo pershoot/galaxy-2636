@@ -176,13 +176,12 @@ static int tegra_fb_setcmap(struct fb_cmap *cmap, struct fb_info *info)
 static int tegra_fb_blank(int blank, struct fb_info *info)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
-	printk("%s(%d)+:\n", __FUNCTION__, __LINE__);
+
 	switch (blank) {
 	case FB_BLANK_UNBLANK:
 		dev_dbg(&tegra_fb->ndev->dev, "unblank\n");
 		tegra_fb->win->flags = TEGRA_WIN_FLAG_ENABLED;
 		tegra_dc_enable(tegra_fb->win->dc);
-		printk("%s(%d)-\n", __FUNCTION__, __LINE__);
 		return 0;
 
 	case FB_BLANK_NORMAL:
@@ -195,11 +194,9 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 	case FB_BLANK_POWERDOWN:
 		dev_dbg(&tegra_fb->ndev->dev, "blank - powerdown\n");
 		tegra_dc_disable(tegra_fb->win->dc);
-		printk("%s(%d)-\n", __FUNCTION__, __LINE__);
 		return 0;
 
 	default:
-		printk("%s(%d)-; unknown state, return -ENOTTY.\n", __FUNCTION__, __LINE__);
 		return -ENOTTY;
 	}
 }

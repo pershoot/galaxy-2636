@@ -1,7 +1,7 @@
 /*
- * drivers/video/tegra/host/3dctx_common.c
+ * drivers/video/tegra/host/gr3d/gr3d.c
  *
- * Tegra Graphics Host 3d hardware context
+ * Tegra Graphics Host 3D
  *
  * Copyright (c) 2011 NVIDIA Corporation.
  *
@@ -24,11 +24,12 @@
 
 #include <mach/nvmap.h>
 #include <linux/slab.h>
-#include "3dctx_common.h"
+#include "t20/t20.h"
 #include "t20/hardware_t20.h"
 #include "t20/syncpt_t20.h"
 #include "nvhost_hwctx.h"
 #include "dev.h"
+#include "gr3d.h"
 
 unsigned int nvhost_3dctx_restore_size;
 unsigned int nvhost_3dctx_restore_incrs;
@@ -48,7 +49,7 @@ void nvhost_3dctx_restore_begin(u32 *ptr)
 	/* set class to 3D */
 	ptr[2] = nvhost_opcode_setclass(NV_GRAPHICS_3D_CLASS_ID, 0, 0);
 	/* program PSEQ_QUAD_ID */
-	ptr[3] = nvhost_opcode_imm(0x545, 0);
+	ptr[3] = nvhost_opcode_imm(AR3D_PSEQ_QUAD_ID, 0);
 }
 
 void nvhost_3dctx_restore_direct(u32 *ptr, u32 start_reg, u32 count)
@@ -146,78 +147,7 @@ void nvhost_3dctx_put(struct nvhost_hwctx *ctx)
 	kref_put(&ctx->ref, nvhost_3dctx_free);
 }
 
-int nvhost_3dctx_prepare_power_off(struct nvhost_module *mod)
+int nvhost_gr3d_prepare_power_off(struct nvhost_module *mod)
 {
-	struct nvhost_channel *ch =
-			container_of(mod, struct nvhost_channel, mod);
-	struct nvhost_hwctx *hwctx_to_save;
-	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq);
-	u32 syncpt_incrs, syncpt_val;
-	int err = 0;
-	void *ref;
-	void *ctx_waiter = NULL, *wakeup_waiter = NULL;
-
-	ctx_waiter = nvhost_intr_alloc_waiter();
-	wakeup_waiter = nvhost_intr_alloc_waiter();
-	if (!ctx_waiter || !wakeup_waiter) {
-		err = -ENOMEM;
-		goto done;
-	}
-
-	if (mod->desc->busy)
-		mod->desc->busy(mod);
-
-	mutex_lock(&ch->submitlock);
-	hwctx_to_save = ch->cur_ctx;
-	if (!hwctx_to_save) {
-		mutex_unlock(&ch->submitlock);
-		goto done;
-	}
-
-	err = nvhost_cdma_begin(&ch->cdma, hwctx_to_save->timeout);
-	if (err) {
-		mutex_unlock(&ch->submitlock);
-		goto done;
-	}
-
-	hwctx_to_save->valid = true;
-	ch->ctxhandler.get(hwctx_to_save);
-	ch->cur_ctx = NULL;
-
-	syncpt_incrs = hwctx_to_save->save_incrs;
-	syncpt_val = nvhost_syncpt_incr_max(&ch->dev->syncpt,
-					NVSYNCPT_3D, syncpt_incrs);
-
-	ch->ctxhandler.save_push(&ch->cdma, hwctx_to_save);
-	nvhost_cdma_end(&ch->cdma, ch->dev->nvmap, NVSYNCPT_3D, syncpt_val,
-			NULL, 0, hwctx_to_save->timeout);
-
-	err = nvhost_intr_add_action(&ch->dev->intr, NVSYNCPT_3D,
-			syncpt_val - syncpt_incrs + hwctx_to_save->save_thresh,
-			NVHOST_INTR_ACTION_CTXSAVE, hwctx_to_save,
-			ctx_waiter,
-			NULL);
-	ctx_waiter = NULL;
-	WARN(err, "Failed to set context save interrupt");
-
-	err = nvhost_intr_add_action(&ch->dev->intr, NVSYNCPT_3D, syncpt_val,
-			NVHOST_INTR_ACTION_WAKEUP, &wq,
-			wakeup_waiter,
-			&ref);
-	wakeup_waiter = NULL;
-	WARN(err, "Failed to set wakeup interrupt");
-	wait_event(wq,
-		nvhost_syncpt_min_cmp(&ch->dev->syncpt,
-				NVSYNCPT_3D, syncpt_val));
-
-	nvhost_intr_put_ref(&ch->dev->intr, ref);
-
-	nvhost_cdma_update(&ch->cdma);
-
-	mutex_unlock(&ch->submitlock);
-
-done:
-	kfree(ctx_waiter);
-	kfree(wakeup_waiter);
-	return err;
+	return nvhost_t20_save_context(mod, NVSYNCPT_3D);
 }

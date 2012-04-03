@@ -1,9 +1,9 @@
 /*
- * drivers/video/tegra/host/t20/channel_t20.h
+ * drivers/video/tegra/host/nvhost_mpectx.c
  *
- * Tegra Graphics Host Channel
+ * Tegra Graphics Host MPE HW Context
  *
- * Copyright (c) 2011, NVIDIA Corporation.
+ * Copyright (c) 2010, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,16 +20,4 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __NVHOST_CHANNEL_T20_H
-#define __NVHOST_CHANNEL_T20_H
-
-#include "hardware_t20.h"
-#include "../nvhost_channel.h"
-
-extern const struct nvhost_channeldesc nvhost_t20_channelmap[];
-
-/* Reads words from FIFO */
-int nvhost_drain_read_fifo(void __iomem *chan_regs,
-		u32 *ptr, unsigned int count, unsigned int *pending);
-
-#endif
+/* Placeholder */

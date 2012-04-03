@@ -29,16 +29,6 @@
 #define TEGRA_MAX_DC		2
 #define DC_N_WINDOWS		3
 
-#if defined(CONFIG_ICS)
-extern bool b_dc0_enabled;
-extern int hdmi_resolution;
-
-enum {
-        HDMI_ACTIVE_1920_1080,
-        HDMI_ACTIVE_1280_720,
-        HDMI_ACTIVE_NONE,
-};
-#endif
 
 /* DSI pixel data format */
 enum {
