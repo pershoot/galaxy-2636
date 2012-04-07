@@ -24,7 +24,7 @@
 #include "nvhost_syncpt.h"
 #include "dev.h"
 
-#define MAX_STUCK_CHECK_COUNT 15
+#define MAX_STUCK_CHECK_COUNT 17
 
 /**
  * Resets syncpoint and waitbase values to sw shadows
