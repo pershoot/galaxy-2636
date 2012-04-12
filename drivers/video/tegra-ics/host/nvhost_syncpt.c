@@ -24,7 +24,6 @@
 #include "nvhost_syncpt.h"
 #include "dev.h"
 
-#define MAX_STUCK_CHECK_COUNT 17
 #define MAX_SYNCPT_LENGTH 5
 /* Name of sysfs node for min and max value */
 static const char *min_name = "min";
@@ -211,20 +210,19 @@ int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id,
 		}
 		if (timeout != NVHOST_NO_TIMEOUT)
 			timeout -= check;
-		if (timeout) {
+		if (timeout && check_count <= MAX_STUCK_CHECK_COUNT) {
 			dev_warn(&syncpt_to_dev(sp)->dev->dev,
 				"%s: syncpoint id %d (%s) stuck waiting %d, timeout=%d\n",
 				 current->comm, id, syncpt_op(sp).name(sp, id),
 				 thresh, timeout);
 			syncpt_op(sp).debug(sp);
-			if (check_count > MAX_STUCK_CHECK_COUNT) {
+			if (check_count == MAX_STUCK_CHECK_COUNT) {
 				if (low_timeout) {
 					dev_warn(&syncpt_to_dev(sp)->dev->dev,
 						"is timeout %d too low?\n",
 						low_timeout);
 				}
 				nvhost_debug_dump(syncpt_to_dev(sp));
-				BUG();
 			}
 			check_count++;
 		}
