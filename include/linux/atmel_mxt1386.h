@@ -24,8 +24,8 @@
 
 /*For Performance*/
 //#define MXT_DRIVER_FILTER
-//#define MXT_FACTORY_TEST
-//#define ENABLE_NOISE_TEST_MODE
+#define MXT_FACTORY_TEST
+#define ENABLE_NOISE_TEST_MODE
 //#define MXT_TUNNING_ENABLE
 
 /*Normal Feature*/
