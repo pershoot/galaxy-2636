@@ -366,100 +366,220 @@ static void mxt_inform_charger_connection(struct mxt_callbacks *cb, int mode)
 
 static void mxt_ta_worker(struct work_struct *work)
 {
-	struct mxt_data *mxt = container_of(work, struct mxt_data, ta_work);
-	u8 blen = mxt->pdata->touchscreen_config.blen;
-	u8 tchthr = mxt->pdata->touchscreen_config.tchthr;
-	u8 noisethr = mxt->pdata->noise_suppression_config.noisethr;
-	u8 idlegcafdepth = mxt->pdata->cte_config.idlegcafdepth;
-	u8 freq[5] = {0,};
-	int error = 0, i = 0;
+        struct mxt_data *mxt = container_of(work, struct mxt_data, ta_work);
+        static u8 blen;
+        static u8 tchthr;
+        static u8 noisethr;
+        static u8 idlegcafdepth;
+        static u8 movefilter;
+        static u8 idleacqint;
+        static u8 freqscale;
+        static u8 jumplimit;
+        int i = 0;
+        u8 fhe_cnt = 0;
+        u8 freq[5];
+        u16 setting_bit = 0;
 
-	pr_info("[sec_touch] TA/USB is%sconnected.\n",
-		mxt->set_mode_for_ta ? " " : " dis");
+        printk(KERN_DEBUG "[TSP] TA/USB is%sconnected.\n",
+                mxt->set_mode_for_ta ? " " : " dis");
 
-	for (i = 0; i < 5; i++)
-		freq[i] = mxt->pdata->noise_suppression_config.freq[i];
+        if (0 == mxt->pdata->fherr_cnt) {
+                tchthr = mxt->pdata->touchscreen_config.tchthr;
+                noisethr = mxt->pdata->noise_suppression_config.noisethr;
+                idlegcafdepth = mxt->pdata->cte_config.idlegcafdepth;
+                idleacqint = mxt->pdata->power_config.idleacqint;
+                movefilter = mxt->pdata->touchscreen_config.movfilter;
+                blen = mxt->pdata->touchscreen_config.blen;
+                jumplimit = mxt->pdata->touchscreen_config.jumplimit;
+                freqscale = mxt->pdata->noise_suppression_config.freqhopscale;
+        }
 
-	if (mxt->set_mode_for_ta) {
-		tchthr = mxt->pdata->tchthr_for_ta_connect;
-		noisethr = mxt->pdata->noisethr_for_ta_connect;
-		idlegcafdepth = mxt->pdata->idlegcafdepth_ta_connect;
+        for (i = 0; i < 5; i++)
+                freq[i] = mxt->pdata->noise_suppression_config.freq[i];
 
-		if (mxt->pdata->fherr_cnt >= 9) {
-			blen = mxt->pdata->tch_blen_for_fherr;
-			tchthr = mxt->pdata->tchthr_for_fherr;
-			noisethr = mxt->pdata->noisethr_for_fherr;
-			for (i = 0; i < 5; i++)
-				freq[i] = mxt->pdata->freq_for_fherr3[i];
-		}else if (mxt->pdata->fherr_cnt >= 6) {
-			blen = mxt->pdata->tch_blen_for_fherr;
-			tchthr = mxt->pdata->tchthr_for_fherr;
-			noisethr = mxt->pdata->noisethr_for_fherr;
-			for (i = 0; i < 5; i++)
-				freq[i] = mxt->pdata->freq_for_fherr2[i];
-		} else if (mxt->pdata->fherr_cnt >= 3) {
-			blen = mxt->pdata->tch_blen_for_fherr;
-			tchthr = mxt->pdata->tchthr_for_fherr;
-			noisethr = mxt->pdata->noisethr_for_fherr;
-			for (i = 0; i < 5; i++)
-				freq[i] = mxt->pdata->freq_for_fherr1[i];
-		}
-	}
+        if (mxt->set_mode_for_ta) {
+                if (mxt->pdata->fherr_cnt >= mxt->pdata->fherr_chg_cnt) {
+                        blen = mxt->pdata->tch_blen_for_fherr;
+                        SET_BIT(setting_bit, TSP_SETTING_BLEN);
 
-	pr_info("[TSP] frequency table \n");
-	for (i = 0; i < 5; i++)
-		pr_info("[TSP] frequency[%d] : %u\n", i, freq[i]);
+                        tchthr = mxt->pdata->tchthr_for_fherr;
+                        SET_BIT(setting_bit, TSP_SETTING_TCHTHR);
 
-	disable_irq(mxt->client->irq);
+                        noisethr = mxt->pdata->noisethr_for_fherr;
+                        SET_BIT(setting_bit, TSP_SETTING_NOISETHR);
 
-	mxt_write_byte(mxt->client,
-		MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
-		+ MXT_ADR_T9_BLEN, blen);
+                        movefilter = mxt->pdata->movefilter_for_fherr;
+                        SET_BIT(setting_bit, TSP_SETTING_MOVEFILTER);
 
-	/* change to ta_connect config*/
-	/* tchthr change*/
-	error = mxt_write_byte(mxt->client,
-		MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
-		+ MXT_ADR_T9_TCHTHR, tchthr);
-	if (error < 0)
-		pr_err("[sec_touch] error %s: write_object : tchthr\n",
-				__func__);
+                        if (jumplimit != mxt->pdata->jumplimit_for_fherr) {
+                                jumplimit = mxt->pdata->jumplimit_for_fherr;
+                                SET_BIT(setting_bit, TSP_SETTING_JUMPLIMIT);
+                        }
 
-	/* noisethr change*/
-	error = mxt_write_byte(mxt->client,
-		MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
-		+ MXT_ADR_T22_NOISETHR,noisethr);
-	if (error < 0)
-		pr_err("[sec_touch] error %s: write_object : noisethr\n",
-				__func__);
+                        if (freqscale != mxt->pdata->freqhopscale_for_fherr) {
+                                freqscale = mxt->pdata->freqhopscale_for_fherr;
+                                SET_BIT(setting_bit, TSP_SETTING_FREQ_SCALE);
+                        }
+                        fhe_cnt = (mxt->pdata->fherr_cnt /
+                                mxt->pdata->fherr_chg_cnt) % 4;
+                        SET_BIT(setting_bit, TSP_SETTING_FREQUENCY);
+                        for (i = 0; i < 5; i++) {
+                                switch (fhe_cnt) {
+                                case 1:
+                                        freq[i] =
+                                                mxt->pdata->freq_for_fherr1[i];
+                                        break;
+                                case 2:
+                                        freq[i] =
+                                                mxt->pdata->freq_for_fherr2[i];
+                                        break;
+                                case 3:
+                                        freq[i] =
+                                                mxt->pdata->freq_for_fherr3[i];
+                                        break;
+                                case 0:
+                                default:
+                                        break;
+                                }
+                        }
+                } else {
+                        tchthr = mxt->pdata->tchthr_for_ta_connect;
+                        SET_BIT(setting_bit, TSP_SETTING_TCHTHR);
 
-	/* freq change*/
-	error = mxt_write_block(mxt->client,
-		MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
-		+ MXT_ADR_T22_FREQ, 5, freq);
-	if (error < 0)
-		pr_err("[sec_touch] error %s: write_object : freq\n",
-				__func__);
+                        noisethr = mxt->pdata->noisethr_for_ta_connect;
+                        SET_BIT(setting_bit, TSP_SETTING_NOISETHR);
 
-	/* idlegcafdepth change*/
-	error = mxt_write_byte(mxt->client,
-		MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
-		+ MXT_ADR_T28_IDLEGCAFDEPTH,
-		idlegcafdepth);
-	if (error < 0)
-		pr_err("[sec_touch] error %s: write_object : idlegcafdepth\n",
-				__func__);
+                        if (idlegcafdepth !=
+                                mxt->pdata->idlegcafdepth_ta_connect) {
+                                idlegcafdepth =
+                                        mxt->pdata->idlegcafdepth_ta_connect;
+                                SET_BIT(setting_bit, TSP_SETTING_IDLEDEPTH);
+                        }
 
-	/* mxt_calibrate : non-zero value*/
-	error = mxt_write_byte(mxt->client,
-		MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6)
-		+ MXT_ADR_T6_CALIBRATE,
-	       0x1);
-	if (error < 0)
-		pr_err("[sec_touch] error %s: mxt_calibrate\n",
-				__func__);
+                        if (idleacqint !=
+                                mxt->pdata->idleacqint_for_ta_connect) {
+                                idleacqint =
+                                        mxt->pdata->idleacqint_for_ta_connect;
+                                SET_BIT(setting_bit, TSP_SETTING_IDLEACQINT);
+                        }
+                }
 
-	enable_irq(mxt->client->irq);
+        } else {
+                mxt->pdata->fherr_cnt = 0;
+
+                tchthr = mxt->pdata->touchscreen_config.tchthr;
+                SET_BIT(setting_bit, TSP_SETTING_TCHTHR);
+
+                noisethr = mxt->pdata->noise_suppression_config.
+                        noisethr;
+                SET_BIT(setting_bit, TSP_SETTING_NOISETHR);
+
+                movefilter = mxt->pdata->touchscreen_config.movfilter;
+                SET_BIT(setting_bit, TSP_SETTING_MOVEFILTER);
+
+                blen = mxt->pdata->touchscreen_config.blen;
+                SET_BIT(setting_bit, TSP_SETTING_BLEN);
+
+                if (idlegcafdepth != mxt->pdata->cte_config.idlegcafdepth) {
+                        idlegcafdepth = mxt->pdata->cte_config.idlegcafdepth;
+                        SET_BIT(setting_bit, TSP_SETTING_IDLEDEPTH);
+                }
+
+                if (idleacqint != mxt->pdata->power_config.idleacqint) {
+                        idleacqint = mxt->pdata->power_config.idleacqint;
+                        SET_BIT(setting_bit, TSP_SETTING_IDLEACQINT);
+                }
+
+                if (jumplimit != mxt->pdata->touchscreen_config.jumplimit) {
+                        jumplimit = mxt->pdata->touchscreen_config.jumplimit;
+                        SET_BIT(setting_bit, TSP_SETTING_JUMPLIMIT);
+                }
+
+                if (freqscale != mxt->pdata->noise_suppression_config.
+                        freqhopscale) {
+                        freqscale = mxt->pdata->noise_suppression_config.
+                                freqhopscale;
+                        SET_BIT(setting_bit, TSP_SETTING_FREQ_SCALE);
+                }
+        }
+
+        printk(KERN_DEBUG "[TSP] setting_bit : %x\n", setting_bit);
+
+        for (i = 0; i < 5; i++)
+                printk(KERN_DEBUG "[TSP] frequency[%d] : %u\n",
+                        i, freq[i]);
+
+        disable_irq(mxt->client->irq);
+
+        if (setting_bit & (0x1 << TSP_SETTING_BLEN))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + MXT_ADR_T9_BLEN, blen);
+
+        /* change to ta_connect config*/
+        /* tchthr change*/
+        if (setting_bit & (0x1 << TSP_SETTING_TCHTHR))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + MXT_ADR_T9_TCHTHR, tchthr);
+
+        /* noisethr change*/
+        if (setting_bit & (0x1 << TSP_SETTING_NOISETHR))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
+                        + MXT_ADR_T22_NOISETHR, noisethr);
+
+        /* freq change*/
+        if (setting_bit & (0x1 << TSP_SETTING_FREQUENCY)) {
+                mxt_write_block(mxt->client,
+                        MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
+                        + MXT_ADR_T22_FREQ, 5, freq);
+                        printk(KERN_DEBUG "[TSP] frequency table chage : %u\n",
+                                mxt->pdata->fherr_cnt);
+        }
+
+        /* frequency scale */
+        if (setting_bit & (0x1 << TSP_SETTING_FREQ_SCALE))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
+                        + MXT_ADR_T22_FREQHOPSCALE, freqscale);
+
+        /* idlegcafdepth change*/
+        if (setting_bit & (0x1 << TSP_SETTING_IDLEDEPTH))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28)
+                        + MXT_ADR_T28_IDLEGCAFDEPTH,
+                        idlegcafdepth);
+
+        /* idleacqint change*/
+        if (setting_bit & (0x1 << TSP_SETTING_IDLEACQINT))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7)
+                        + MXT_ADR_T7_IDLEACQINT,
+                        idleacqint);
+
+        /* move filter change */
+        if (setting_bit & (0x1 << TSP_SETTING_MOVEFILTER))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + MXT_ADR_T9_MOVFILTER,
+                        movefilter);
+
+        /* move filter change */
+        if (setting_bit & (0x1 << TSP_SETTING_JUMPLIMIT))
+                mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + 30,
+                        jumplimit);
+
+#if 0
+        /* mxt_calibrate : non-zero value*/
+        mxt_write_byte(mxt->client,
+                MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6)
+                + MXT_ADR_T6_CALIBRATE,
+               0x1);
+#endif
+        enable_irq(mxt->client->irq);
 }
 
 #ifdef MXT_CALIBRATE_WORKAROUND
