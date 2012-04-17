@@ -714,6 +714,12 @@ struct mxt_platform_data {
 	uint8_t freq_for_fherr1[5];
 	uint8_t freq_for_fherr2[5];
 	uint8_t freq_for_fherr3[5];
+	u16 fherr_cnt_no_ta;
+	u16 fherr_chg_cnt_no_ta;
+	uint8_t tch_blen_for_fherr_no_ta;
+	uint8_t tchthr_for_fherr_no_ta;
+	uint8_t movfilter_fherr_no_ta;
+	uint8_t noisethr_for_fherr_no_ta;
 #ifdef MXT_CALIBRATE_WORKAROUND
 	/* recalibration suspend time after last detection */
 	uint8_t atchcalst_idle;
@@ -733,6 +739,7 @@ struct mxt_data {
 	struct delayed_work  firmup_dwork;
 	struct delayed_work  dwork;
 	struct work_struct ta_work;
+	struct work_struct fhe_work;
 	struct report_id_map *rid_map;
 	struct mxt_object    *object_table;
 	struct wake_lock wakelock;
@@ -745,6 +752,7 @@ struct mxt_data {
 	struct early_suspend	early_suspend;
 #endif
 	bool new_msgs;
+	bool fherr_cnt_no_ta_calready;
 	char phys_name[32];
 	int irq;
 	int valid_irq_counter;

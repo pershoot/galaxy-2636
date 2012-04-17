@@ -582,6 +582,61 @@ static void mxt_ta_worker(struct work_struct *work)
         enable_irq(mxt->client->irq);
 }
 
+static void mxt_fhe_worker(struct work_struct *work)
+{
+        struct mxt_data *mxt = container_of(work, struct mxt_data, fhe_work);
+
+        printk(KERN_DEBUG "[TSP] fherr_no_ta : %u\n",
+                mxt->pdata->fherr_cnt_no_ta);
+
+        if (mxt->pdata->fherr_cnt_no_ta ==
+                mxt->pdata->fherr_chg_cnt_no_ta) {
+
+                int ret = 0;
+
+                disable_irq(mxt->client->irq);
+
+                /* blen */
+                ret = mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + MXT_ADR_T9_BLEN,
+                        mxt->pdata->tch_blen_for_fherr_no_ta);
+
+                printk(KERN_DEBUG "[TSP] tch_blen_for_fherr_no_ta : %u - (%d)\n",
+                        mxt->pdata->tch_blen_for_fherr_no_ta, ret);
+
+                /* tchthr change*/
+                ret = mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + MXT_ADR_T9_TCHTHR,
+                        mxt->pdata->tchthr_for_fherr_no_ta);
+
+                printk(KERN_DEBUG "[TSP] tchthr_for_fherr_no_ta : %u - (%d)\n",
+                        mxt->pdata->tchthr_for_fherr_no_ta, ret);
+
+                /* move filter change */
+                ret = mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9)
+                        + MXT_ADR_T9_MOVFILTER,
+                        mxt->pdata->movfilter_fherr_no_ta);
+
+                printk(KERN_DEBUG "[TSP] movfilter_fherr_no_ta : %u - (%d)\n",
+                        mxt->pdata->movfilter_fherr_no_ta, ret);
+
+                /* noisethr change*/
+                ret = mxt_write_byte(mxt->client,
+                        MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22)
+                        + MXT_ADR_T22_NOISETHR,
+                        mxt->pdata->noisethr_for_fherr_no_ta);
+
+                printk(KERN_DEBUG "[TSP] noisethr_for_fherr_no_ta : %u - (%d)\n",
+                        mxt->pdata->noisethr_for_fherr_no_ta, ret);
+
+                enable_irq(mxt->client->irq);
+        } else if (mxt->pdata->fherr_cnt_no_ta % 5)
+                mxt->fherr_cnt_no_ta_calready = 1;
+}
+
 #ifdef MXT_CALIBRATE_WORKAROUND
 static void mxt_calibrate_worker(struct work_struct *work)
 {
@@ -3174,6 +3229,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&mxt->calibrate_dwork, mxt_calibrate_worker);
 #endif
 	INIT_WORK(&mxt->ta_work, mxt_ta_worker);
+	INIT_WORK(&mxt->fhe_work, mxt_fhe_worker);
 #ifdef MXT_FACTORY_TEST
 	INIT_DELAYED_WORK(&mxt->firmup_dwork, set_mxt_update_exe);
 #endif
