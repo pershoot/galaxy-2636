@@ -3125,10 +3125,9 @@ static void mxt_late_resume(struct early_suspend *h)
 	but it sometimes fails to recover so it needs more*/
 	msleep(300);
 #endif
-	if (mxt->set_mode_for_ta && !work_pending(&mxt->ta_work))
+	if (!work_pending(&mxt->ta_work))
 		schedule_work(&mxt->ta_work);
 	mxt->enabled = true;
-	mxt->pdata->fherr_cnt = 0;
 	enable_irq(mxt->client->irq);
 #ifdef MXT_CALIBRATE_WORKAROUND
 	schedule_delayed_work(&mxt->calibrate_dwork, msecs_to_jiffies(4000));
