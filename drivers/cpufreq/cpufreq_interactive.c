@@ -199,12 +199,21 @@ static void cpufreq_interactive_timer(unsigned long data)
 			100 * (delta_time - delta_idle) / delta_time;
 
 	/*
-	 * Combine short-term load (since last idle timer started or timer
-	 * function re-armed itself) and long-term load (since last frequency
-	 * change) to determine new target frequency
+	 * Choose greater of short-term load (since last idle timer
+	 * started or timer function re-armed itself) or long-term load
+	 * (since last frequency change).
 	 */
-	new_freq = cpufreq_interactive_get_target(cpu_load, load_since_change,
-						  pcpu->policy);
+	if (load_since_change > cpu_load)
+		cpu_load = load_since_change;
+
+	if (cpu_load >= go_hispeed_load) {
+		if (pcpu->policy->cur == pcpu->policy->min)
+			new_freq = hispeed_freq;
+		else
+			new_freq = pcpu->policy->max * cpu_load / 100;
+	} else {
+		new_freq = pcpu->policy->cur * cpu_load / 100;
+	}
 
 	if (cpufreq_frequency_table_target(pcpu->policy, pcpu->freq_table,
 					   new_freq, CPUFREQ_RELATION_H,
