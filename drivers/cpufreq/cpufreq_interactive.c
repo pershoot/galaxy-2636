@@ -72,15 +72,6 @@ static u64 hispeed_freq;
 #define DEFAULT_GO_HISPEED_LOAD 85
 static unsigned long go_hispeed_load;
 
-/* Base of exponential raise to max speed; if 0 - jump to maximum */
-static unsigned long boost_factor;
-
-/*
- * Targeted sustainable load relatively to current frequency.
- * If 0, target is set realtively to the max speed
- */
-static unsigned long sustain_load;
-
 /*
  * The minimum amount of time to spend at a frequency before we can ramp down.
  */
@@ -112,36 +103,6 @@ struct cpufreq_governor cpufreq_gov_interactive = {
 	.max_transition_latency = 9500000,
 	.owner = THIS_MODULE,
 };
-
-static unsigned int cpufreq_interactive_get_target(
-	int cpu_load, int load_since_change, struct cpufreq_policy *policy)
-{
-	unsigned int target_freq;
-
-	/*
-	 * Choose greater of short-term load (since last idle timer
-	 * started or timer function re-armed itself) or long-term load
-	 * (since last frequency change).
-	 */
-	if (load_since_change > cpu_load)
-		cpu_load = load_since_change;
-
-	if (cpu_load >= go_hispeed_load) {
-		if (!boost_factor)
-			return policy->max;
-
-		target_freq = policy->cur * boost_factor;
-	}
-	else {
-		if (!sustain_load)
-			return policy->max * cpu_load / 100;
-
-		target_freq = policy->cur * cpu_load / sustain_load;
-	}
-
-	target_freq = min(target_freq, policy->max);
-	return target_freq;
-}
 
 static void cpufreq_interactive_timer(unsigned long data)
 {
@@ -550,36 +511,6 @@ static ssize_t store_go_hispeed_load(struct kobject *kobj,
 static struct global_attr go_hispeed_load_attr = __ATTR(go_hispeed_load, 0644,
 		show_go_hispeed_load, store_go_hispeed_load);
 
-static ssize_t show_boost_factor(struct kobject *kobj,
-				     struct attribute *attr, char *buf)
-{
-	return sprintf(buf, "%lu\n", boost_factor);
-}
-
-static ssize_t store_boost_factor(struct kobject *kobj,
-			struct attribute *attr, const char *buf, size_t count)
-{
-	return strict_strtoul(buf, 0, &boost_factor);
-}
-
-static struct global_attr boost_factor_attr = __ATTR(boost_factor, 0644,
-		show_boost_factor, store_boost_factor);
-
-static ssize_t show_sustain_load(struct kobject *kobj,
-				     struct attribute *attr, char *buf)
-{
-	return sprintf(buf, "%lu\n", sustain_load);
-}
-
-static ssize_t store_sustain_load(struct kobject *kobj,
-			struct attribute *attr, const char *buf, size_t count)
-{
-	return strict_strtoul(buf, 0, &sustain_load);
-}
-
-static struct global_attr sustain_load_attr = __ATTR(sustain_load, 0644,
-		show_sustain_load, store_sustain_load);
-
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
 {
@@ -647,8 +578,6 @@ static struct global_attr timer_rate_attr = __ATTR(timer_rate, 0644,
 		show_timer_rate, store_timer_rate);
 
 static struct attribute *interactive_attributes[] = {
-	&boost_factor_attr.attr,
-	&sustain_load_attr.attr,
 	&hispeed_freq_attr.attr,
 	&go_hispeed_load_attr.attr,
 	&above_hispeed_delay.attr,
