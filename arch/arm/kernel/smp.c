@@ -395,7 +395,9 @@ asmlinkage void __exception do_local_timer(struct pt_regs *regs)
 
 	if (local_timer_ack()) {
 		irq_stat[cpu].local_timer_irqs++;
+		irq_enter();
 		ipi_timer();
+		irq_exit();
 	}
 
 	set_irq_regs(old_regs);
