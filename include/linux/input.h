@@ -83,6 +83,15 @@ struct input_absinfo {
 #define EVIOCGRAB		_IOW('E', 0x90, int)			/* Grab/Release device */
 
 /*
+ * Device properties and quirks
+ */
+
+#define INPUT_PROP_DIRECT               0x01    /* direct input devices */
+
+#define INPUT_PROP_MAX                  0x1f
+#define INPUT_PROP_CNT                  (INPUT_PROP_MAX + 1)
+
+/*
  * Event types
  */
 
@@ -1071,6 +1080,7 @@ struct input_mt_slot {
  * @phys: physical path to the device in the system hierarchy
  * @uniq: unique identification code for the device (if device has it)
  * @id: id of the device (struct input_id)
+ * @propbit: bitmap of device properties and quirks
  * @evbit: bitmap of types of events supported by the device (EV_KEY,
  *	EV_REL, etc.)
  * @keybit: bitmap of keys/buttons this device has
@@ -1105,6 +1115,7 @@ struct input_mt_slot {
  *	of tracked contacts
  * @mtsize: number of MT slots the device uses
  * @slot: MT slot currently being transmitted
+ * @trkid: stores MT tracking ID for the current contact
  * @absinfo: array of &struct absinfo elements holding information
  *	about absolute axes (current value, min, max, flat, fuzz,
  *	resolution)
@@ -1153,6 +1164,8 @@ struct input_dev {
 	const char *uniq;
 	struct input_id id;
 
+	unsigned long propbit[BITS_TO_LONGS(INPUT_PROP_CNT)];
+
 	unsigned long evbit[BITS_TO_LONGS(EV_CNT)];
 	unsigned long keybit[BITS_TO_LONGS(KEY_CNT)];
 	unsigned long relbit[BITS_TO_LONGS(REL_CNT)];
@@ -1183,6 +1196,7 @@ struct input_dev {
 	struct input_mt_slot *mt;
 	int mtsize;
 	int slot;
+	int trkid;
 
 	struct input_absinfo *absinfo;
 

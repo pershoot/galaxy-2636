@@ -249,24 +249,33 @@ static int mxt_other_configs(struct mxt_data *mxt)
 	u16 obj_addr, obj_size;
 	int error = 0, i = 0;
 	u8 addr = 0;
-	u8 obj_data[65];
+	u8 obj_data[50];
 	u8 obj_type[MXT_MAX_OBJECT_TYPES] = {
 		MXT_TOUCH_KEYARRAY_T15,
 		MXT_SPT_COMMSCONFIG_T18,
 		MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24,
+		MXT_SPT_SELFTEST_T25,
 		MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27,
 		MXT_SPT_DIGITIZER_T43,
 		0, };
-	for (i= 0; i < 20; i++)
+
+	for (i = 0; i < 50; i++)
 		obj_data[i] = 0;
-	for (i= 0; i < MXT_MAX_OBJECT_TYPES; i++) {
+
+	for (i = 0; i < MXT_MAX_OBJECT_TYPES; i++) {
 		if (0 == obj_type[i])
 			break;
 		else
 			addr = obj_type[i];
 		obj_addr = MXT_BASE_ADDR(addr);
 		obj_size = MXT_GET_SIZE(addr);
-		error = mxt_write_block(client, obj_addr,	obj_size, (u8 *)&obj_data);
+
+		if (MXT_TOUCH_KEYARRAY_T15 == addr)
+			obj_size *= 2;
+
+		error = mxt_write_block(client, obj_addr,
+			obj_size, (u8 *)&obj_data);
+
 		if (error < 0) {
 			dev_err(&client->dev, "mxt_write_byte failed!\n");
 			return -EIO;
@@ -274,10 +283,11 @@ static int mxt_other_configs(struct mxt_data *mxt)
 	}
 	return 0;
 }
+
 int mxt_config_settings(struct mxt_data *mxt)
 {
-	pr_err("mxt_config_settings");
-	/*initial value of touch_threshold*/
+	printk(KERN_DEBUG "[TSP] %s\n", __func__);
+
 	if (mxt_power_config(mxt) < 0)
 		return -1;
 	if (mxt_acquisition_config(mxt) < 0)
@@ -386,7 +396,6 @@ static int unlock_bootloader(struct i2c_client *client)
 
 int mxt_check_firmware(struct device *dev, int *ver)
 {
-	int ret;
 #if READ_FW_FROM_HEADER
 	struct firmware *fw = NULL;
 	fw = kzalloc(sizeof(struct firmware), GFP_KERNEL);
@@ -395,6 +404,7 @@ int mxt_check_firmware(struct device *dev, int *ver)
 	fw->size = sizeof(firmware_latest);
 	/*pr_info("size of firmware: %d", fw->size);*/
 #else
+	int ret;
 	const struct firmware *fw = NULL;
 
 	ret = request_firmware(&fw, fn, dev);
@@ -405,6 +415,8 @@ int mxt_check_firmware(struct device *dev, int *ver)
 #endif
 	*ver++ = fw->data[0];
 	*ver = fw->data[1];
+
+	kfree(fw);
 
 	return 0;
 }

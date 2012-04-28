@@ -23,9 +23,7 @@
 #define MXT_CALIBRATE_WORKAROUND
 
 /*For Performance*/
-//#define MXT_DRIVER_FILTER
 #define MXT_FACTORY_TEST
-#define ENABLE_NOISE_TEST_MODE
 //#define MXT_TUNNING_ENABLE
 
 /*Normal Feature*/
@@ -35,19 +33,14 @@
 #define MXT_I2C_APP_ADDR   0x4c
 #define MXT_I2C_BOOTLOADER_ADDR 0x26
 
-/*
-#define	MAXTOUCH_I2C_ADDR_LOW				0x4A
-#define	MAXTOUCH_I2C_ADDR_HIGH				0x4B
-#define	MAXTOUCH_I2C_ADDR				MAXTOUCH_I2C_ADDR_HIGH
-*/
-
-#if defined(ENABLE_NOISE_TEST_MODE)
 /*botton_right, botton_left, center, top_right, top_left*/
-static const u16 test_node[5] = {324, 45, 700, 1355, 1075};
-#define MAX_CHANNEL 1386
-#define MIN_REF_VALUE 4840
-#define MAX_REF_VALUE 13500
-#endif
+#define MXT1386_MAX_CHANNEL	1386
+#define MXT1386_PAGE_SIZE		64
+#define MXT1386_PAGE_SIZE_SLAVE		8
+#define MXT1386_MAX_PAGE	((MXT1386_PAGE_SIZE_SLAVE * 3) - 1)
+#define MXT1386_PAGE_WIDTH			14
+#define MXT1386_MIN_REF_VALUE	4840
+#define MXT1386_MAX_REF_VALUE	13500
 
 #define MXT_I2C_SPEED_KHZ  400
 #define MXT_I2C_MAX_LENGTH 300
@@ -468,6 +461,11 @@ static const u16 test_node[5] = {324, 45, 700, 1355, 1075};
 #define DEBUG_RAW       8
 #define DEBUG_TRACE     10
 
+#define TSP_STATE_INACTIVE		-1
+#define TSP_STATE_RELEASE		0
+#define TSP_STATE_PRESS		1
+#define TSP_STATE_MOVE		2
+
 /* Device Info descriptor */
 /* Parsed from maXTouch "Id information" inside device */
 struct mxt_device_info {
@@ -676,6 +674,14 @@ __packed struct proci_palmsuppression_t41_config_t{
 	uint8_t supextto;
 };
 
+struct multi_touch_info {
+	uint16_t size;
+	int16_t pressure;
+	int16_t x;
+	int16_t y;
+	int status;
+};
+
 struct mxt_callbacks {
 	void (*inform_charger)(struct mxt_callbacks *, int mode);
 };
@@ -697,18 +703,28 @@ struct mxt_platform_data {
 	struct spt_cteconfig_t28_config_t cte_config;
 	struct proci_gripsuppression_t40_config_t gripsupression_config;
 	struct proci_palmsuppression_t41_config_t palmsupression_config;
+	uint8_t idleacqint_for_ta_connect;
 	uint8_t tchthr_for_ta_connect;
 	uint8_t tchdi_for_ta_connect;
 	uint8_t noisethr_for_ta_connect;
-	uint8_t freq_for_ta_connect[5];
 	uint8_t idlegcafdepth_ta_connect;
-	uint8_t fherr_cnt;
+	u16 fherr_cnt;
+	u16 fherr_chg_cnt;
 	uint8_t tch_blen_for_fherr;
 	uint8_t tchthr_for_fherr;
 	uint8_t noisethr_for_fherr;
+	uint8_t movefilter_for_fherr;
+	uint8_t jumplimit_for_fherr;
+	uint8_t freqhopscale_for_fherr;
 	uint8_t freq_for_fherr1[5];
 	uint8_t freq_for_fherr2[5];
 	uint8_t freq_for_fherr3[5];
+	u16 fherr_cnt_no_ta;
+	u16 fherr_chg_cnt_no_ta;
+	uint8_t tch_blen_for_fherr_no_ta;
+	uint8_t tchthr_for_fherr_no_ta;
+	uint8_t movfilter_fherr_no_ta;
+	uint8_t noisethr_for_fherr_no_ta;
 #ifdef MXT_CALIBRATE_WORKAROUND
 	/* recalibration suspend time after last detection */
 	uint8_t atchcalst_idle;
@@ -723,23 +739,26 @@ struct mxt_platform_data {
 struct mxt_data {
 	struct mxt_device_info	device_info;
 	struct i2c_client *client;
-	struct input_dev  *input;
+	struct input_dev *input;
 	struct mxt_platform_data *pdata;
-	struct delayed_work  firmup_dwork;
-	struct delayed_work  dwork;
+	struct delayed_work firmup_dwork;
+	struct delayed_work dwork;
 	struct work_struct ta_work;
+	struct work_struct fhe_work;
 	struct report_id_map *rid_map;
-	struct mxt_object    *object_table;
+	struct mxt_object *object_table;
 	struct wake_lock wakelock;
 	struct mxt_callbacks callbacks;
-	struct semaphore  msg_sem;
+	struct mutex mutex;
 #ifdef MXT_CALIBRATE_WORKAROUND
 	struct delayed_work calibrate_dwork;
 #endif
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend	early_suspend;
+	struct early_suspend early_suspend;
 #endif
+	struct multi_touch_info mtouch_info[MXT_MAX_NUM_TOUCHES];
 	bool new_msgs;
+	bool fherr_cnt_no_ta_calready;
 	char phys_name[32];
 	int irq;
 	int valid_irq_counter;
@@ -766,7 +785,26 @@ struct mxt_data {
 	u32  configuration_crc;
 	spinlock_t lock;
 	wait_queue_head_t msg_queue;
+	/* for the factory test */
+	u32 index;
+	s16 delta_data[MXT1386_MAX_CHANNEL];
+	u16 ref_data[MXT1386_MAX_CHANNEL];
 };
+
+enum tsp_ta_settings {
+	TSP_SETTING_IDLEACQINT = 0,
+	TSP_SETTING_BLEN,
+	TSP_SETTING_TCHTHR,
+	TSP_SETTING_NOISETHR,
+	TSP_SETTING_IDLEDEPTH,
+	TSP_SETTING_MOVEFILTER,
+	TSP_SETTING_FREQUENCY,
+	TSP_SETTING_FREQ_SCALE,
+	TSP_SETTING_JUMPLIMIT,
+	TSP_SETTING_MAX,
+};
+
+#define SET_BIT(nr, val) (nr |= (0x1 << val))
 
 /* Returns the start address of object in mXT memory. */
 #define	MXT_BASE_ADDR(object_type) \
