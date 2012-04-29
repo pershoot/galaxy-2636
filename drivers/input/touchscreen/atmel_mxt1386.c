@@ -60,6 +60,7 @@
 #include <linux/device.h>
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
+#include <linux/smp_lock.h>
 
 #include <linux/delay.h>
 #include <linux/atmel_mxt1386.h>
@@ -146,7 +147,12 @@ static int debug = DEBUG_TRACE;  /* for debugging*/
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activate debugging output");
 
-static struct class *touch_class;
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void mxt_early_suspend(struct early_suspend *h);
+static void mxt_late_resume(struct early_suspend *h);
+#endif
+
+extern struct class *sec_class;
 
 #define I2C_RETRY_COUNT 5
 
@@ -165,7 +171,17 @@ object_type_name[REPORT_ID_TO_OBJECT(rid)]
 #define	T37_REG(x) (MXT_BASE_ADDR(MXT_DEBUG_DIAGNOSTICS_T37) +  (x))
 
 /* ADD TRACKING_ID */
-#if defined(CONFIG_ICS)
+#if !defined(CONFIG_ICS)
+#define REPORT_MT(touch_number, x, y, amplitude, size) \
+do {     \
+        input_report_abs(mxt->input, ABS_MT_TRACKING_ID, touch_number);\
+        input_report_abs(mxt->input, ABS_MT_POSITION_X, x);             \
+        input_report_abs(mxt->input, ABS_MT_POSITION_Y, y);             \
+        input_report_abs(mxt->input, ABS_MT_TOUCH_MAJOR, amplitude);         \
+        input_report_abs(mxt->input, ABS_MT_WIDTH_MAJOR, size); \
+        input_mt_sync(mxt->input);                                      \
+} while (0)
+#else
 #define REPORT_MT(touch_number, x, y, amplitude, size, key) \
 do {     \
 	input_report_abs(mxt->input, ABS_MT_TRACKING_ID, touch_number);\
@@ -176,16 +192,6 @@ do {     \
 	input_report_abs(mxt->input, ABS_MT_PRESSURE, amplitude); \
 	input_report_key(mxt->input, BTN_TOUCH, key); \
 	input_mt_sync(mxt->input);                                      \
-} while (0)
-#else
-#define REPORT_MT(touch_number, x, y, amplitude, size) \
-do {     \
-	input_report_abs(mxt->input, ABS_MT_TRACKING_ID, touch_number);\
-	input_report_abs(mxt->input, ABS_MT_POSITION_X, x);             \
-	input_report_abs(mxt->input, ABS_MT_POSITION_Y, y);             \
-	input_report_abs(mxt->input, ABS_MT_TOUCH_MAJOR, amplitude);         \
-	input_report_abs(mxt->input, ABS_MT_WIDTH_MAJOR, size); \
-	input_mt_sync(mxt->input);
 } while (0)
 #endif
 
@@ -273,11 +279,11 @@ static void mxt_forced_release(struct mxt_data *mxt)
 
 		REPORT_MT(i,
 			mtouch_info[i].x,	mtouch_info[i].y,
-#if defined(CONFIG_ICS)
+#if !defined(CONFIG_ICS)
+			mtouch_info[i].pressure, mtouch_info[i].size);
+#else
 			mtouch_info[i].pressure, mtouch_info[i].size, 
 			mtouch_info[i].size ? 1 : 0);
-#else
-			mtouch_info[i].pressure, mtouch_info[i].size);
 #endif
 
 		if (mtouch_info[i].pressure == 0)
@@ -401,7 +407,7 @@ static void mxt_ta_worker(struct work_struct *work)
 		}
 	}
 
-	pr_info("[TSP] frequency table \n");
+	pr_info("[TSP] frequency table \n", freq[i]);
 	for (i = 0; i < 5; i++)
 		pr_info("[TSP] frequency[%d] : %u\n", i, freq[i]);
 
@@ -835,7 +841,7 @@ static void process_T9_message(struct mxt_data *mxt, u8 *message)
 				&mtouch_info[touch_id].x,
 				&mtouch_info[touch_id].y);
 #endif
-			pr_debug("mxt %d p\n", touch_id);
+			pr_info("mxt %d p\n", touch_id);
 		} else if (status & MXT_MSGB_T9_MOVE) {
 #if defined(MXT_DRIVER_FILTER)
 			equalize_coordinate(0, touch_id,
@@ -851,7 +857,7 @@ static void process_T9_message(struct mxt_data *mxt, u8 *message)
 	} else if (status & MXT_MSGB_T9_RELEASE) {  /* case 2: released */
 		pressed_or_released = 1;
 		mtouch_info[touch_id].pressure = 0;
-		pr_debug("mxt %d r\n", touch_id);
+		pr_info("mxt %d r\n", touch_id);
 	} else if (status & MXT_MSGB_T9_SUPPRESS) {  /* case 3: suppressed */
 		/*
 		 * Atmel's recommendation:
@@ -876,11 +882,11 @@ static void process_T9_message(struct mxt_data *mxt, u8 *message)
 			/* ADD TRACKING_ID*/
 			REPORT_MT(i,
 				mtouch_info[i].x,	mtouch_info[i].y,
-#if defined(CONFIG_ICS)
+#if !defined(CONFIG_ICS)
+				mtouch_info[i].pressure, mtouch_info[i].size);
+#else
 				mtouch_info[i].pressure, mtouch_info[i].size, 
 				mtouch_info[i].size ? 1 : 0);
-#else
-				mtouch_info[i].pressure, mtouch_info[i].size);
 #endif
 			/*input_sync(input);*/
 
@@ -1203,13 +1209,13 @@ static void mxt_threaded_irq_handler(struct mxt_data *mxt)
 		for (i = 0; i < message_length; i++)
 			mxt->last_message[i] = message[i];
 
-		if (mutex_lock_interruptible(&mxt->msg_sem)) {
+		if (down_interruptible(&mxt->msg_sem)) {
 			pr_warning("mxt_worker Interrupted "
 				"while waiting for msg_sem!\n");
 			return;
 		}
 		mxt->new_msgs = 1;
-		mutex_unlock(&mxt->msg_sem);
+		up(&mxt->msg_sem);
 		wake_up_interruptible(&mxt->msg_queue);
 		/* Get type of object and process the message */
 		object = mxt->rid_map[report_id].object;
@@ -1605,7 +1611,7 @@ static ssize_t show_messages(struct device *dev,
 			message_addr);
 
 	/* Acquire the lock. */
-	if (mutex_lock_interruptible(&mxt->msg_sem)) {
+	if (down_interruptible(&mxt->msg_sem)) {
 		pr_info("mxt: Interrupted while waiting for mutex!\n");
 		kfree(message);
 		return -ERESTARTSYS;
@@ -1613,7 +1619,7 @@ static ssize_t show_messages(struct device *dev,
 
 	while (mxt->new_msgs == 0) {
 		/* Release the lock. */
-		mutex_unlock(&mxt->msg_sem);
+		up(&mxt->msg_sem);
 		if (wait_event_interruptible(mxt->msg_queue, mxt->new_msgs)) {
 			pr_info("mxt: Interrupted while waiting for new msg!\n");
 			kfree(message);
@@ -1621,7 +1627,7 @@ static ssize_t show_messages(struct device *dev,
 		}
 
 		/* Acquire the lock. */
-		if (mutex_lock_interruptible(&mxt->msg_sem)) {
+		if (down_interruptible(&mxt->msg_sem)) {
 			pr_info("mxt: Interrupted while waiting for mutex!\n");
 			kfree(message);
 			return -ERESTARTSYS;
@@ -1635,7 +1641,7 @@ static ssize_t show_messages(struct device *dev,
 	mxt->new_msgs = 0;
 
 	/* Release the lock. */
-	mutex_unlock(&mxt->msg_sem);
+	up(&mxt->msg_sem);
 
 	for (i = 0; i < message_len; i++)
 		bufp += sprintf(bufp, "0x%02x ", message[i]);
@@ -2877,15 +2883,93 @@ u8 mxt_valid_interrupt(void)
 	return 1;
 }
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void mxt_early_suspend(struct early_suspend *h)
+{
+#ifndef MXT_SLEEP_POWEROFF
+	u8 cmd_sleep[2] = {0};
+	u16 addr;
+#endif
+	struct	mxt_data *mxt = container_of(h, struct mxt_data, early_suspend);
+
+	pr_info("%s has been called!\n", __func__);
+#if defined(MXT_FACTORY_TEST)
+	/*start firmware updating : not yet finished*/
+	while (mxt->firm_status_data == 1) {
+		pr_info("mxt firmware is Downloading : mxt suspend must be delayed!");
+		msleep(1000);
+	}
+#endif
+	disable_irq(mxt->client->irq);
+	mxt->enabled = false;
+
+	/* cancel and wait for all works to stop so they don't try to
+	 * communicate with the controller after we turn it off
+	 */
+#ifdef MXT_CALIBRATE_WORKAROUND
+	cancel_delayed_work_sync(&mxt->calibrate_dwork);
+#endif
+	cancel_work_sync(&mxt->ta_work);
+#ifdef MXT_SLEEP_POWEROFF
+	if (mxt->pdata->suspend_platform_hw != NULL)
+		mxt->pdata->suspend_platform_hw();
+#else
+	/*
+	  * a setting of zeros to IDLEACQINT and ACTVACQINT
+	  * forces the chip set to enter Deep Sleep mode.
+	  */
+	addr = get_object_address(MXT_GEN_POWERCONFIG_T7, 0,
+			mxt->object_table, mxt->device_info.num_objs);
+	pr_info("addr: 0x%02x, buf[0]=0x%x, buf[1]=0x%x",
+				addr, cmd_sleep[0], cmd_sleep[1]);
+	mxt_write_block(mxt->client, addr, 2, (u8 *)cmd_sleep);
+#endif
+	mxt_forced_release(mxt);
+}
+
+static void mxt_late_resume(struct early_suspend *h)
+{
+#ifndef MXT_SLEEP_POWEROFF
+	int cnt;
+#endif
+	struct	mxt_data *mxt = container_of(h, struct mxt_data, early_suspend);
+
+	pr_info("%s has been called!\n", __func__);
+#ifdef MXT_SLEEP_POWEROFF
+	if (mxt->pdata->resume_platform_hw != NULL)
+		mxt->pdata->resume_platform_hw();
+#else
+	for (cnt = 10; cnt > 0; cnt--) {
+		if (mxt_power_config(mxt) < 0)
+			continue;
+		if (reset_chip(mxt, RESET_TO_NORMAL) == 0)/* soft reset*/
+			break;
+	}
+	if (cnt == 0)
+		pr_err("%s : reset_chip failed!!!\n", __func__);
+	/*typical atmel spec. value is 250ms,
+	but it sometimes fails to recover so it needs more*/
+	msleep(300);
+#endif
+	if (mxt->set_mode_for_ta && !work_pending(&mxt->ta_work))
+		schedule_work(&mxt->ta_work);
+	mxt->enabled = true;
+	mxt->pdata->fherr_cnt = 0;
+	enable_irq(mxt->client->irq);
+#ifdef MXT_CALIBRATE_WORKAROUND
+	schedule_delayed_work(&mxt->calibrate_dwork, msecs_to_jiffies(4000));
+#endif
+}
+#endif
+
+
 static int __devinit mxt_probe(struct i2c_client *client,
 			       const struct i2c_device_id *id)
 {
 	struct mxt_data          *mxt;
 	struct mxt_platform_data *pdata;
 	struct input_dev         *input;
-#ifdef ENABLE_NOISE_TEST_MODE
 	struct device *test_dev;
-#endif
 	struct device *tsp_dev;
 	int error;
 	int i;
@@ -2981,7 +3065,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		mxt->pdata->register_cb(&mxt->callbacks);
 
 	init_waitqueue_head(&mxt->msg_queue);
-	mutex_init(&mxt->msg_sem);
+	init_MUTEX(&mxt->msg_sem);
 
 	spin_lock_init(&mxt->lock);
 
@@ -2995,10 +3079,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		"%s/input0",
 		dev_name(&client->dev)
 	);
-#ifndef CONFIG_SAMSUNG_INPUT
-	input->name = "mxt1386";
-#else
+#ifdef CONFIG_SAMSUNG_INPUT
 	input->name = "sec_touchscreen";
+#else
+	input->name = "Atmel_maXTouch_Touchscreen_controller";
 #endif
 	input->phys = mxt->phys_name;
 	input->id.bustype = BUS_I2C;
@@ -3024,10 +3108,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	input_set_abs_params(input, ABS_MT_TRACKING_ID, 0,
 							MXT_MAX_NUM_TOUCHES-1,
 							0, 0);
-#if defined(CONFIG_ICS)
-	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0); 
-#else
+#if !defined(CONFIG_ICS)
 	input_set_abs_params(input, ABS_MT_WIDTH_MAJOR, 0, 30, 0, 0);
+#else
+	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0); 
 #endif
 	__set_bit(EV_SYN, input->evbit);
 	__set_bit(EV_KEY, input->evbit);
@@ -3100,14 +3184,14 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	if (debug > DEBUG_INFO)
 		dev_info(&client->dev, "touchscreen, irq %d\n", mxt->irq);
 
-	touch_class = class_create(THIS_MODULE, "touch_debug");
-	if (IS_ERR(touch_class)) {
-		pr_err("Failed to create device class\n");
-		error = -EFAULT;
-		goto err_sysfs_create_group;
-	}
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	mxt->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	mxt->early_suspend.suspend = mxt_early_suspend;
+	mxt->early_suspend.resume = mxt_late_resume;
+	register_early_suspend(&mxt->early_suspend);
+#endif	/* CONFIG_HAS_EARLYSUSPEND */
 
-	tsp_dev  = device_create(touch_class, NULL, 0, mxt, "sec_touch");
+	tsp_dev  = device_create(sec_class, NULL, 0, mxt, "sec_touch");
 	if (IS_ERR(tsp_dev)) {
 		pr_err("Failed to create device for the sysfs\n");
 		error = -ENODEV;
@@ -3121,7 +3205,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	}
 
 #ifdef ENABLE_NOISE_TEST_MODE
-	test_dev = device_create(touch_class, NULL, 0, mxt, "qt602240_noise_test");
+	test_dev = device_create(sec_class, NULL, 0, mxt, "qt602240_noise_test");
 	if (IS_ERR(test_dev)) {
 		pr_err("Failed to create device for the factory test\n");
 		error = -ENODEV;
@@ -3144,6 +3228,9 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	return 0;
 
 err_sysfs_create_group:
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&mxt->early_suspend);
+#endif
 	if (mxt->irq)
 		free_irq(mxt->irq, mxt);
 err_irq:
@@ -3185,7 +3272,10 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	/* Close down sysfs entries */
 	sysfs_remove_group(&client->dev.kobj, &maxtouch_attr_group);
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
 	wake_lock_destroy(&mxt->wakelock);
+	unregister_early_suspend(&mxt->early_suspend);
+#endif	/* CONFIG_HAS_EARLYSUSPEND */
 
 	/* Release IRQ so no queue will be scheduled */
 	if (mxt->irq)
@@ -3217,83 +3307,24 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	return 0;
 }
 
-#if defined(CONFIG_PM)
+#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
 static int mxt_suspend(struct i2c_client *client, pm_message_t mesg)
 {
-#ifndef MXT_SLEEP_POWEROFF
-	u8 cmd_sleep[2] = {0};
-	u16 addr;
-#endif
 	struct mxt_data *mxt = i2c_get_clientdata(client);
 
-	pr_info("%s has been called!\n", __func__);
-#if defined(MXT_FACTORY_TEST)
-	/*start firmware updating : not yet finished*/
-	while (mxt->firm_status_data == 1) {
-		pr_info("mxt firmware is Downloading : mxt suspend must be delayed!");
-		msleep(1000);
-	}
-#endif
-	disable_irq(mxt->client->irq);
-	mxt->enabled = false;
+	if (device_may_wakeup(&client->dev))
+		enable_irq_wake(mxt->irq);
 
-	/* cancel and wait for all works to stop so they don't try to
-	 * communicate with the controller after we turn it off
-	 */
-#ifdef MXT_CALIBRATE_WORKAROUND
-	cancel_delayed_work_sync(&mxt->calibrate_dwork);
-#endif
-	cancel_work_sync(&mxt->ta_work);
-#ifdef MXT_SLEEP_POWEROFF
-	if (mxt->pdata->suspend_platform_hw != NULL)
-		mxt->pdata->suspend_platform_hw();
-#else
-	/*
-	  * a setting of zeros to IDLEACQINT and ACTVACQINT
-	  * forces the chip set to enter Deep Sleep mode.
-	  */
-	addr = get_object_address(MXT_GEN_POWERCONFIG_T7, 0,
-			mxt->object_table, mxt->device_info.num_objs);
-	pr_info("addr: 0x%02x, buf[0]=0x%x, buf[1]=0x%x",
-				addr, cmd_sleep[0], cmd_sleep[1]);
-	mxt_write_block(mxt->client, addr, 2, (u8 *)cmd_sleep);
-#endif
-	mxt_forced_release(mxt);
 	return 0;
 }
 
 static int mxt_resume(struct i2c_client *client)
 {
-#ifndef MXT_SLEEP_POWEROFF
-	int cnt;
-#endif
 	struct mxt_data *mxt = i2c_get_clientdata(client);
 
-	pr_info("%s has been called!\n", __func__);
-#ifdef MXT_SLEEP_POWEROFF
-	if (mxt->pdata->resume_platform_hw != NULL)
-		mxt->pdata->resume_platform_hw();
-#else
-	for (cnt = 10; cnt > 0; cnt--) {
-		if (mxt_power_config(mxt) < 0)
-			continue;
-		if (reset_chip(mxt, RESET_TO_NORMAL) == 0)/* soft reset*/
-			break;
-	}
-	if (cnt == 0)
-		pr_err("%s : reset_chip failed!!!\n", __func__);
-	/*typical atmel spec. value is 250ms,
-	but it sometimes fails to recover so it needs more*/
-	msleep(300);
-#endif
-	if (mxt->set_mode_for_ta && !work_pending(&mxt->ta_work))
-		schedule_work(&mxt->ta_work);
-	mxt->enabled = true;
-	mxt->pdata->fherr_cnt = 0;
-	enable_irq(mxt->client->irq);
-#ifdef MXT_CALIBRATE_WORKAROUND
-	schedule_delayed_work(&mxt->calibrate_dwork, msecs_to_jiffies(4000));
-#endif
+	if (device_may_wakeup(&client->dev))
+		disable_irq_wake(mxt->irq);
+
 	return 0;
 }
 #else
@@ -3302,11 +3333,7 @@ static int mxt_resume(struct i2c_client *client)
 #endif
 
 static const struct i2c_device_id mxt_idtable[] = {
-#ifndef CONFIG_SAMSUNG_INPUT
-	{"mxt1386", 0,},
-#else
 	{"sec_touch", 0,},
-#endif
 	{ }
 };
 
@@ -3314,11 +3341,7 @@ MODULE_DEVICE_TABLE(i2c, mxt_idtable);
 
 static struct i2c_driver mxt_driver = {
 	.driver = {
-#ifndef CONFIG_SAMSUNG_INPUT
-		.name	= "mxt1386",
-#else
-		.name  = "sec_touch",
-#endif
+		.name	= "sec_touch",
 		.owner  = THIS_MODULE,
 	},
 

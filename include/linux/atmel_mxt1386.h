@@ -24,16 +24,16 @@
 
 /*For Performance*/
 //#define MXT_DRIVER_FILTER
-//#define MXT_FACTORY_TEST
-//#define ENABLE_NOISE_TEST_MODE
+#define MXT_FACTORY_TEST
+#define ENABLE_NOISE_TEST_MODE
 //#define MXT_TUNNING_ENABLE
 
 /*Normal Feature*/
 #define MXT_SLEEP_POWEROFF
 #define MXT_ERROR_WORKAROUND
 
-#define MXT_I2C_APP_ADDR   0x5b
-#define MXT_I2C_BOOTLOADER_ADDR 0x35
+#define MXT_I2C_APP_ADDR   0x4c
+#define MXT_I2C_BOOTLOADER_ADDR 0x26
 
 /*
 #define	MAXTOUCH_I2C_ADDR_LOW				0x4A
@@ -732,7 +732,7 @@ struct mxt_data {
 	struct mxt_object    *object_table;
 	struct wake_lock wakelock;
 	struct mxt_callbacks callbacks;
-	struct mutex  msg_sem;
+	struct semaphore  msg_sem;
 #ifdef MXT_CALIBRATE_WORKAROUND
 	struct delayed_work calibrate_dwork;
 #endif
