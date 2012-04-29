@@ -697,20 +697,15 @@ struct mxt_platform_data {
 	struct spt_cteconfig_t28_config_t cte_config;
 	struct proci_gripsuppression_t40_config_t gripsupression_config;
 	struct proci_palmsuppression_t41_config_t palmsupression_config;
-	uint8_t idleacqint_for_ta_connect;
 	uint8_t tchthr_for_ta_connect;
 	uint8_t tchdi_for_ta_connect;
 	uint8_t noisethr_for_ta_connect;
 	uint8_t freq_for_ta_connect[5];
 	uint8_t idlegcafdepth_ta_connect;
 	uint8_t fherr_cnt;
-	u16 fherr_chg_cnt;
 	uint8_t tch_blen_for_fherr;
 	uint8_t tchthr_for_fherr;
 	uint8_t noisethr_for_fherr;
-	uint8_t movefilter_for_fherr;
-	uint8_t jumplimit_for_fherr;
-	uint8_t freqhopscale_for_fherr;
 	uint8_t freq_for_fherr1[5];
 	uint8_t freq_for_fherr2[5];
 	uint8_t freq_for_fherr3[5];
@@ -772,21 +767,6 @@ struct mxt_data {
 	spinlock_t lock;
 	wait_queue_head_t msg_queue;
 };
-
-enum tsp_ta_settings {
-        TSP_SETTING_IDLEACQINT = 0,
-        TSP_SETTING_BLEN,
-        TSP_SETTING_TCHTHR,
-        TSP_SETTING_NOISETHR,
-        TSP_SETTING_IDLEDEPTH,
-        TSP_SETTING_MOVEFILTER,
-        TSP_SETTING_FREQUENCY,
-        TSP_SETTING_FREQ_SCALE,
-        TSP_SETTING_JUMPLIMIT,
-        TSP_SETTING_MAX,
-};
-
-#define SET_BIT(nr, val) (nr |= (0x1 << val))
 
 /* Returns the start address of object in mXT memory. */
 #define	MXT_BASE_ADDR(object_type) \
