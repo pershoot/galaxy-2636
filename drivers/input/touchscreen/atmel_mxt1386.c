@@ -3217,7 +3217,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	return 0;
 }
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM)
 static int mxt_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 #ifndef MXT_SLEEP_POWEROFF
