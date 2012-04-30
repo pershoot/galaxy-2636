@@ -261,7 +261,7 @@ static struct tegra_dc_platform_data p3_disp1_pdata = {
 };
 
 static struct tegra_dc_platform_data p3_disp2_pdata = {
-	.flags		= 0,
+	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &p3_disp2_out,
 	.fb		= &p3_hdmi_fb_data,
 };
