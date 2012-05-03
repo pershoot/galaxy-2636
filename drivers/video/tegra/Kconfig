@@ -125,6 +125,24 @@ config NVMAP_SEARCH_GLOBAL_HANDLES
 	  compatibility with legacy applications.
 	  If unsure, say N.
 
+config NVMAP_PAGE_POOLS
+        bool "Use page pools to reduce allocation overhead"
+        depends on ICS && TEGRA_NVMAP
+        default y
+        help
+          say Y here to reduce the alloction overhead, which is significant
+          for uncached, writecombine and inner cacheable memories as it
+          involves changing page attributes during every allocation per page
+          and flushing cache. Alloc time is reduced by allcoating the pages
+          ahead and keeping them aside. The reserved pages would be released
+          when system is low on memory and acquired back during release of
+          memory.
+
+config NVMAP_PAGE_POOL_SIZE
+	depends on ICS
+        hex
+        default 0x0
+
 config NVMAP_VPR
         bool "Enable VPR Heap."
         depends on ICS && TEGRA_NVMAP
