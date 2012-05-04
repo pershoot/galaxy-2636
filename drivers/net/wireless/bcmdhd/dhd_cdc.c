@@ -211,6 +211,10 @@ done:
 	return ret;
 }
 
+#ifdef CONFIG_CONTROL_PM
+extern bool g_pm_control;
+#endif
+
 static int
 dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uint8 action)
 {
@@ -233,6 +237,13 @@ dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uint8
 			__FUNCTION__));
 		return -EIO;
 	}
+
+#ifdef CONFIG_CONTROL_PM
+        if ((g_pm_control == TRUE) && (cmd == WLC_SET_PM)) {
+                DHD_TRACE(("%s: SET PM ignored!\n", __func__));
+                goto done;
+        }
+#endif
 
 	memset(msg, 0, sizeof(cdc_ioctl_t));
 

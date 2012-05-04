@@ -461,6 +461,10 @@ static void dhd_dump_htsfhisto(histo_t *his, char *s);
 int dhd_monitor_init(void *dhd_pub);
 int dhd_monitor_uninit(void);
 
+#ifdef CONFIG_CONTROL_PM
+bool g_pm_control;
+void sec_control_pm(dhd_pub_t *dhd, uint *);
+#endif
 
 #if defined(WL_WIRELESS_EXT)
 struct iw_statistics *dhd_get_wireless_stats(struct net_device *dev);
@@ -532,11 +536,15 @@ static void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
 
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
+#ifndef CUSTOMER_HW_SAMSUNG
 	int power_mode = PM_MAX;
+#endif
 	/* wl_pkt_filter_enable_t	enable_parm; */
 	char iovbuf[32];
 	int bcn_li_dtim = 3;
+#ifndef CUSTOMER_HW_SAMSUNG
 	uint roamvar = 1;
+#endif
 
 	DHD_TRACE(("%s: enter, value = %d in_suspend=%d\n",
 		__FUNCTION__, value, dhd->in_suspend));
@@ -548,8 +556,10 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 			/* Kernel suspended */
 			DHD_ERROR(("%s: force extra Suspend setting \n", __FUNCTION__));
 
+#ifndef CUSTOMER_HW_SAMSUNG
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
 			                 sizeof(power_mode), TRUE, 0);
+#endif
 
 			/* Enable packet filter, only allow unicast packet to send up */
 			dhd_set_packet_filter(1, dhd);
@@ -563,18 +573,22 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				4, iovbuf, sizeof(iovbuf));
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
 
+#ifndef CUSTOMER_HW_SAMSUNG
 			/* Disable firmware roaming during suspend */
 			bcm_mkiovar("roam_off", (char *)&roamvar, 4,
 				iovbuf, sizeof(iovbuf));
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+#endif
 		} else {
 
 			/* Kernel resumed  */
 			DHD_TRACE(("%s: Remove extra suspend setting \n", __FUNCTION__));
 
+#ifndef CUSTOMER_HW_SAMSUNG
 			power_mode = PM_FAST;
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
 			                 sizeof(power_mode), TRUE, 0);
+#endif
 
 			/* disable pkt filter */
 			dhd_set_packet_filter(0, dhd);
@@ -584,10 +598,12 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				4, iovbuf, sizeof(iovbuf));
 
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+#ifndef CUSTOMER_HW_SAMSUNG
 			roamvar = dhd_roam_disable;
 			bcm_mkiovar("roam_off", (char *)&roamvar, 4, iovbuf,
 				sizeof(iovbuf));
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+#endif
 		}
 	}
 	dhd_suspend_unlock(dhd);
@@ -2999,6 +3015,10 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	char *ptr;
 	uint32 listen_interval = LISTEN_INTERVAL; /* Default Listen Interval in Beacons */
 	uint16 chipID;
+
+#ifdef CUSTOMER_HW_SAMSUNG
+	uint roamvar = 1;
+#endif
 #if defined(SOFTAP)
 	uint dtim = 1;
 #endif
@@ -3151,8 +3171,18 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
 		DHD_ERROR(("%s assoc_listen failed %d\n", __FUNCTION__, ret));
 
+#ifdef CUSTOMER_HW_SAMSUNG
+/* Disable built-in roaming to allowed ext supplicant to take care of roaming */
+        bcm_mkiovar("roam_off", (char *)&roamvar, 4, iovbuf, sizeof(iovbuf));
+        dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+#endif
+
+#ifdef CONFIG_CONTROL_PM
+        sec_control_pm(dhd, &power_mode);
+#else
 	/* Set PowerSave mode */
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode, sizeof(power_mode), TRUE, 0);
+#endif
 
 	/* Match Host and Dongle rx alignment */
 	bcm_mkiovar("bus:txglomalign", (char *)&dongle_align, 4, iovbuf, sizeof(iovbuf));

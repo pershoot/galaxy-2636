@@ -54,7 +54,7 @@ extern void nvidia_wlan_poweron(int on, int flag);
 extern  void bcm_wlan_power_off(int);
 extern  void bcm_wlan_power_on(int);
 #endif /* CUSTOMER_HW */
-#if defined(CUSTOMER_HW2)
+#if defined(CUSTOMER_HW2) || defined(CUSTOMER_HW_SAMSUNG)
 #ifdef CONFIG_WIFI_CONTROL_FUNC
 int wifi_set_power(int on, unsigned long msec);
 int wifi_get_irq_number(unsigned long *irq_flags_ptr);
@@ -66,7 +66,7 @@ int wifi_get_irq_number(unsigned long *irq_flags_ptr) { return -1; }
 int wifi_get_mac_addr(unsigned char *buf) { return -1; }
 void *wifi_get_country_code(char *ccode) { return NULL; }
 #endif /* CONFIG_WIFI_CONTROL_FUNC */
-#endif /* CUSTOMER_HW2 */
+#endif /* CUSTOMER_HW2 || CUSTOMER_HW_SAMSUNG */
 
 #if defined(OOB_INTR_ONLY)
 
@@ -151,7 +151,7 @@ dhd_customer_gpio_wlan_ctrl(int onoff)
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
 			nvidia_wlan_poweroff (POWER_OFF, 2);
 #endif
-#ifdef CUSTOMER_HW2
+#if defined(CUSTOMER_HW2) || defined(CUSTOMER_HW_SAMSUNG)
 			wifi_set_power(0, 0);
 #endif
 			WL_ERROR(("=========== WLAN placed in RESET ========\n"));
@@ -166,7 +166,7 @@ dhd_customer_gpio_wlan_ctrl(int onoff)
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
 			nvidia_wlan_poweron (POWER_ON, 2);
 #endif
-#ifdef CUSTOMER_HW2
+#if defined(CUSTOMER_HW2) || defined(CUSTOMER_HW_SAMSUNG)
 			wifi_set_power(1, 0);
 #endif
 			WL_ERROR(("=========== WLAN going back to live  ========\n"));
@@ -282,7 +282,8 @@ const struct cntry_locales_custom translate_custom_table[] = {
 */
 void get_customized_country_code(char *country_iso_code, wl_country_t *cspec)
 {
-#if defined(CUSTOMER_HW2) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
+#if (defined(CUSTOMER_HW2) || defined(CUSTOMER_HW_SAMSUNG)) \
+        && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 
 	struct cntry_locales_custom *cloc_ptr;
 
@@ -320,5 +321,6 @@ void get_customized_country_code(char *country_iso_code, wl_country_t *cspec)
 	cspec->rev = translate_custom_table[0].custom_locale_rev;
 #endif /* EXMAPLE_TABLE */
 	return;
-#endif /* defined(CUSTOMER_HW2) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)) */
+#endif /* (defined(CUSTOMER_HW2) || defined(CUSTOMER_HW_SAMSUNG)) \
+        && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) */
 }
