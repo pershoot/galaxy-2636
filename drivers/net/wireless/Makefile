@@ -53,8 +53,4 @@ obj-$(CONFIG_WL12XX)	+= wl12xx/
 
 obj-$(CONFIG_IWM)	+= iwmc3200wifi/
 
-ifneq ($(CONFIG_CFG80211),y)
 obj-$(CONFIG_BCM4330)	+= bcm4330/
-else
-obj-$(CONFIG_BCM4330)	+= bcmdhd/
-endif
