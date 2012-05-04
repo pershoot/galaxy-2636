@@ -2051,9 +2051,12 @@ static void tegra_dc_hdmi_setup_avi_infoframe(struct tegra_dc *dc, bool dvi)
 #ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
                 avi.vic = 34; /* 30 Hz */
 #else
-		if (dc->mode.h_front_porch == 88)
-			avi.vic = 16; /* 60 Hz */
-		else if (dc->mode.h_front_porch == 528)
+		if (dc->mode.h_front_porch == 88) {
+			if (dc->mode.pclk > 74250000)
+				avi.vic = 16; /* 60 Hz */
+			else
+				avi.vic = 34; /* 30 Hz */
+		} else if (dc->mode.h_front_porch == 528)
 			avi.vic = 31; /* 50 Hz */
 		else
 			avi.vic = 32; /* 24 Hz */
