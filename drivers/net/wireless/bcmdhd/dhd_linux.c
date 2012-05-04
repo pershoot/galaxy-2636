@@ -167,6 +167,12 @@ extern int dhd_get_dtim_skip(dhd_pub_t *dhd);
 extern void dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg);
 extern void dhd_pktfilter_offload_enable(dhd_pub_t * dhd, char *arg, int enable, int master_mode);
 #endif
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+#ifdef RDWR_MACADDR
+extern int dhd_check_rdwr_macaddr(struct dhd_info *dhd, dhd_pub_t *dhdp, struct ether_addr *mac);
+extern int dhd_write_rdwr_macaddr(struct ether_addr *mac);
+#endif
+#endif
 
 /* Interface control information */
 typedef struct dhd_if {
@@ -908,7 +914,11 @@ _dhd_set_multicast_list(dhd_info_t *dhd, int ifidx)
 	}
 }
 
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+int
+#else
 static int
+#endif
 _dhd_set_mac_address(dhd_info_t *dhd, int ifidx, struct ether_addr *addr)
 {
 	char buf[32];
@@ -2900,11 +2910,21 @@ dhd_bus_start(dhd_pub_t *dhdp)
 #ifdef READ_MACADDR
 	dhd_read_macaddr(dhd);
 #endif
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+#ifdef RDWR_MACADDR
+	dhd_check_rdwr_macaddr(dhd, &dhd->pub, &dhd->pub.mac);
+#endif
+#endif
 
 	/* Bus is ready, do any protocol initialization */
 	if ((ret = dhd_prot_init(&dhd->pub)) < 0)
 		return ret;
 
+#ifdef CONFIG_MACH_SAMSUNG_VARIATION_TEGRA
+#ifdef RDWR_MACADDR
+	dhd_write_rdwr_macaddr(&dhd->pub.mac);
+#endif
+#endif
 #ifdef WRITE_MACADDR
 	dhd_write_macaddr(dhd->pub.mac.octet);
 #endif
