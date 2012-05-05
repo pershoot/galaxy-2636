@@ -461,11 +461,6 @@ static void dhd_dump_htsfhisto(histo_t *his, char *s);
 int dhd_monitor_init(void *dhd_pub);
 int dhd_monitor_uninit(void);
 
-#ifdef CONFIG_CONTROL_PM
-bool g_pm_control;
-void sec_control_pm(dhd_pub_t *dhd, uint *);
-#endif
-
 #if defined(WL_WIRELESS_EXT)
 struct iw_statistics *dhd_get_wireless_stats(struct net_device *dev);
 #endif /* defined(WL_WIRELESS_EXT) */
@@ -3177,12 +3172,8 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
         dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
 #endif
 
-#ifdef CONFIG_CONTROL_PM
-        sec_control_pm(dhd, &power_mode);
-#else
 	/* Set PowerSave mode */
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode, sizeof(power_mode), TRUE, 0);
-#endif
 
 	/* Match Host and Dongle rx alignment */
 	bcm_mkiovar("bus:txglomalign", (char *)&dongle_align, 4, iovbuf, sizeof(iovbuf));
