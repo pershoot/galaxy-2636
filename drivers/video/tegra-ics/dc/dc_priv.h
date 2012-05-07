@@ -136,6 +136,8 @@ struct tegra_dc {
 
 	struct tegra_dc_ext		*ext;
 
+	struct tegra_dc_feature		*feature;
+
 #ifdef CONFIG_DEBUG_FS
 	struct dentry			*debugdir;
 #endif
