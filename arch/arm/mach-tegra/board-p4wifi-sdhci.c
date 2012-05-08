@@ -83,7 +83,11 @@ static struct wifi_platform_data p3_wifi_control = {
 };
 
 static struct platform_device p3_wifi_device = {
+#if !defined(CONFIG_ICS)
 	.name           = "bcm4330_wlan",
+#else
+	.name           = "bcmdhd_wlan",
+#endif
 	.id             = 1,
 	.dev            = {
 		.platform_data = &p3_wifi_control,
