@@ -1,3 +1,11 @@
+Note:
+ This kernel must be built with Codesourcery's 2010.09.
+
+ You can find this toolchain here:
+ http://droidbasement.com/androidTO/arm-2010.09.tar.gz
+
+<><><><><>
+
 	Linux kernel release 2.6.xx <http://kernel.org/>
 
 These are the release notes for Linux version 2.6.  Read them carefully,
