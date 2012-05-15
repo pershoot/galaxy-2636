@@ -3540,7 +3540,9 @@ static int dpram_shutdown(struct platform_device *dev)
 #endif
 
 	/* remove app. interface device */
+#if !defined(CONFIG_ICS)
 	multipdp_exit();
+#endif
 
 	/* @LDK@ unregister irq handler */
 	free_irq(IRQ_DPRAM_INT_N, NULL);
