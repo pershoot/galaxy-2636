@@ -1689,6 +1689,8 @@ void input_mt_destroy_slots(struct input_dev *dev)
 	kfree(dev->mt);
 	dev->mt = NULL;
 	dev->mtsize = 0;
+	dev->slot = 0;
+	dev->trkid = 0;
 }
 EXPORT_SYMBOL(input_mt_destroy_slots);
 
