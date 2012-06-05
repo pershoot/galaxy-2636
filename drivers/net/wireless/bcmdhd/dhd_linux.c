@@ -131,7 +131,7 @@ extern void dhd_enable_oob_intr(struct dhd_bus *bus, bool enable);
 #endif /* defined(OOB_INTR_ONLY) */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 static void dhd_hang_process(struct work_struct *work);
-#endif 
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0))
 MODULE_LICENSE("GPL v2");
 #endif /* LinuxVer */
@@ -258,7 +258,7 @@ typedef struct dhd_info {
 	tsk_ctl_t	thr_sysioc_ctl;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 	struct work_struct work_hang;
-#endif 
+#endif
 
 	/* Wakelocks */
 #if defined(CONFIG_HAS_WAKELOCK) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
@@ -3974,6 +3974,7 @@ int
 dhd_os_ioctl_resp_wait(dhd_pub_t *pub, uint *condition, bool *pending)
 {
 	dhd_info_t * dhd = (dhd_info_t *)(pub->info);
+	DECLARE_WAITQUEUE(wait, current);
 	int timeout = dhd_ioctl_timeout_msec;
 
 	/* Convert timeout in millsecond to jiffies */
@@ -3983,7 +3984,23 @@ dhd_os_ioctl_resp_wait(dhd_pub_t *pub, uint *condition, bool *pending)
 	timeout = timeout * HZ / 1000;
 #endif
 
-	timeout = wait_event_timeout(dhd->ioctl_resp_wait, (*condition), timeout);
+	/* Wait until control frame is available */
+	add_wait_queue(&dhd->ioctl_resp_wait, &wait);
+	set_current_state(TASK_INTERRUPTIBLE);
+
+	/* Memory barrier to support multi-processing
+	 * As the variable "condition", which points to dhd->rxlen (dhd_bus_rxctl[dhd_sdio.c])
+	 * Can be changed by another processor.
+	 */
+	smp_mb();
+	while (!(*condition) && timeout) {
+		timeout = schedule_timeout(timeout);
+		smp_mb();
+	}
+
+	set_current_state(TASK_RUNNING);
+	remove_wait_queue(&dhd->ioctl_resp_wait, &wait);
+
 	return timeout;
 }
 
