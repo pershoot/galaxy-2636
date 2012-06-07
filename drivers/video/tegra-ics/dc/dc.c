@@ -2227,7 +2227,7 @@ static void tegra_dc_underflow_handler(struct tegra_dc *dc)
 			dc->windows[i].underflows++;
 
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
-			if (dc->windows[i].underflows > 4) {
+			if (dc->windows[i].underflows > 6) {
 				schedule_work(&dc->reset_work);
 				/* reset counter */
 				dc->windows[i].underflows = 0;
@@ -2376,7 +2376,7 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	/*
 	 * Overlays can get thier internal state corrupted during and underflow
 	 * condition.  The only way to fix this state is to reset the DC.
-	 * if we get 4 consecutive frames with underflows, assume we're
+	 * if we get 6 consecutive frames with underflows, assume we're
 	 * hosed and reset.
 	 */
 	underflow_mask = status & ALL_UF_INT;
