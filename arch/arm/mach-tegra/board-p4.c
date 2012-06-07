@@ -2353,6 +2353,7 @@ static struct mxt_platform_data p3_touch_platform_data = {
 	.noise_suppression_config.reserved6 = 0,
 	.noise_suppression_config.noisethr = 40,
 	.noise_suppression_config.reserved7 = 0,/*1;*/
+	.noise_suppression_config.freqhopscale = 0,
 	.noise_suppression_config.freq[0] = 10,
 	.noise_suppression_config.freq[1] = 18,
 	.noise_suppression_config.freq[2] = 23,
