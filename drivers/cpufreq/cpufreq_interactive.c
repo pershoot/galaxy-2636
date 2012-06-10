@@ -313,9 +313,8 @@ static void cpufreq_interactive_idle_start(void)
 		&per_cpu(cpuinfo, smp_processor_id());
 	int pending;
 
-	if (!pcpu->governor_enabled) {
+	if (!pcpu->governor_enabled)
 		return;
-	}
 
 	pcpu->idling = 1;
 	smp_wmb();
@@ -358,12 +357,12 @@ static void cpufreq_interactive_idle_start(void)
 		}
 	}
 
-	}
+}
 
-	static void cpufreq_interactive_idle_end(void)
-	{
-		struct cpufreq_interactive_cpuinfo *pcpu =
-			&per_cpu(cpuinfo, smp_processor_id());
+static void cpufreq_interactive_idle_end(void)
+{
+	struct cpufreq_interactive_cpuinfo *pcpu =
+		&per_cpu(cpuinfo, smp_processor_id());
 
 	pcpu->idling = 0;
 	smp_wmb();
@@ -911,8 +910,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 }
 
 static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
-		unsigned long val,
-		void *data)
+					     unsigned long val,
+					     void *data)
 {
 	switch (val) {
 	case IDLE_START:
