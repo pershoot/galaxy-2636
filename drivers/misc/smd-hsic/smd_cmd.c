@@ -41,6 +41,7 @@
 #include <linux/if_arp.h>
 #include <linux/mutex.h>
 #include <linux/gfp.h>
+#include <linux/ratelimit.h>
 
 #include "smd_cmd.h"
 #include "smd_core.h"
@@ -90,7 +91,7 @@ static void process_cmd(unsigned short cmd)
 	if (!smdraw)
 		return;
 
-	pr_err("%s:0x%x\n", __func__, cmd);
+	pr_err_ratelimited("%s:0x%x\n", __func__, cmd);
 	switch(cmd) {
 	case SMDCMD_FLOWCTL_SUSPEND:
 		if (smdraw->tx_flow_control)
