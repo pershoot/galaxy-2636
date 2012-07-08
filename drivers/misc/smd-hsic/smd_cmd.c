@@ -41,7 +41,6 @@
 #include <linux/if_arp.h>
 #include <linux/mutex.h>
 #include <linux/gfp.h>
-#include <linux/ratelimit.h>
 
 #include "smd_cmd.h"
 #include "smd_core.h"
@@ -91,33 +90,28 @@ static void process_cmd(unsigned short cmd)
 	if (!smdraw)
 		return;
 
-	pr_err_ratelimited("%s:0x%x\n", __func__, cmd);
 	switch(cmd) {
 	case SMDCMD_FLOWCTL_SUSPEND:
-		if (smdraw->tx_flow_control)
-			break;
-
-		printk(KERN_INFO "%s:control to suspend\n", __func__);
-		smdraw->tx_flow_control = true;
-		for (i = 0; i < MAX_PDP_DEV; i++) {
-			netdev = smdraw->pdpdev[i].pdp;
-			if (netdev)
-				netif_stop_queue(netdev);
+		if (!smdraw->tx_flow_control) {
+			pr_info("%s:control to suspend\n", __func__);
+			smdraw->tx_flow_control = true;
+			for (i = 0; i < MAX_PDP_DEV; i++) {
+				netdev = smdraw->pdpdev[i].pdp;
+				if (netdev)
+					netif_stop_queue(netdev);
+			}
 		}
 		break;
 	case SMDCMD_FLOWCTL_RESUME:
-		if (!smdraw->tx_flow_control)
-			break;
-
-		pr_info("%s:control to resume\n", __func__);
-		smdraw->tx_flow_control = false;
-		for (i = 0; i < MAX_PDP_DEV; i++) {
-			netdev = smdraw->pdpdev[i].pdp;
-			if (netdev)
-				netif_wake_queue(netdev);
-
-			queue_delayed_work(smdraw->pdp_wq,
-				&smdraw->pdp_work, 0);
+		if (smdraw->tx_flow_control) {
+			pr_info("%s:control to resume\n", __func__);
+			smdraw->tx_flow_control = false;
+			for (i = 0; i < MAX_PDP_DEV; i++) {
+				netdev = smdraw->pdpdev[i].pdp;
+				if (netdev)
+					netif_wake_queue(netdev);
+			}
+			queue_delayed_work(smdraw->pdp_wq, &smdraw->pdp_work, 0);
 		}
 		break;
 	}
@@ -151,6 +145,7 @@ static void cmd_rx_comp(struct urb *urb)
 	usb_mark_last_busy(smdcmd->hsic.usb);
 
 	switch (status) {
+	case -ENOENT:
 	case 0:
 		if (urb->actual_length) {
 			while (cmd_offset < urb->actual_length) {
@@ -176,9 +171,10 @@ static void cmd_rx_comp(struct urb *urb)
 			pr_info("==========================================\n");
 #endif
 		}
-		goto resubmit;
+		if (!urb->status)
+			goto resubmit;
+		break;
 
-	case -ENOENT:
 	case -ECONNRESET:
 	case -ESHUTDOWN:
 		pr_err("%s:LINK ERROR:%d\n", __func__, status);

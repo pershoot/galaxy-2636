@@ -191,9 +191,14 @@ static int smd_down_open(struct inode *inode, struct file *file)
 		pr_err("%s:smd_down is not ready(%d)\n",
 			__func__, r);
 		atomic_set(&smddown->opened, 0);
+		if (smddown->open_fail_cnt++ > 10) {
+			r = -ENOTCONN;
+			smddown->open_fail_cnt = 0;
+		}
 		return r;
 	}
 
+	smddown->open_fail_cnt = 0;
 	file->private_data = smddown;
 	return 0;
 }
@@ -294,6 +299,9 @@ static ssize_t smd_down_read(struct file *file, char *buf, size_t count,
 			count = remaining_bytes;
 
 			if (remaining_bytes == 0)
+#if defined (CONFIG_MACH_BOSE_ATT)
+				atomic_set(&smddown->opened, 0);
+#endif
 				return -EAGAIN;
 		}
 	}
@@ -448,7 +456,6 @@ void disconnect_smd_down(void *smd_device)
 {
 	struct str_smd_down *smddown = smd_device;
 	smd_kill_urb(&smddown->hsic);
-	smddown->hsic.usb = NULL;
 }
 
 void exit_smd_down(void *param)

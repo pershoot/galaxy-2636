@@ -48,6 +48,7 @@ struct str_smd_down {
 	dev_t devid;
 
 	atomic_t opened;
+	int open_fail_cnt;
 
 	struct str_ring_buf read_buf;
 	char *tpbuf;

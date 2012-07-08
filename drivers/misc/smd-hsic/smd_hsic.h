@@ -88,6 +88,8 @@ struct str_hsic {
 
 	struct delayed_work pm_runtime_work;
 
+	struct list_head *txq;
+
 	bool dpm_suspending;
 	unsigned int resume_failcnt;
 };
@@ -116,9 +118,12 @@ void *get_smd_device(unsigned int id);
 extern int usb_runtime_pm_ap_initiated_L2;
 extern int smdctl_set_pm_status(unsigned int);
 extern void smdctl_request_connection_recover(bool);
-extern void smdctl_reenumeration_control(void);
 
 /* work around for Tegre 2 hsic phy problem */
 extern void tegra_ehci_txfilltuning(void);
-bool smdhsic_pm_active(void);
+
+void add_tail_txurb(struct list_head *list, struct urb *urb);
+void add_head_txurb(struct list_head *list, struct urb *urb);
+void queue_tx_work(void);
+void flush_txurb(struct list_head *list);
 #endif				/*__SMD_HSIC_H__ */

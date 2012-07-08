@@ -328,7 +328,7 @@ void dump_buffer(char *startAddr, int size)
 		if ((i >= ROW_PEP_CHAR) && (!(i % ROW_PEP_CHAR)))
 			pr_info("\n");
 
-		pr_info("%02x ", *(startAddr + i));
+		printk("%02x ", *(startAddr + i));
 	}
 
 	pr_info("\n");

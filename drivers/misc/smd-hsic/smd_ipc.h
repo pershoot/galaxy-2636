@@ -29,11 +29,11 @@
 #include <linux/poll.h>
 #include <linux/completion.h>
 #include <linux/wakelock.h>
-
+#include <linux/skbuff.h>
 #include "smd_hsic.h"
 #include "smd.h"
 
-#define IPC_READ_BUF_SIZE       (64*1024)
+#define IPC_READ_BUF_SIZE       (16*1024)
 #define IPC_PM_STATUS_DISCONNECT   2
 #define IPC_PM_STATUS_SUSPEND   1
 #define IPC_PM_STATUS_RESUME    0
@@ -60,6 +60,8 @@ struct str_smdipc {
 	struct wake_lock wakelock;
 	/* to block re-entering suspend routine */
 	unsigned int suspended;
+
+	struct sk_buff_head rxq;
 };
 
 struct fmt_hdr {

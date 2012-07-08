@@ -56,7 +56,6 @@
 #define RAW_READ_BUF_SIZE	(64*1024)
 
 #define DEFAULT_WAKE_TIME	(HZ*6)
-
 static void raw_urb_rx_comp(struct urb *urb);
 static void raw_urb_tx_comp(struct urb *urb);
 
@@ -103,7 +102,6 @@ static struct attribute_group smdraw_sysfs = {
 	.name = "smdraw",
 	.attrs = smdraw_sysfs_attrs,
 };
-
 
 /* return free rx urb index */
 /*this function should be proteced by mutex*/
@@ -361,6 +359,7 @@ static int smdraw_rx_submit(struct str_smdraw *smdraw)
 	if (r < 0) {
 		pr_err("%s:get_rx_free_urb(): all urbs are already in submit\n",
 			__func__);
+		r = 0;
 		goto err;
 	}
 	rx_urb = &hsic->rx_urb[r];
@@ -405,6 +404,7 @@ static void raw_urb_rx_comp(struct urb *urb)
 	usb_mark_last_busy(hsic->usb);
 
 	switch (urb->status) {
+	case -ENOENT:
 	case 0:
 		if (urb->actual_length) {
 #if 0
@@ -413,11 +413,12 @@ static void raw_urb_rx_comp(struct urb *urb)
 			pr_info("==========================================\n");
 #endif
 			demux_raw(urb, smdraw);
-			wake_lock_timeout(&smdraw->rxguide_lock, smdraw->wake_time);			
+			wake_lock_timeout(&smdraw->rxguide_lock, smdraw->wake_time);
 		}
-		goto resubmit;
+		if (!urb->status)
+			goto resubmit;
+		break;
 
-	case -ENOENT:
 	case -ECONNRESET:
 	case -ESHUTDOWN:
 		pr_err("%s:LINK ERROR:%d\n", __func__, urb->status);
@@ -516,6 +517,24 @@ static int smdraw_open(struct inode *inode, struct file *file)
 
 	pr_info("smdraw_open() for cid : %d\n", rawdev->cid);
 
+	if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT) {
+		pr_err("%s : disconnected\n", __func__);
+		return -ENODEV;
+	}
+
+	if (!smdraw->hsic.usb) {
+		pr_err("%s : no resources\n", __func__);
+		return -ENODEV;
+	}
+
+	usb_mark_last_busy(smdraw->hsic.usb);
+	r = smdhsic_pm_resume_AP();
+	if (r < 0) {
+		pr_err("%s: HSIC Resume Failed(%d)\n", __func__, r);
+		return -EBUSY;
+	}
+	usb_mark_last_busy(smdraw->hsic.usb);
+
 	if (atomic_cmpxchg(&rawdev->opened, 0, 1)) {
 		pr_err("%s : Already opened\n", __func__);
 		return -EBUSY;
@@ -532,6 +551,7 @@ static int smdraw_open(struct inode *inode, struct file *file)
 	if (smdraw_rx_submit(smdraw) < 0) {
 		pr_err("%s:rx_submit() failed\n", __func__);
 		atomic_set(&rawdev->opened, 0);
+		free_buf(&rawdev->read_buf);
 		return r;
 	}
 
@@ -622,7 +642,12 @@ static int smdraw_tx_submit(const char __user *data, struct str_smdraw *smdraw,
 	usb_fill_bulk_urb(urb, hsic->usb, hsic->tx_pipe,
 			  urbbuf, pktsz, raw_urb_tx_comp, (void *)smdraw);
 	urb->transfer_flags = URB_ZERO_PACKET;
-
+#if 0
+	add_tail_txurb(hsic->txq, urb);
+	queue_tx_work();
+	
+	return 0;
+#else
 	usb_mark_last_busy(smdraw->hsic.usb);
 
 	r = smdhsic_pm_resume_AP();
@@ -642,6 +667,7 @@ static int smdraw_tx_submit(const char __user *data, struct str_smdraw *smdraw,
 	usb_mark_last_busy(smdraw->hsic.usb);
 	return r;
 
+#endif
 err:
 	if (urb)
 		usb_free_urb(urb);
@@ -682,14 +708,29 @@ static int smdraw_pdp_tx_submit(struct sk_buff *skb)
 	struct str_smdraw *smdraw = pdppriv->smdraw;
 	struct str_hsic *hsic = &smdraw->hsic;
 
-	if (!hsic || !hsic->usb)
-		return -ENODEV;
-
-	usb_mark_last_busy(hsic->usb);
-
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!urb)
 		return -ENOMEM;
+#if 0
+#if 0
+	pr_info("================= TRANSMIT RAW =================\n");
+	dump_buffer(skb->data, skb->len);
+	pr_info("================================================\n");
+#endif
+	usb_fill_bulk_urb(urb, hsic->usb, hsic->tx_pipe, skb->data,
+			skb->len, raw_urb_pdp_tx_comp, (void *)skb);
+	urb->transfer_flags = URB_ZERO_PACKET;
+
+	add_tail_txurb(hsic->txq, urb);
+	queue_tx_work();
+
+	skb->dev->stats.tx_packets++;
+	skb->dev->stats.tx_bytes += skb->len;
+
+	return 0;
+#else
+
+	usb_mark_last_busy(smdraw->hsic.usb);
 
 #if 0
 	pr_info("================= TRANSMIT RAW =================\n");
@@ -714,6 +755,8 @@ static int smdraw_pdp_tx_submit(struct sk_buff *skb)
 	skb->dev->stats.tx_bytes += skb->len;
 	usb_mark_last_busy(hsic->usb);
 	return r;
+
+#endif
 }
 
 static ssize_t smdraw_write(struct file *file, const char __user * buf,
@@ -964,63 +1007,24 @@ static void smd_vnet_setup(struct net_device *dev)
 	dev->watchdog_timeo = 30 * HZ;
 }
 
+#if 0
 static void pdp_workqueue_handler(struct work_struct *work)
 {
+/* this routine can be removed , by changing direct call at xmit */
 	int r;
 	unsigned long flags;
 	struct sk_buff *skb, *tx_skb;
 	struct str_pdp_priv *pdp_priv;
 	struct str_smdraw *smdraw = container_of(work, struct str_smdraw, pdp_work.work);
 
-	if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT) {
-		cancel_delayed_work(&smdraw->pdp_work);
-		skb_queue_purge(&smdraw->pdp_txq);
-		return;
-	}
-
-	if (smdraw->tx_flow_control) {
-		cancel_delayed_work(&smdraw->pdp_work);
-		return;
-	}
+	/* move flow control to tx work func */
 
 	if (!skb_queue_len(&smdraw->pdp_txq))
 		return;
 
-	r = smdhsic_pm_resume_AP();
-	if (r < 0) {
-		if (r == -EAGAIN || r == -ETIMEDOUT) {
-			pr_debug("%s:kernel pm resume, delayed(%d)\n",
-							__func__, r);
-		queue_delayed_work(smdraw->pdp_wq, &smdraw->pdp_work,
-					msecs_to_jiffies(50));
-		} else {
-			pr_err("%s: HSIC Resume Failed(%d)\n", __func__, r);
-			skb_queue_purge(&smdraw->pdp_txq);
-		}
-		return;
-	}
-
 	spin_lock_irqsave(&smdraw->lock, flags);
 	skb = skb_dequeue(&smdraw->pdp_txq);
 	while (skb) {
-		if (!smdhsic_pm_active()) {
-			pr_err("%s: rpm is not active\n", __func__);
-			skb_queue_head(&smdraw->pdp_txq, skb);
-			queue_delayed_work(smdraw->pdp_wq, &smdraw->pdp_work,
-					msecs_to_jiffies(10));
-			spin_unlock_irqrestore(&smdraw->lock, flags);
-			return;
-		}
-
-		if (smdraw->pm_stat == RAW_PM_STATUS_DISCONNECT) {
-			dev_kfree_skb_any(skb);
-			cancel_delayed_work(&smdraw->pdp_work);
-			skb_queue_purge(&smdraw->pdp_txq);
-			spin_unlock_irqrestore(&smdraw->lock, flags);
-			return;
-		} else
-			usb_mark_last_busy(smdraw->hsic.usb);
-
 		pdp_priv = netdev_priv(skb->dev);
 		/* skb destroy done by next function call */
 		tx_skb = smdraw_pdp_skb_fill_hdlc(skb, pdp_priv->cid);
@@ -1044,6 +1048,68 @@ static void pdp_workqueue_handler(struct work_struct *work)
 	}
 	spin_unlock_irqrestore(&smdraw->lock, flags);
 }
+#else
+static void pdp_workqueue_handler(struct work_struct *work)
+{
+	int r;
+	unsigned long flags;
+	struct sk_buff *skb, *tx_skb;
+	struct str_pdp_priv *pdp_priv;
+	struct str_smdraw *smdraw = container_of(work, struct str_smdraw, pdp_work.work);
+
+	if (smdraw->tx_flow_control) {
+		cancel_delayed_work(&smdraw->pdp_work);
+		return;
+	}
+
+	if (!skb_queue_len(&smdraw->pdp_txq))
+		return;
+
+	r = smdhsic_pm_resume_AP();
+	if (r < 0) {
+		if (r == -EAGAIN || r == -ETIMEDOUT) {
+			pr_debug("%s:kernel pm resume, delayed(%d)\n",
+							__func__, r);
+		queue_delayed_work(smdraw->pdp_wq, &smdraw->pdp_work,
+					msecs_to_jiffies(50));
+		} else {
+			pr_err("%s: HSIC Resume Failed(%d)\n", __func__, r);
+			skb_queue_purge(&smdraw->pdp_txq);
+		}
+		return;
+	}
+
+	usb_mark_last_busy(smdraw->hsic.usb);
+
+	spin_lock_irqsave(&smdraw->lock, flags);
+	skb = skb_dequeue(&smdraw->pdp_txq);
+	while (skb) {
+		usb_mark_last_busy(smdraw->hsic.usb);
+		pdp_priv = netdev_priv(skb->dev);
+		/* skb destroy done by next function call */
+		tx_skb = smdraw_pdp_skb_fill_hdlc(skb, pdp_priv->cid);
+		if (!tx_skb) {
+			pr_err("%s: fill hdlc skb no memory\n", __func__);
+			skb_queue_head(&smdraw->pdp_txq, skb);
+			queue_delayed_work(smdraw->pdp_wq, &smdraw->pdp_work,
+					msecs_to_jiffies(10));
+			spin_unlock_irqrestore(&smdraw->lock, flags);
+			return;
+		}
+		usb_mark_last_busy(smdraw->hsic.usb);
+		/* tx_skb destroy done by tx complete function */
+		if (smdraw_pdp_tx_submit(tx_skb)) {
+			dev_kfree_skb_any(tx_skb);
+			pr_err("%s: smdraw_pdp_tx_submit() failed, drop skb\n",
+			     __func__);
+			spin_unlock_irqrestore(&smdraw->lock, flags);
+			return;
+		}
+		skb = skb_dequeue(&smdraw->pdp_txq);
+	}
+	spin_unlock_irqrestore(&smdraw->lock, flags);
+}
+#endif
 
 static int register_raw_net(struct str_dev_info *info,
 			    struct str_smdraw *smdraw, unsigned int index)
@@ -1139,7 +1205,6 @@ static int register_smdraw_dev(struct str_smdraw *smdraw)
 		pr_err("%s: device_create() failed, r = %d\n", __func__, r);
 		goto err_device_create;
 	}
-
 	for (i = 0; i < MAX_RAW_CHANNEL; i++) {
 		if (dev_info[i].dev_type == RAW_TYPE_NOR) {
 			r = register_raw_dev(&dev_info[i], smdraw);
@@ -1164,9 +1229,8 @@ static int register_smdraw_dev(struct str_smdraw *smdraw)
 	}
 
 	dev_set_drvdata(smdraw->dev, smdraw);
-	
-	return 0;
 
+	return 0;
 
 err_device_create:
 	cdev_del(&smdraw->cdev);
@@ -1175,8 +1239,7 @@ err_cdev_add:
 err_alloc_chrdev_region:
 	class_destroy(smdraw->class);
 	
-	return 0;
-	
+	return -ENOMEM;
 }
 
 void dereg_smdraw_dev(struct str_smdraw *smdraw)
@@ -1286,7 +1349,6 @@ void *init_smdraw(void)
 		goto err_sysfs_create_group;
 	}
 
-
 	INIT_DELAYED_WORK(&smdraw->pdp_work, pdp_workqueue_handler);
 	skb_queue_head_init(&smdraw->pdp_txq);
 	spin_lock_init(&smdraw->lock);
@@ -1319,11 +1381,9 @@ void *connect_smdraw(void *smd_device, struct str_hsic *hsic)
 	smdraw->hsic.usb = hsic->usb;
 	smdraw->hsic.rx_pipe = hsic->rx_pipe;
 	smdraw->hsic.tx_pipe = hsic->tx_pipe;
+	smdraw->hsic.txq = hsic->txq;
 
 	smdraw->pm_stat = RAW_PM_STATUS_RESUME;
-
-	cancel_delayed_work(&smdraw->pdp_work);
-	skb_queue_purge(&smdraw->pdp_txq);
 
 	smdraw_rx_submit(smdraw);
 
@@ -1339,20 +1399,19 @@ void *connect_smdraw(void *smd_device, struct str_hsic *hsic)
 void disconnect_smdraw(void *smd_device)
 {
 	struct str_smdraw *smdraw = smd_device;
-	struct str_pdp_priv *pdppriv = netdev_priv(smdraw->pdpdev[0].pdp);
 	int i;
 
 	for (i=0;i < MAX_PDP_DEV;i++)
 		if (smdraw->pdpdev[i].pdp)
 			smd_vnet_stop(smdraw->pdpdev[i].pdp);
 
-	cancel_delayed_work(&smdraw->pdp_work);
 	skb_queue_purge(&smdraw->pdp_txq);
 
 	smdraw->pm_stat = RAW_PM_STATUS_DISCONNECT;
 	smdraw->suspended = 0;
 	smdraw->tx_flow_control = false;
 
+	flush_txurb(smdraw->hsic.txq);
 	flush_buf(&smdraw->read_buf);
 	smd_kill_urb(&smdraw->hsic);
 	wake_unlock(&smdraw->wakelock);

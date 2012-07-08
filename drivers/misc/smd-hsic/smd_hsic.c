@@ -75,8 +75,12 @@ struct smd_usbdev {
 	unsigned int suspended;
 	struct str_hsic *hsic;
 	void *smd_device[MAX_DEV_ID];
-	struct wake_lock tx_wlock;
-	struct wake_lock boot_wlock;
+	struct list_head ipc_urbq;
+	struct list_head data_urbq;
+	struct workqueue_struct *wq;
+	struct delayed_work txwork;
+	struct wake_lock txwake;
+	spinlock_t lock;
 };
 
 static struct smd_usbdev g_usbdev;
@@ -159,6 +163,19 @@ struct str_intf_priv *smd_create_dev(struct usb_interface *intf,
 	hsic->intf = intf;
 	hsic->usb = usb_get_dev(usbdev);
 
+	switch (devid) {
+	case FMT_DEV_ID:
+	case RFS_DEV_ID:
+	case CMD_DEV_ID:
+	case DOWN_DEV_ID:
+		hsic->txq = &g_usbdev.ipc_urbq;
+		break;
+	case RAW_DEV_ID:
+		hsic->txq = &g_usbdev.data_urbq;
+	default:
+		break;
+	}
+
 	if (fill_usb_pipe(hsic, usbdev, desc)) {
 		pr_err("%s:fill_usb_pipe() failed\n", __func__);
 		goto err_fill_usb_pipe;
@@ -194,7 +211,6 @@ static void smdhsic_pm_runtime_start(struct work_struct *work)
 		pr_info("%s(udev:0x%p)\n", __func__, g_usbdev.usbdev);
 		pm_runtime_allow(&g_usbdev.usbdev->dev);
 	}
-	wake_unlock(&g_usbdev.boot_wlock);
 }
 
 static int smdhsic_probe(struct usb_interface *intf,
@@ -280,7 +296,6 @@ static int smdhsic_probe(struct usb_interface *intf,
 	switch (id->driver_info) {
 	case XMM6260_PSI_DOWN:
 		pr_warn("%s:XMM6260_PSI_DOWN\n", __func__);
-		wake_lock(&g_usbdev.boot_wlock);
 		intfpriv = smd_create_dev(data_intf, usbdev,
 					data_desc, DOWN_DEV_ID);
 		break;
@@ -408,6 +423,8 @@ static struct usb_device *get_usb_device(struct str_intf_priv *intfpriv)
 	return NULL;
 }
 
+void flush_txurb(struct list_head *list);
+
 static void smdhsic_disconnect(struct usb_interface *intf)
 {
 	int devid;
@@ -442,12 +459,14 @@ static void smdhsic_disconnect(struct usb_interface *intf)
 	if (!device)
 		usb_put_dev(device);
 
+	pm_runtime_disable(&device->dev);
+	if (g_usbdev.hsic)
+		cancel_delayed_work(&g_usbdev.hsic->pm_runtime_work);
+
 	switch (devid) {
 	case FMT_DEV_ID:
-		pm_runtime_disable(&device->dev);
-		if (g_usbdev.hsic)
-			cancel_delayed_work(&g_usbdev.hsic->pm_runtime_work);
-
+		flush_txurb(&g_usbdev.ipc_urbq);
+		flush_txurb(&g_usbdev.data_urbq);
 		smdctl_request_connection_recover(true);
 	case RAW_DEV_ID:
 	case RFS_DEV_ID:
@@ -462,12 +481,11 @@ static void smdhsic_disconnect(struct usb_interface *intf)
 		pr_warn("%s:Undefined Callback Function\n",
 		       __func__);
 	}
-
-	/* Power on/off kernel-panic workaround,
-	 * if USB suspend cmd was queued in power.work before disconnect,
-	 * reset the runtime PM request value to PM_REQ_NONE
-	 */
-	device->dev.power.request = RPM_REQ_NONE;
+	/* to prevent sleep at connection recover
+	* when, usb suspend and recover routine overlap
+	* it makes huge delay on modem reset
+	*/
+	wake_lock_timeout(&g_usbdev.txwake, 20*HZ);
 
 	kfree(intfpriv);
 	usb_set_intfdata(intf, NULL);
@@ -478,7 +496,7 @@ static void smdhsic_disconnect(struct usb_interface *intf)
 
 err_mismatched_intf:
 err_get_usb_intf:
-	if (device)
+	if (!device)
 		usb_put_dev(device);
 err_get_intfdata:
 	pr_err("release(2) : %p\n", intf);
@@ -740,8 +758,6 @@ int smdhsic_pm_resume_AP(void)
 	dev = &g_usbdev.usbdev->dev;
 
 retry:
-	/* Hold Wake lock, when TX...*/
-	wake_lock_timeout(&g_usbdev.tx_wlock, msecs_to_jiffies(500));
 	/* dpm_suspending can be set during RPM STATUS changing */
 	if (g_usbdev.hsic && g_usbdev.hsic->dpm_suspending)
 		return -EAGAIN;
@@ -792,7 +808,6 @@ retry:
 				g_usbdev.hsic->resume_failcnt = 0;
 				smdctl_request_connection_recover(true);
 			}
-			smdctl_reenumeration_control();
 			return -ETIMEDOUT;
 		}
 		pending_spin--;
@@ -801,9 +816,6 @@ retry:
 	case RPM_ACTIVE:
 		if (g_usbdev.hsic)
 			g_usbdev.hsic->resume_failcnt = 0;
-
-		/* For under autosuspend timer */
-		wake_lock_timeout(&g_usbdev.tx_wlock, msecs_to_jiffies(100));
 		break;
 	default:
 		return -EIO;
@@ -812,18 +824,6 @@ retry:
 	return 0;
 }
 EXPORT_SYMBOL_GPL(smdhsic_pm_resume_AP);
-
-bool smdhsic_pm_active(void)
-{
-	struct device *dev;
-
-	if (!g_usbdev.usbdev)
-		return false;
-
-	dev = &g_usbdev.usbdev->dev;
-	return (dev->power.runtime_status == RPM_ACTIVE);
-}
-EXPORT_SYMBOL_GPL(smdhsic_pm_active);
 
 int smdhsic_reset_resume(struct usb_interface *intf)
 {
@@ -909,6 +909,125 @@ static struct usb_driver smdhsic_driver = {
 	.supports_autosuspend = 1,
 };
 
+void add_tail_txurb(struct list_head *list, struct urb *urb)
+{
+	unsigned long flags;
+	struct smd_usbdev *usbdev = &g_usbdev;
+
+	spin_lock_irqsave(&usbdev->lock, flags);
+	list_add_tail(&urb->urb_list, list);
+	spin_unlock_irqrestore(&usbdev->lock, flags);
+}
+
+void add_head_txurb(struct list_head *list, struct urb *urb)
+{
+	unsigned long flags;
+	struct smd_usbdev *usbdev = &g_usbdev;
+
+	spin_lock_irqsave(&usbdev->lock, flags);
+	list_add(&urb->urb_list, list);
+	spin_unlock_irqrestore(&usbdev->lock, flags);
+}
+
+struct urb * get_txurb(struct list_head *list)
+{
+	unsigned long flags;
+	struct urb* urb;
+	struct smd_usbdev *usbdev = &g_usbdev;
+
+	if (list_empty(list))
+		return NULL;
+
+	spin_lock_irqsave(&usbdev->lock, flags);
+	urb = list_first_entry(list, struct urb, urb_list);
+	list_del(&urb->urb_list);
+	spin_unlock_irqrestore(&usbdev->lock, flags);
+
+	return urb;
+}
+
+void flush_txurb(struct list_head *list)
+{
+	struct urb* urb;
+
+	urb = get_txurb(list);
+	while (urb) {
+		kfree(urb->transfer_buffer);
+		usb_free_urb(urb);
+		urb = get_txurb(list);
+	}
+}
+
+void queue_tx_work(void)
+{
+	struct smd_usbdev *usbdev = &g_usbdev;
+	wake_lock_timeout(&g_usbdev.txwake, msecs_to_jiffies(200));
+	queue_delayed_work(usbdev->wq, &usbdev->txwork, 0);
+}
+
+static void txurb_workfunc(struct work_struct *work)
+{
+	int r;
+	struct smd_usbdev *usbdev = &g_usbdev;
+	struct urb *urb;
+
+	if (list_empty(&usbdev->ipc_urbq) && list_empty(&usbdev->data_urbq))
+		return;
+
+	r = smdhsic_pm_resume_AP();
+	if (r) {
+		pr_err("%s pm resume return with (%d)\n", __func__, r);
+		if ( r == -ENODEV) {
+			flush_txurb(&usbdev->ipc_urbq);
+			flush_txurb(&usbdev->data_urbq);
+			return;
+		}
+		wake_lock_timeout(&g_usbdev.txwake, msecs_to_jiffies(500));
+		queue_delayed_work(usbdev->wq, &usbdev->txwork, msecs_to_jiffies(300));
+		return;
+	}
+
+	usb_mark_last_busy(usbdev->usbdev);
+	urb = get_txurb(&usbdev->ipc_urbq);
+	while (urb) {
+#if 0
+		pr_info("================= TRANSMIT IPC/RFS TX_URB =================\n");
+		dump_buffer(urb->transfer_buffer, urb->transfer_buffer_length);
+		pr_info("================================================\n");
+#endif
+		usb_mark_last_busy(usbdev->usbdev);
+		r = usb_submit_urb(urb, GFP_KERNEL);
+		if (r) {
+			pr_err("%s submit urb return with (%d)\n", __func__, r);
+			add_head_txurb(&usbdev->ipc_urbq, urb);
+			wake_lock_timeout(&g_usbdev.txwake, msecs_to_jiffies(200));
+			queue_delayed_work(usbdev->wq, &usbdev->txwork, msecs_to_jiffies(20));
+			return;
+		}
+		urb = get_txurb(&usbdev->ipc_urbq);
+	}
+
+	usb_mark_last_busy(usbdev->usbdev);
+	urb = get_txurb(&usbdev->data_urbq);
+	while (urb) {
+#if 0
+		pr_info("================= TRANSMIT DATA TX_URB =================\n");
+		dump_buffer(urb->transfer_buffer, urb->transfer_buffer_length);
+		pr_info("================================================\n");
+#endif
+		usb_mark_last_busy(usbdev->usbdev);
+		r = usb_submit_urb(urb, GFP_KERNEL);
+		if (r) {
+			pr_err("%s submit urb return with (%d)\n", __func__, r);
+			add_head_txurb(&usbdev->data_urbq, urb);
+			wake_lock_timeout(&g_usbdev.txwake, msecs_to_jiffies(200));
+			queue_delayed_work(usbdev->wq, &usbdev->txwork, msecs_to_jiffies(20));
+			return;
+		}
+		urb = get_txurb(&usbdev->data_urbq);
+	}
+}
+
 static int __init smd_hsic_init(void)
 {
 	int i;
@@ -916,8 +1035,15 @@ static int __init smd_hsic_init(void)
 		if (emu_reg_func[i])
 			g_usbdev.smd_device[i] = emu_reg_func[i]();
 
-	wake_lock_init(&g_usbdev.tx_wlock, WAKE_LOCK_SUSPEND, "smd_txlock");
-	wake_lock_init(&g_usbdev.boot_wlock, WAKE_LOCK_SUSPEND, "smd_bootlock");
+	INIT_LIST_HEAD(&g_usbdev.ipc_urbq);
+	INIT_LIST_HEAD(&g_usbdev.data_urbq);
+	g_usbdev.wq = create_singlethread_workqueue("hsictxd");
+	if (!g_usbdev.wq)
+		return -ENOMEM;
+
+	INIT_DELAYED_WORK(&g_usbdev.txwork, txurb_workfunc);
+	spin_lock_init(&g_usbdev.lock);
+	wake_lock_init(&g_usbdev.txwake, WAKE_LOCK_SUSPEND, "tx_wake");
 
 	register_pm_notifier(&smdhsic_pm_notifier);
 	return usb_register(&smdhsic_driver);
@@ -930,8 +1056,7 @@ static void __exit smd_hsic_exit(void)
 		if (emu_dereg_func[i])
 			emu_dereg_func[i](g_usbdev.smd_device[i]);
 	usb_deregister(&smdhsic_driver);
-	wake_lock_destroy(&g_usbdev.tx_wlock);
-	wake_lock_destroy(&g_usbdev.boot_wlock);
+	wake_lock_destroy(&g_usbdev.txwake);
 }
 
 module_init(smd_hsic_init);

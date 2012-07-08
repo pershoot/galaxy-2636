@@ -87,6 +87,119 @@ static int smdipc_rx_usb(struct str_smdipc *smdipc)
 	return ret;
 }
 
+static int get_fmt_header(struct str_ring_buf *rbuf, char *start_byte, struct fmt_hdr *hd)
+{
+	if (!get_remained_size(rbuf))
+		return -ENODATA;
+	
+	if (get_remained_size(rbuf) < sizeof(*hd) + sizeof(start_byte)) {
+		pr_debug("ring buffer data length less than header size\n");
+		return -ENOSPC;
+	}
+
+	if (memcpy_from_ringbuf(rbuf, start_byte, sizeof(*start_byte)) != sizeof(*start_byte)) {
+		pr_err("read header error from ringbuffer\n");
+		return -EIO;
+	}
+	
+	if (memcpy_from_ringbuf(rbuf, (char *)hd, sizeof(*hd)) != sizeof(*hd)) {
+		pr_err("read header error from ringbuffer\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+
+static void drop_hdlc_packet(struct str_ring_buf *rbuf)
+{
+	char hdlc_stop;
+	int cnt = 0;
+
+	pr_info("%s\n", __func__);
+	while (memcpy_from_ringbuf(rbuf, &hdlc_stop, sizeof(hdlc_stop))) {
+		++cnt;
+		printk("%x ", hdlc_stop);
+		if (hdlc_stop == HDLC_END)
+			break;
+	}
+	pr_info("%d bytes drop\n", cnt);
+}
+
+/* returns 0 if not enough data, otherwise returns the hdlc_packet_len */
+static unsigned int packet_has_enough_data(struct str_ring_buf *rbuf,
+					struct fmt_hdr *hd)
+{
+	int data_available;
+	unsigned int hdlc_packet_len;
+
+	data_available = get_remained_size(rbuf);
+	hdlc_packet_len = hd->len + 2; /* hd->len + hdlc start/stop */
+
+	if (data_available + sizeof(*hd) + 1 < hdlc_packet_len) {
+		pr_debug("%s, rewind tail\n", __func__);
+		/* rewind_tail pointer */
+		rbuf->tail -= (sizeof(*hd) + 1);
+		if (rbuf->tail < rbuf->buf)
+			rbuf->tail += rbuf->size - 1;
+		/* return and process it next completion*/
+		return 0;
+	}
+	return hdlc_packet_len;
+}
+
+static void process_ipc(struct str_smdipc *smdipc)
+{
+	int ret;
+	char start_byte;
+	int data_size;
+	struct fmt_hdr hd;
+	struct sk_buff *skb;
+	struct str_ring_buf *rbuf = &smdipc->read_buf;
+	
+	while (!get_fmt_header(rbuf, &start_byte, &hd)) {
+		/* check hdlc start byte */
+		if (start_byte != HDLC_START) {
+			pr_debug("%s:Wrong HD: %x\n", __func__, start_byte);
+			drop_hdlc_packet(rbuf);
+			continue;
+		}
+
+		if (!packet_has_enough_data(rbuf, &hd))
+			break;
+
+		data_size = hd.len - sizeof(hd);
+		skb = alloc_skb(data_size, GFP_ATOMIC);
+		if (!skb) {
+			/* rewind_tail pointer */
+			rbuf->tail -= (sizeof(hd) + 1);
+			if (rbuf->tail < rbuf->buf)
+				rbuf->tail += rbuf->size - 1;
+			/* return and process it next completion*/
+			return;
+		}
+
+		ret = memcpy_from_ringbuf(rbuf, skb->data, data_size);
+		if (ret != data_size) {
+			drop_hdlc_packet(rbuf);
+			dev_kfree_skb_any(skb);
+			continue;
+		}
+		skb_put(skb, data_size);
+
+		skb_queue_tail(&smdipc->rxq, skb);
+
+#ifdef DEBUG_LOG
+		pr_info("=============== PROCESS IPC (%d)==============\n", data_size);
+		dump_buffer(skb->data, data_size);
+		pr_info("==========================================\n");
+#endif
+		ret = memcpy_from_ringbuf(rbuf, &start_byte, sizeof(start_byte));
+		if (!ret || start_byte != HDLC_END)
+			drop_hdlc_packet(rbuf);
+	}
+}
+
 static void ipc_rx_comp(struct urb *urb)
 {
 	int status;
@@ -109,6 +222,7 @@ static void ipc_rx_comp(struct urb *urb)
 	usb_mark_last_busy(smdipc->hsic.usb);
 
 	switch (status) {
+	case -ENOENT:
 	case 0:
 		if (urb->actual_length) {
 			ret = memcpy_to_ringbuf(&smdipc->read_buf,
@@ -117,18 +231,21 @@ static void ipc_rx_comp(struct urb *urb)
 			if (ret < 0)
 				pr_err("%s:memcpy_to_ringbuf failed :%d\n",
 				       __func__, ret);
-
-			wake_up(&smdipc->poll_wait);
-			wake_lock_timeout(&smdipc->rxguide_lock, HZ/2);
 #ifdef DEBUG_LOG
-			pr_info("=============== RECEIVE IPC ==============\n");
+			pr_info("=============== RECEIVE IPC (%d)==============\n", urb->actual_length);
 			dump_buffer(smdipc->tpbuf, urb->actual_length);
 			pr_info("==========================================\n");
 #endif
-		}
-		goto resubmit;
 
-	case -ENOENT:
+			process_ipc(smdipc);
+
+			wake_up(&smdipc->poll_wait);
+			wake_lock_timeout(&smdipc->rxguide_lock, HZ/2);
+		}
+		if (!urb->status)
+			goto resubmit;
+		break;
+
 	case -ECONNRESET:
 	case -ESHUTDOWN:
 		pr_err("%s:LINK ERROR:%d\n", __func__, status);
@@ -230,11 +347,31 @@ static int smdipc_open(struct inode *inode, struct file *file)
 	smdipc = container_of(cdev, struct str_smdipc, cdev);
 	hsic = &smdipc->hsic;
 
+	if (smdipc->pm_stat == IPC_PM_STATUS_DISCONNECT) {
+		pr_err("%s : disconnected\n", __func__);
+		return -ENODEV;
+	}
+
+	if (!smdipc->hsic.usb) {
+		pr_err("%s : no resources\n", __func__);
+		return -ENODEV;
+	}
+
 	if (atomic_cmpxchg(&smdipc->opened, 0, 1)) {
 		pr_err("%s : already opened..\n", __func__);
 		r = -EBUSY;
 		goto err_opened;
 	}
+
+	usb_mark_last_busy(smdipc->hsic.usb);
+	r = smdhsic_pm_resume_AP();
+	if (r < 0) {
+		pr_err("%s: HSIC Resume Failed %d\n", __func__, r);
+		r = -ENODEV;
+		goto err_resume;
+	}
+	smd_kill_urb(&smdipc->hsic);
+	usb_mark_last_busy(smdipc->hsic.usb);
 
 	r = smdipc_rx_usb(smdipc);
 	if (r) {
@@ -257,10 +394,13 @@ static int smdipc_open(struct inode *inode, struct file *file)
 err_smdipc_start:
 	smd_kill_urb(&smdipc->hsic);
 err_smdipc_rx_usb:
+err_resume:
 	atomic_set(&smdipc->opened, 0);
 err_opened:
-	if (smdipc->open_fail_cnt++ > 5)
+	if (smdipc->open_fail_cnt++ > 5) {
 		smdctl_request_connection_recover(true);
+		smdipc->open_fail_cnt = 0;
+	}
 	return r;
 }
 
@@ -303,6 +443,7 @@ static int smdipc_fmt_hdlc(const char __user *buf, char *dest_buf, ssize_t len)
 	return offset;
 }
 
+#if 0
 static ssize_t smdipc_write(struct file *file, const char __user * buf,
 			    size_t count, loff_t *ppos)
 {
@@ -319,9 +460,6 @@ static ssize_t smdipc_write(struct file *file, const char __user * buf,
 	hsic = &smdipc->hsic;
 
 	if (!hsic)
-		return -ENODEV;
-
-	if (smdipc->pm_stat == IPC_PM_STATUS_DISCONNECT)
 		return -ENODEV;
 
 	urb = usb_alloc_urb(0, GFP_KERNEL);
@@ -375,70 +513,107 @@ static ssize_t smdipc_write(struct file *file, const char __user * buf,
 
 	return count;
 exit:
-	if (urb)
-		usb_free_urb(urb);
-	if (drvbuf)
-		kfree(drvbuf);
+	usb_free_urb(urb);
+	kfree(drvbuf);
 	return r;
 }
+#else
+static ssize_t smdipc_write(struct file *file, const char __user * buf,
+			    size_t count, loff_t *ppos)
+{
+	int r;
+	char *drvbuf;
+	int pktsz;
+	struct str_smdipc *smdipc;
+	struct str_hsic *hsic;
+	struct urb *urb;
 
+	pr_debug("%s: Enter write size:%d\n", __func__, count);
+
+	smdipc = file->private_data;
+	hsic = &smdipc->hsic;
+
+	if (!hsic)
+		return -ENODEV;
+
+	if (smdipc->pm_stat == IPC_PM_STATUS_DISCONNECT)
+		return -ENODEV;
+
+	urb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!urb) {
+		pr_err("%s: tx urb is NULL\n", __func__);
+		return -ENODEV;
+	}
+
+	drvbuf = kzalloc(count + sizeof(struct fmt_hdr) + 2, GFP_KERNEL);
+	if (!drvbuf) {
+		pr_err("%s:kmalloc for drvbuf failed\n", __func__);
+		r = -EAGAIN;
+		goto exit;
+	}
+
+	pktsz = smdipc_fmt_hdlc(buf, drvbuf, count);
+	if (pktsz < 0) {
+		pr_err("%s Total Pkt : %d, Req : %d\n", __func__, pktsz,
+		       count);
+		r = pktsz;
+		goto exit;
+	}
+	if (pktsz != count + sizeof(struct fmt_hdr) + 2) {
+		pr_warn("%s Size Mismatch Pkt: %d, Req: %d\n", __func__,
+		       pktsz, count);
+	}
+#if 0
+	pr_info("================= TRANSMIT IPC =================\n");
+	dump_buffer(drvbuf, pktsz);
+	pr_info("================================================\n");
+#endif
+
+	usb_fill_bulk_urb(urb, hsic->usb, hsic->tx_pipe,
+			  drvbuf, pktsz, ipc_tx_comp, smdipc);
+
+	urb->transfer_flags = URB_ZERO_PACKET;
+
+	add_tail_txurb(hsic->txq, urb);
+	queue_tx_work();
+
+	return count;
+exit:
+	usb_free_urb(urb);
+	kfree(drvbuf);
+	return r;
+}
+#endif
 static ssize_t smdipc_read(struct file *file, char *buf, size_t count,
 			   loff_t *f_pos)
 {
 	int ret;
 	int pktsize = 0;
 	struct str_smdipc *smdipc;
-	struct str_ring_buf *readbuf;
-	char temp;
-	struct fmt_hdr hdr;
+	struct sk_buff *skb;
 
 	pr_debug("%s: Enter\n", __func__);
 
 	smdipc = (struct str_smdipc *)file->private_data;
-	readbuf = &smdipc->read_buf;
 
-	if (!readbuf->buf)
-		return -EFAULT;
+	skb = skb_dequeue(&smdipc->rxq);
+	if (!skb)
+		return 0;
 
-	if (!get_remained_size(readbuf))
-		goto done;
+	pktsize = skb->len;
+	ret = copy_to_user(buf, skb->data, pktsize);
+	if (ret)
+		pr_err("%s:memcpy size is not match\n", __func__);
 
-find_hdlc_start:
-	ret = memcpy_from_ringbuf(readbuf, &temp, 1);
-	if ((!ret) && (temp != HDLC_START)) {
-		pr_warn("%s:HDLC START Fail: %d, ret: %d\n",
-		       __func__, temp, ret);
-		goto find_hdlc_start;
-	}
-	ret = memcpy_from_ringbuf(readbuf, (char *)&hdr, sizeof(hdr));
-	if (!ret) {
-		pr_warn("%s:read ipc hdr failed: %d\n", __func__, ret);
-		ret = -1;
-	}
-	pktsize = hdr.len - sizeof(struct fmt_hdr);
-	ret = memcpy_from_ringbuf_user(readbuf, buf, pktsize);
-	if (!ret) {
-		pr_warn("%s:read ipc data failed: %d\n", __func__, ret);
-		ret = -1;
-	}
-	ret = memcpy_from_ringbuf(readbuf, &temp, 1);
-	if ((!ret) && (temp != HDLC_END)) {
-		pr_warn("%s:HDLC END: %d, ret: %d\n", __func__, temp, ret);
-		ret = -1;
-	}
 #ifdef DEBUG_LOG
-	pr_info("=================== READ IPC ===================\n");
-	dump_buffer(buf, pktsize);
+	pr_info("================= READ IPC (%d)=================\n", pktsize);
+	dump_buffer(skb->data, pktsize);
 	pr_info("================================================\n");
 #endif
 
-	if (ret < 0)
-		return ret;
+	dev_kfree_skb_any(skb);
 
-done:
-	pr_debug("%s##: pktsize: %d\n", __func__, pktsize);
-
-	return pktsize;
+	return pktsize;	
 }
 
 static unsigned int smdipc_poll(struct file *file,
@@ -446,7 +621,7 @@ static unsigned int smdipc_poll(struct file *file,
 {
 	struct str_smdipc *smdipc = file->private_data;
 
-	if (get_remained_size(&smdipc->read_buf))
+	if (!skb_queue_empty(&smdipc->rxq))
 		return POLLIN | POLLRDNORM;
 
 	if (wait)
@@ -454,7 +629,7 @@ static unsigned int smdipc_poll(struct file *file,
 	else
 		usleep_range(2000, 10000);
 
-	if (get_remained_size(&smdipc->read_buf))
+	if (!skb_queue_empty(&smdipc->rxq))
 		return POLLIN | POLLRDNORM;
 	else
 		return 0;
@@ -580,6 +755,8 @@ void *init_smdipc(void)
 	wake_lock_init(&smdipc->wakelock, WAKE_LOCK_SUSPEND, "smdipc");
 	wake_lock_init(&smdipc->rxguide_lock, WAKE_LOCK_SUSPEND, "rxipc");
 
+	skb_queue_head_init(&smdipc->rxq);
+	
 	pr_info("%s: End\n", __func__);
 	return smdipc;
 
@@ -602,6 +779,7 @@ void *connect_smdipc(void *smd_device, struct str_hsic *hsic)
 	smdipc->hsic.usb = hsic->usb;
 	smdipc->hsic.rx_pipe = hsic->rx_pipe;
 	smdipc->hsic.tx_pipe = hsic->tx_pipe;
+	smdipc->hsic.txq = hsic->txq;
 
 	smdipc->pm_stat = IPC_PM_STATUS_RESUME;
 
@@ -621,6 +799,7 @@ void disconnect_smdipc(void *smd_device)
 	smdipc->pm_stat = IPC_PM_STATUS_DISCONNECT;
 	smdipc->suspended = 0;
 
+	flush_txurb(smdipc->hsic.txq);
 	flush_buf(&smdipc->read_buf);
 	smd_kill_urb(&smdipc->hsic);
 	wake_unlock(&smdipc->wakelock);

@@ -53,20 +53,19 @@
 #include <linux/types.h>
 #include <linux/reboot.h>
 #include <linux/kthread.h>
+#include <linux/kernel_sec_common.h>
 
 #include "../smd-hsic/smd_hsic.h"
 #include "smd_ctl.h"
-#include <linux/kernel_sec_common.h>
-#if defined(CONFIG_MACH_SAMSUNG_P5)
-#include <linux/regulator/consumer.h>
-#endif
 
 #undef pr_debug
-#define pr_debug pr_info
+#define pr_debug pr_err
 
 static struct completion *g_L2complete;
 static int g_pm_status;
 struct str_smdctl *gsmdctl;
+
+
 
 static const struct str_smd_gpio g_gpio[SMD_GPIO_MAX] = {
 	{"cp_act", GPIO_OUT, LOW, IRQF_TRIGGER_RISING},
@@ -221,8 +220,6 @@ static void smd_cp_active_worker(struct work_struct *work)
 		kobject_uevent_env(&smdctl->dev->kobj,
 					KOBJ_OFFLINE, smdctl->uevent_envs);
 		pr_err("smd: sent uevnet(%s)\n", smdctl->uevent_envs[0]);
-		/* guide time to modem boot */
-		wake_lock_timeout(&smdctl->ctl_wake_lock, HZ*20);
 	}
 }
 
@@ -290,15 +287,9 @@ void smdctl_request_connection_recover(bool reconnection)
 
 	if (reconnection) {
 		pr_info("%s:reconnection\n", __func__);
-		if (gpio_get_value(gsmdctl->gpio[SMD_GPIO_CP_ACT].num)) {
-			gsmdctl->uevent_envs[0] ="MAILBOX=cp_reset";
-			kobject_uevent_env(&gsmdctl->dev->kobj, KOBJ_OFFLINE,
+		gsmdctl->uevent_envs[0] ="MAILBOX=cp_reset";
+		kobject_uevent_env(&gsmdctl->dev->kobj, KOBJ_OFFLINE,
 							gsmdctl->uevent_envs);
-			pr_info("send uevent[%s]\n", gsmdctl->uevent_envs[0]);
-			/* guide time to modem boot */
-			wake_lock_timeout(&gsmdctl->ctl_wake_lock, HZ*20);
-		} else
-			pr_info("phone active low, let it handle at IRQ\n");
 	} else {
 		gsmdctl->modem_uevent_requested = false;
 
@@ -308,39 +299,12 @@ void smdctl_request_connection_recover(bool reconnection)
 					pr_info("%s:delayed reset\n", __func__);
 					schedule_delayed_work(&gsmdctl->modem_reset_work,
 								msecs_to_jiffies(500));
-					/* guide time to modem boot */
-					wake_lock_timeout(&gsmdctl->ctl_wake_lock, HZ*20);
 				}
 				gsmdctl->modem_reset_remained = false;
 		}
 	}
 }
 EXPORT_SYMBOL(smdctl_request_connection_recover);
-
-void smdctl_reenumeration_control(void)
-{
-	/* reenumeration gpio control */
-	pr_debug("SMD HSIC ACT -> 0\n");
-	gpio_set_value(gsmdctl->gpio[SMD_GPIO_HSIC_ACT].num, 0);
-	pr_debug("SMD PDA ACT -> 0\n");
-	gpio_set_value(gsmdctl->gpio[SMD_GPIO_AP_ACT].num, 0);
-	/* wait modem idle */
-	msleep(30);
-
-	pr_debug("SMD PDA ACT -> 1\n");
-	gpio_set_value(gsmdctl->gpio[SMD_GPIO_AP_ACT].num, 1);
-	usleep_range(10000, 10000);
-	pr_debug("SMD SLV WKP -> 1\n");
-	gpio_set_value(gsmdctl->gpio[SMD_GPIO_SLV_WKP].num, 1);
-	usleep_range(10000, 10000);
-	pr_debug("SMD SLV WKP -> 0\n");
-	gpio_set_value(gsmdctl->gpio[SMD_GPIO_SLV_WKP].num, 0);
-	usleep_range(10000, 10000);
-
-	pr_debug("SMD HSIC ACT -> 1\n");
-	gpio_set_value(gsmdctl->gpio[SMD_GPIO_HSIC_ACT].num, 1);
-}
-EXPORT_SYMBOL(smdctl_reenumeration_control);
 
 static void smd_modem_reset_worker(struct work_struct *work)
 {
@@ -384,7 +348,6 @@ static void smd_request_uevent(struct str_smdctl *smdctl)
 	}
 }
 
-#ifndef CONFIG_NOT_SUPPORT_SIMDETECT
 static void smd_sim_detect_worker(struct work_struct *work)
 {
 	struct str_smdctl *smdctl =
@@ -439,7 +402,7 @@ static irqreturn_t irq_sim_detect(int irq, void *dev_id)
 
 	/* sim detect pin debounce time for 500ms */
 	wake_lock_timeout(&smdctl->ctl_wake_lock, HZ);
-	schedule_delayed_work(&smdctl->sim_detect_work,	msecs_to_jiffies(500));
+	schedule_delayed_work(&smdctl->sim_detect_work, msecs_to_jiffies(500));
 
 	return IRQ_HANDLED;
 }
@@ -461,10 +424,12 @@ static int smdctl_request_sim_detect(struct str_smdctl *smdctl)
 	}
 
 	INIT_DELAYED_WORK(&smdctl->sim_detect_work, smd_sim_detect_worker);
+	INIT_DELAYED_WORK(&smdctl->modem_reset_work,
+						smd_modem_reset_worker);
 
 	return ret;
 }
-#endif
+
 
 static irqreturn_t irq_host_wakeup(int irq, void *dev_id)
 {
@@ -568,17 +533,17 @@ static int smdctl_rest_init(struct str_smdctl *smdctl)
 	ret = smdctl_request_cp_active(smdctl);
 	if (ret)
 		goto err2;
-#ifndef CONFIG_NOT_SUPPORT_SIMDETECT
+
+/* this routine can be changed to gpio number null check */
+#ifndef CONFIG_MACH_N1
 	ret = smdctl_request_sim_detect(smdctl);
 	if (ret)
 		goto err3;
 #endif
 	smdctl->rest_init_done = true;
 
-	INIT_DELAYED_WORK(&smdctl->modem_reset_work, smd_modem_reset_worker);
-
 	return 0;
-#ifndef CONFIG_NOT_SUPPORT_SIMDETECT
+#ifndef CONFIG_MACH_N1
 err3:
 	free_irq(smdctl->gpio[SMD_GPIO_CP_ACT].irq, (void *)smdctl);
 #endif
@@ -645,6 +610,14 @@ static int xmm6260_off(struct str_smdctl *smdctl)
 	gpio_set_value(gpio[SMD_GPIO_AP_ACT].num, LOW);
 	gpio_set_value(gpio[SMD_GPIO_HSIC_ACT].num, LOW);
 	gpio_set_value(gpio[SMD_GPIO_SLV_WKP].num, LOW);
+	/* additional setup */
+	gpio_set_value(gpio[SMD_GPIO_HSIC_EN].num, LOW);
+	gpio_direction_output(gpio[SMD_GPIO_HSIC_SUS].num, LOW);
+	gpio_direction_output(gpio[SMD_GPIO_HST_WKP].num, LOW);
+	gpio_direction_output(gpio[SMD_GPIO_CP_ACT].num, LOW);
+	if (gpio[SMD_GPIO_SIM_DET].num)
+		gpio_direction_output(gpio[SMD_GPIO_SIM_DET].num, LOW);
+
 	return 0;
 }
 
@@ -669,6 +642,13 @@ static int xmm6260_on(struct str_smdctl *smdctl)
 
 	gpio_set_value(gpio[SMD_GPIO_CP_ON].num, HIGH);
 	msleep(150);
+
+	/* recover additional setup */
+	gpio_direction_input(gpio[SMD_GPIO_HSIC_SUS].num);
+	gpio_direction_input(gpio[SMD_GPIO_HST_WKP].num);
+	gpio_direction_input(gpio[SMD_GPIO_CP_ACT].num);
+	if (gpio[SMD_GPIO_SIM_DET].num)
+		gpio_direction_input(gpio[SMD_GPIO_SIM_DET].num);
 
 	ret = smdctl_rest_init(smdctl);
 	if (ret)
@@ -699,45 +679,15 @@ static int xmm6260_reset(struct str_smdctl *smdctl)
 	gpio_set_value(gpio[SMD_GPIO_HSIC_SUS].num, LOW);
 	msleep(100);
 
-	switch (smdctl->cp_reset_cnt) {
-	case 0 ... 3:
-		pr_info("cp warn reset\n");
-		gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, LOW);
-		msleep(10);
-		gpio_set_value(gpio[SMD_GPIO_CP_RST].num, HIGH);
-		usleep_range(160, 1000);
-		gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, HIGH);
-		break;
-
-	case 4 ... 9:
-		pr_info("cp PMU reset\n");
-		gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, LOW);
-		msleep(10);
-		gpio_set_value(gpio[SMD_GPIO_CP_RST].num, LOW);
-		usleep_range(160, 1000);
-		gpio_set_value(gpio[SMD_GPIO_CP_RST].num, HIGH);
-		usleep_range(160, 1000);
-		gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, HIGH);
-		break;
-
-	default:
-		pr_info("cp off-on\n");
-		/* OFF */
-		gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, LOW);
-		usleep_range(300, 1000);
-		gpio_set_value(gpio[SMD_GPIO_CP_RST].num, LOW);
-		gpio_set_value(gpio[SMD_GPIO_CP_ON].num, LOW);
-		msleep(10 * smdctl->cp_reset_cnt);
-		/* ON */
-		gpio_set_value(gpio[SMD_GPIO_CP_RST].num, HIGH);
-		usleep_range(160, 1000);
-		gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, HIGH);
-		msleep(100);
-		break;
-	}
-	pr_err("CP_RESET_CNT=%d\n", smdctl->cp_reset_cnt++);
+	pr_info("cp warm reset\n");
+	gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, LOW);
+	msleep(10);
+	gpio_set_value(gpio[SMD_GPIO_CP_RST].num, HIGH);
+	usleep_range(160, 1000);
+	gpio_set_value(gpio[SMD_GPIO_CP_REQ].num, HIGH);
 	return 0;
 }
+
 #ifdef CONFIG_KERNEL_DEBUG_SEC
 /*
  * HSIC CP uploas scenario -
@@ -748,20 +698,8 @@ static int xmm6260_reset(struct str_smdctl *smdctl)
 static void kernel_upload(void)
 {
 	/*TODO: check the DEBUG LEVEL*/
-	/* panic("CP Crash"); */
+	/*panic("CP Crash");*/
 	kernel_sec_set_upload_cause(UPLOAD_CAUSE_CP_ERROR_FATAL);
-#if defined(CONFIG_MACH_SAMSUNG_P5)
-	struct regulator *reg;
-
-	reg = regulator_get(NULL, "vdd_ldo4");
-	if (IS_ERR_OR_NULL(reg))
-		pr_err("%s: couldn't get regulator vdd_ldo4\n", __func__);
-	else {
-		regulator_enable(reg);
-		pr_debug("%s: enabling regulator vdd_ldo4\n", __func__);
-		regulator_put(reg);
-	}
-#endif
 	kernel_sec_hw_reset(false);
 	emergency_restart();
 }
@@ -814,8 +752,6 @@ static long smdctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 
-	printk(KERN_ERR "ioctl code = %x\n", cmd);
-
 	switch (cmd) {
 	case IOCTL_CP_ON:
 		pr_info("IOCTL_CP_ON\n");
@@ -865,7 +801,7 @@ static long smdctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case IOCTL_CP_RESET:
 		pr_info("IOCTL_CP_RESET\n");
 		xmm6260_reset(smdctl);
-		break;
+		break;	
 
 	case IOCTL_ON_HSIC_ACT:
 		pr_info("IOCTL_ON_HSIC_ACT\n");
@@ -1136,7 +1072,7 @@ static int smdctl_reboot_notify(struct notifier_block *this,
 		gsmdctl->shutdown_called = true;
 
 		if (gsmdctl->rest_init_done) {
-#ifndef CONFIG_NOT_SUPPORT_SIMDETECT
+#ifndef CONFIG_MACH_N1
 			free_irq(gsmdctl->gpio[SMD_GPIO_SIM_DET].irq,
 							(void *)gsmdctl);
 #endif
@@ -1222,6 +1158,9 @@ static int __devinit smdctl_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, smdctl);
 
+	/* ensure modem is in off condition */
+	xmm6260_off(smdctl);
+
 	return 0;
 
 err_sysfs_create_group:
@@ -1248,7 +1187,7 @@ static int __devexit smdctl_remove(struct platform_device *pdev)
 
 	sysfs_remove_group(&pdev->dev.kobj, &smdctl_sysfs);
 
-#ifndef CONFIG_NOT_SUPPORT_SIMDETECT
+#ifndef CONFIG_MACH_N1
 	free_irq(gpio[SMD_GPIO_SIM_DET].irq, (void *)smdctl);
 #endif
 	free_irq(smdctl->gpio[SMD_GPIO_CP_ACT].irq, (void *)smdctl);

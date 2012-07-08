@@ -58,7 +58,6 @@
 #define IOCTL_CP_UPLOAD		_IO('o', 0x28)
 #endif
 
-#define IOCTL_SET_CP_USB_STAT 	_IO('o', 0x29)
 #define IOCTL_CP_RESET 		_IO('o', 0x30)
 
 #define CP_SUS_LOW		0
@@ -132,8 +131,6 @@ struct str_smdctl {
 	bool modem_reset_remained;
 	bool shutdown_called;
 	spinlock_t lock;
-
-	unsigned cp_reset_cnt;
 };
 
 #define PM_STATUS_UNDEFINE	0

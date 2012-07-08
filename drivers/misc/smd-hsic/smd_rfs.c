@@ -164,6 +164,7 @@ static void rfs_rx_comp(struct urb *urb)
 	usb_mark_last_busy(smdrfs->hsic.usb);
 
 	switch (status) {
+	case -ENOENT:
 	case 0:
 		if (urb->actual_length) {
 			process_rfs_data(smdrfs, urb->actual_length);
@@ -174,9 +175,10 @@ static void rfs_rx_comp(struct urb *urb)
 			pr_info("==========================================\n");
 #endif
 		}
-		goto resubmit;
+		if (!urb->status)
+			goto resubmit;
+		break;
 
-	case -ENOENT:
 	case -ECONNRESET:
 	case -ESHUTDOWN:
 		pr_err("%s:LINK ERROR:%d\n", __func__, status);
@@ -218,12 +220,32 @@ static int smdrfs_open(struct inode *inode, struct file *file)
 
 	pr_info("%s: Enter\n", __func__);
 
+	if (smdrfs->pm_stat == RFS_PM_STATUS_DISCONNECT) {
+		pr_err("%s : disconnected\n", __func__);
+		return -ENODEV;
+	}
+
+	if (!smdrfs->hsic.usb) {
+		pr_err("%s : no resources\n", __func__);
+		return -ENODEV;
+	}
+
 	if (atomic_cmpxchg(&smdrfs->opened, 0, 1)) {
 		pr_err("%s : already opened..\n", __func__);
 		return -EBUSY;
 	}
 
 	init_err_stat(&smdrfs->stat);
+
+	usb_mark_last_busy(smdrfs->hsic.usb);
+	r = smdhsic_pm_resume_AP();
+	if (r < 0) {
+		pr_err("%s: HSIC Resume Failed(%d)\n", __func__, r);
+		atomic_set(&smdrfs->opened, 0);
+		return -EBUSY;
+	}
+	smd_kill_urb(&smdrfs->hsic);
+	usb_mark_last_busy(smdrfs->hsic.usb);
 
 	r = smdrfs_rx_usb(smdrfs);
 	if (r) {
@@ -286,29 +308,18 @@ static ssize_t smdrfs_write(struct file *file, const char __user * buf,
 		goto exit;
 	}
 
-	r = smdhsic_pm_resume_AP();
-	if (r < 0) {
-		pr_err("%s: HSIC Resume Failed\n", __func__);
-		r = -EAGAIN;
-		goto exit;
-	}
-
 	usb_fill_bulk_urb(urb, hsic->usb, hsic->tx_pipe,
 			  drvbuf, pktsz, rfs_tx_comp, smdrfs);
 	urb->transfer_flags = URB_ZERO_PACKET;
-
-	usb_mark_last_busy(hsic->usb);
 
 #if defined(DEBUG_LOG)
 	pr_info("================= TRANSMIT RFS =================\n");
 	dump_buffer(drvbuf, pktsz);
 	pr_info("================================================\n");
 #endif
-	r = usb_submit_urb(urb, GFP_KERNEL);
-	if (r) {
-		pr_err("%s:usb_submit_urb() failed (%d)\n", __func__, r);
-		goto exit;
-	}
+
+	add_tail_txurb(hsic->txq, urb);
+	queue_tx_work();
 
 	return count;
 exit:
@@ -536,6 +547,7 @@ void *connect_smdrfs(void *smd_device, struct str_hsic *hsic)
 	smdrfs->hsic.usb = hsic->usb;
 	smdrfs->hsic.rx_pipe = hsic->rx_pipe;
 	smdrfs->hsic.tx_pipe = hsic->tx_pipe;
+	smdrfs->hsic.txq = hsic->txq;
 
 	smd_kill_urb(&smdrfs->hsic);
 
@@ -549,6 +561,8 @@ void disconnect_smdrfs(void *smd_device)
 	struct str_smdrfs *smdrfs = smd_device;
 
 	smdrfs->pm_stat = RFS_PM_STATUS_DISCONNECT;
+
+	flush_txurb(smdrfs->hsic.txq);
 	smd_kill_urb(&smdrfs->hsic);
 	flush_buf(&smdrfs->read_buf);
 	smdrfs->frame_cnt = 0;

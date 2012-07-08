@@ -89,6 +89,8 @@ struct str_pdp_priv {
 	unsigned int cid;
 	struct net_device_stats pdp_stats;
 	struct str_smdraw *smdraw;
+	struct delayed_work work;
+	struct workqueue_struct *workqueue;
 	struct sk_buff_head txq;
 	spinlock_t lock;
 	struct net_device *dev;
@@ -99,7 +101,6 @@ struct str_smdraw {
 	struct device *dev;
 	struct cdev cdev;
 	dev_t devid;
-	
 	char *urb_rx_buf[MAX_RX_URB_COUNT];
 	struct str_raw_dev rawdev[MAX_RAW_DEV];
 	struct str_pdp_dev pdpdev[MAX_PDP_DEV];
@@ -125,7 +126,7 @@ struct str_smdraw {
 	struct delayed_work pdp_work;
 	struct workqueue_struct *pdp_wq;
 
-	unsigned long wake_time;	
+	unsigned long wake_time;
 };
 
 struct str_dev_info {
