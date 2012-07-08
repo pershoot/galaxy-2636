@@ -465,16 +465,6 @@ config SEC_MODEM
 	bool "SAMSUNG MODEM DRIVER"
 	default n
 
-config NOT_SUPPORT_SIMDETECT
-	bool "Don't support the SIM detec interrupt at kernel"
-	depends on SEC_MODEM
-	default n
-	---help---
-	 If your device SIM socket was net support the DETECT interrupt,
-	 Please set Y.
-
-	 If unsure, say N.
-
 config SAMSUNG_JACK
 	bool "3.5MM ear jack driver for Samsung devices"
 	depends on INPUT

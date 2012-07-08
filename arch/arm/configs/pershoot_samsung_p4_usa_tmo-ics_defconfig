@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.36.4
-# Wed May 30 09:36:26 2012
+# Sun Jul  8 13:37:28 2012
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -1025,7 +1025,6 @@ CONFIG_SEC_MISC=y
 # CONFIG_BCM4329_RFKILL is not set
 CONFIG_BCM4330_RFKILL=y
 CONFIG_SEC_MODEM=y
-# CONFIG_NOT_SUPPORT_SIMDETECT is not set
 CONFIG_SAMSUNG_JACK=y
 CONFIG_BCM4751_POWER=y
 # CONFIG_BCM4751_RFKILL is not set
