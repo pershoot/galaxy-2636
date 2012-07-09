@@ -23,10 +23,20 @@
 struct tegra_sdhci_platform_data {
 	const char *clk_id;
 	int force_hs;
+	int rt_disable;
 	int cd_gpio;
-	int wp_gpio;
-	int power_gpio;
 	int cd_gpio_polarity;
+	int wp_gpio;
+	int wp_gpio_polarity;
+	int power_gpio;
+	bool is_voltage_switch_supported;
+	bool is_8bit_supported;
+	const char *vdd_rail_name;
+	const char *slot_rail_name;
+	int vdd_max_uv;
+	int vdd_min_uv;
+	unsigned int max_clk;
+	unsigned int clk_limit;
 
 	void (*board_probe)(int id, struct mmc_host *);
 	void (*board_remove)(int id, struct mmc_host *);

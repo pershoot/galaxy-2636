@@ -135,13 +135,19 @@
 #define SDHCI_ACMD12_ERR	0x3C
 
 #define SDHCI_HOST_CONTROL_2	0x3E
+#define SDHCI_UHS_MODE_SEL_SDR25	0x01
+#define SDHCI_UHS_MODE_SEL_SDR50	0x02
+#define SDHCI_UHS_MODE_SEL_SDR104	0x03
 #define SDHCI_UHS_MODE_SEL_DDR50	0x04
+#define SDHCI_CTRL_2_VOLT_18_EN	0x08
+#define SDHCI_CTRL_2_EXECUTE_TUNING	0x40
+#define SDHCI_CTRL_2_SAMPLING_CLOCK_SELECT	0x80
 
 #define SDHCI_CAPABILITIES	0x40
 #define  SDHCI_TIMEOUT_CLK_MASK	0x0000003F
 #define  SDHCI_TIMEOUT_CLK_SHIFT 0
 #define  SDHCI_TIMEOUT_CLK_UNIT	0x00000080
-#define  SDHCI_CLOCK_BASE_MASK	0x00003F00
+#define  SDHCI_CLOCK_BASE_MASK	0x0000FF00
 #define  SDHCI_CLOCK_BASE_SHIFT	8
 #define  SDHCI_MAX_BLOCK_MASK	0x00030000
 #define  SDHCI_MAX_BLOCK_SHIFT  16
@@ -153,9 +159,13 @@
 #define  SDHCI_CAN_VDD_300	0x02000000
 #define  SDHCI_CAN_VDD_180	0x04000000
 #define  SDHCI_CAN_64BIT	0x10000000
+#define  SDHCI_CAN_ASYNC_INT	0x20000000
 
 #define SDHCI_HIGHER_CAPABILITIES	0x44
+#define SDHCI_CAN_SUPPORT_SDR50	0x00000001
+#define SDHCI_CAN_SUPPORT_SDR104	0x00000002
 #define SDHCI_CAN_SUPPORT_DDR50	0x00000004
+#define SDHCI_CAN_SDR50_TUNING	0x00002000
 
 #define SDHCI_MAX_CURRENT	0x48
 
@@ -181,6 +191,7 @@
 #define  SDHCI_SPEC_VER_SHIFT	0
 #define   SDHCI_SPEC_100	0
 #define   SDHCI_SPEC_200	1
+#define   SDHCI_SPEC_300	2
 
 struct sdhci_ops;
 
@@ -268,6 +279,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK_FORCE_HIGH_SPEED_MODE		(1LL<<37)
 /* Controller allows runtime enable / disable */
 #define SDHCI_QUIRK_RUNTIME_DISABLE			(1LL<<38)
+/* Controller cannot switch signalling voltage automatically */
+#define SDHCI_QUIRK_BROKEN_VOLTAGE_SWITCHING		(1LL<<39)
 
 	int			irq;		/* Device IRQ */
 	void __iomem *		ioaddr;		/* Mapped address */
@@ -286,7 +299,7 @@ struct sdhci_host {
 #endif
 
 	spinlock_t		lock;		/* Mutex */
-
+	unsigned long		spinlock_flags;	/* Flags for spinlock */
 	int			flags;		/* Host attributes */
 #define SDHCI_USE_SDMA		(1<<0)		/* Host is SDMA capable */
 #define SDHCI_USE_ADMA		(1<<1)		/* Host is ADMA capable */
@@ -301,6 +314,7 @@ struct sdhci_host {
 	unsigned int		clock;		/* Current clock (MHz) */
 	u8			pwr;		/* Current voltage */
 	u8			uhs_mode;	/* Current uhs mode */
+	u8			signalling_voltage; /* Signalling voltage */
 
 	struct mmc_request	*mrq;		/* Current request */
 	struct mmc_command	*cmd;		/* Current command */
@@ -324,7 +338,6 @@ struct sdhci_host {
 	struct timer_list	timer;		/* Timer for timeouts */
 
 	unsigned int		caps;		/* Alternative capabilities */
-
 	unsigned long		private[0] ____cacheline_aligned;
 };
 
@@ -340,13 +353,16 @@ struct sdhci_ops {
 #endif
 
 	void	(*set_clock)(struct sdhci_host *host, unsigned int clock);
+	void	(*configure_capabilities)(struct sdhci_host *host);
+	void	(*set_signalling_voltage)(struct sdhci_host *host,
+		unsigned int signalling_voltage);
 
 	int		(*enable_dma)(struct sdhci_host *host);
+	int		(*get_cd)(struct sdhci_host *host);
 	int		(*get_ro)(struct sdhci_host *host);
 	unsigned int	(*get_max_clock)(struct sdhci_host *host);
 	unsigned int	(*get_min_clock)(struct sdhci_host *host);
 	unsigned int	(*get_timeout_clock)(struct sdhci_host *host);
-	int		(*card_detect)(struct sdhci_host *host);
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

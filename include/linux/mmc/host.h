@@ -53,8 +53,21 @@ struct mmc_ios {
 
 	unsigned char	bus_speed_mode;		/* bus speed mode */
 
+#define MMC_BUS_SPEED_MODE_SDR12		0
+#define MMC_BUS_SPEED_MODE_SDR25		1
+#define MMC_BUS_SPEED_MODE_SDR50		2
+#define MMC_BUS_SPEED_MODE_SDR104		3
 #define MMC_BUS_SPEED_MODE_DDR50		4
 
+	unsigned char	signalling_voltage;		/* signalling voltage */
+#define MMC_3_3_VOLT_SIGNALLING		0
+#define MMC_1_8_VOLT_SIGNALLING		1
+
+	unsigned char	tuning_arg;		/* tuning execution */
+#define MMC_EXECUTE_TUNING		1
+#define MMC_QUERY_TUNING_STATUS		2
+#define MMC_SAMPLING_CLOCK_SELECT		3
+#define MMC_RESET_TUNING_CIRCUIT		4
 };
 
 struct mmc_host_ops {
@@ -164,6 +177,11 @@ struct mmc_host {
 #define MMC_CAP_ERASE		(1 << 10)	/* Allow erase/trim commands */
 #define MMC_CAP_FORCE_HS	(1 << 11)	/* Must enable highspeed mode */
 #define MMC_CAP_DDR50		(1 << 12)	/* Can support DDR mode at 50 MHz */
+#define MMC_CAP_SDR50		(1 << 13)	/* Can support SDR mode at 50 MHz */
+#define MMC_CAP_SDR104		(1 << 14)	/* Can support SDR mode at 104 MHz */
+#define MMC_CAP_SDR50_TUNING	(1 << 15)	/* Is tuning required for SDR50 */
+#define MMC_CAP_VOLTAGE_SWITCHING	(1 << 16)	/* Is voltage switching supported */
+#define MMC_CAP_ASYNC_INT	(1 << 17)	/* Can support asynchronous SDIO interrupt */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -189,7 +207,7 @@ struct mmc_host {
 #ifdef CONFIG_MMC_DEBUG
 	unsigned int		removed:1;	/* host is being removed */
 #endif
-
+	unsigned int		is_voltage_switched:1;	/* voltage switched */
 	/* Only used with MMC_CAP_DISABLE */
 	int			enabled;	/* host is enabled */
 	int			rescan_disable;	/* disable card detection */
@@ -212,6 +230,12 @@ struct mmc_host {
 	unsigned int		bus_resume_flags;
 #define MMC_BUSRESUME_MANUAL_RESUME	(1 << 0)
 #define MMC_BUSRESUME_NEEDS_RESUME	(1 << 1)
+
+	unsigned int		tuning_status;
+#define MMC_SD_TUNING_COMPLETED	(1 << 0)
+#define MMC_SD_SAMPLING_CLOCK_SELECT_SET	(1 << 1)
+#define MMC_SD_TUNING_IN_PROGRESS	(1 << 2)
+#define MMC_SD_RESET_TUNING_CIRCUIT	(1 << 3)
 
 	unsigned int		sdio_irqs;
 	struct task_struct	*sdio_irq_thread;
@@ -301,6 +325,9 @@ int mmc_host_enable(struct mmc_host *host);
 int mmc_host_disable(struct mmc_host *host);
 int mmc_host_lazy_disable(struct mmc_host *host);
 int mmc_pm_notify(struct notifier_block *notify_block, unsigned long, void *);
+int mmc_speed_class_control(struct mmc_host *host,
+	unsigned int speed_class_ctrl_arg);
+
 
 static inline void mmc_set_disable_delay(struct mmc_host *host,
 					 unsigned int disable_delay)

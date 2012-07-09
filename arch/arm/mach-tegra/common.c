@@ -121,7 +121,6 @@ static __initdata struct tegra_clk_init_table common_clk_init_table[] = {
 	/* set frequencies of some device clocks */
 	{ "pll_u",	"clk_m",	480000000,	false },
 	{ "sdmmc1",	"pll_p",	48000000,	false},
-	{ "sdmmc2",	"pll_p",	48000000,	false},
 	{ "sdmmc3",	"pll_p",	48000000,	false},
 	{ "sdmmc4",	"pll_p",	48000000,	false},
 	{ NULL,		NULL,		0,		0},
