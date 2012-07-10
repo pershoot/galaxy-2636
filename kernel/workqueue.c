@@ -1816,7 +1816,11 @@ __acquires(&gcwq->lock)
 	spin_unlock_irq(&gcwq->lock);
 
 	work_clear_pending(work);
+#if !defined(CONFIG_ICS)
 	lock_map_acquire(&cwq->wq->lockdep_map);
+#else
+	lock_map_acquire_read(&cwq->wq->lockdep_map);
+#endif
 	lock_map_acquire(&lockdep_map);
 	trace_workqueue_execute_start(work);
 	f(work);
@@ -2326,6 +2330,60 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(flush_workqueue);
 
+#if defined(CONFIG_ICS)
+static bool start_flush_work(struct work_struct *work, struct wq_barrier *barr,
+                             bool wait_executing)
+{
+        struct worker *worker = NULL;
+        struct global_cwq *gcwq;
+        struct cpu_workqueue_struct *cwq;
+
+        might_sleep();
+        gcwq = get_work_gcwq(work);
+        if (!gcwq)
+                return false;
+
+        spin_lock_irq(&gcwq->lock);
+        if (!list_empty(&work->entry)) {
+                /*
+                 * See the comment near try_to_grab_pending()->smp_rmb().
+                 * If it was re-queued to a different gcwq under us, we
+                 * are not going to wait.
+                 */
+                smp_rmb();
+                cwq = get_work_cwq(work);
+                if (unlikely(!cwq || gcwq != cwq->gcwq))
+                        goto already_gone;
+        } else if (wait_executing) {
+                worker = find_worker_executing_work(gcwq, work);
+                if (!worker)
+                        goto already_gone;
+                cwq = worker->current_cwq;
+        } else
+                goto already_gone;
+
+        insert_wq_barrier(cwq, barr, work, worker);
+        spin_unlock_irq(&gcwq->lock);
+
+        /*
+         * If @max_active is 1 or rescuer is in use, flushing another work
+         * item on the same workqueue may lead to deadlock.  Make sure the
+         * flusher is not running on the same workqueue by verifying write
+         * access.
+         */
+        if (cwq->wq->saved_max_active == 1 || cwq->wq->flags & WQ_RESCUER)
+                lock_map_acquire(&cwq->wq->lockdep_map);
+        else
+                lock_map_acquire_read(&cwq->wq->lockdep_map);
+        lock_map_release(&cwq->wq->lockdep_map);
+
+        return true;
+already_gone:
+        spin_unlock_irq(&gcwq->lock);
+        return false;
+}
+#endif
+
 /**
  * flush_work - block until a work_struct's callback has terminated
  * @work: the work which is to be flushed
@@ -2423,7 +2481,11 @@ static int try_to_grab_pending(struct work_struct *work)
 	return ret;
 }
 
+#if !defined(CONFIG_ICS)
 static void wait_on_cpu_work(struct global_cwq *gcwq, struct work_struct *work)
+#else
+static bool wait_on_cpu_work(struct global_cwq *gcwq, struct work_struct *work)
+#endif
 {
 	struct wq_barrier barr;
 	struct worker *worker;
@@ -2439,11 +2501,22 @@ static void wait_on_cpu_work(struct global_cwq *gcwq, struct work_struct *work)
 	if (unlikely(worker)) {
 		wait_for_completion(&barr.done);
 		destroy_work_on_stack(&barr.work);
+#if defined(CONFIG_ICS)
+                return true;
+        } else {
+                return false;
+#endif
 	}
 }
 
+#if !defined(CONFIG_ICS)
 static void wait_on_work(struct work_struct *work)
 {
+#else
+static bool wait_on_work(struct work_struct *work)
+{
+	bool ret = false;
+#endif
 	int cpu;
 
 	might_sleep();
@@ -2451,9 +2524,52 @@ static void wait_on_work(struct work_struct *work)
 	lock_map_acquire(&work->lockdep_map);
 	lock_map_release(&work->lockdep_map);
 
+#if !defined(CONFIG_ICS)
 	for_each_gcwq_cpu(cpu)
 		wait_on_cpu_work(get_gcwq(cpu), work);
+#else
+        for_each_gcwq_cpu(cpu)
+                ret |= wait_on_cpu_work(get_gcwq(cpu), work);
+	return ret;
+#endif
 }
+
+#if defined(CONFIG_ICS)
+/**
+ * flush_work_sync - wait until a work has finished execution
+ * @work: the work to flush
+ *
+ * Wait until @work has finished execution.  On return, it's
+ * guaranteed that all queueing instances of @work which happened
+ * before this function is called are finished.  In other words, if
+ * @work hasn't been requeued since this function was called, @work is
+ * guaranteed to be idle on return.
+ *
+ * RETURNS:
+ * %true if flush_work_sync() waited for the work to finish execution,
+ * %false if it was already idle.
+ */
+bool flush_work_sync(struct work_struct *work)
+{
+        struct wq_barrier barr;
+        bool pending, waited;
+
+        /* we'll wait for executions separately, queue barr only if pending */
+        pending = start_flush_work(work, &barr, false);
+
+        /* wait for executions to finish */
+        waited = wait_on_work(work);
+
+        /* wait for the pending one */
+        if (pending) {
+                wait_for_completion(&barr.done);
+                destroy_work_on_stack(&barr.work);
+        }
+
+        return pending || waited;
+}
+EXPORT_SYMBOL_GPL(flush_work_sync);
+#endif
 
 static int __cancel_work_timer(struct work_struct *work,
 				struct timer_list* timer)

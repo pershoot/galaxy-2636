@@ -326,6 +326,9 @@ extern int queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 extern void flush_workqueue(struct workqueue_struct *wq);
 extern void flush_scheduled_work(void);
 extern void flush_delayed_work(struct delayed_work *work);
+#if defined(CONFIG_ICS)
+extern bool flush_delayed_work_sync(struct delayed_work *work);
+#endif
 
 extern int schedule_work(struct work_struct *work);
 extern int schedule_work_on(int cpu, struct work_struct *work);
@@ -338,6 +341,9 @@ extern int keventd_up(void);
 int execute_in_process_context(work_func_t fn, struct execute_work *);
 
 extern int flush_work(struct work_struct *work);
+#if defined(CONFIG_ICS)
+extern bool flush_work_sync(struct work_struct *work);
+#endif
 extern int cancel_work_sync(struct work_struct *work);
 
 extern void workqueue_set_max_active(struct workqueue_struct *wq,

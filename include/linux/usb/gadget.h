@@ -797,6 +797,7 @@ struct usb_gadget_driver {
  * usb bus interface driver, which will only support a single driver.
  */
 
+#if !defined(CONFIG_ICS)
 /**
  * usb_gadget_register_driver - register a gadget driver
  * @driver:the driver being registered
@@ -809,6 +810,24 @@ struct usb_gadget_driver {
  * the bind() functions will be in init sections.
  */
 int usb_gadget_register_driver(struct usb_gadget_driver *driver);
+
+#else
+
+/**
+ * usb_gadget_probe_driver - probe a gadget driver
+ * @driver: the driver being registered
+ * @bind: the driver's bind callback
+ * Context: can sleep
+ *
+ * Call this in your gadget driver's module initialization function,
+ * to tell the underlying usb controller driver about your driver.
+ * The @bind() function will be called to bind it to a gadget before this
+ * registration call returns.  It's expected that the @bind() function will
+ * be in init sections.
+ */
+int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
+                int (*bind)(struct usb_gadget *));
+#endif
 
 /**
  * usb_gadget_unregister_driver - unregister a gadget driver

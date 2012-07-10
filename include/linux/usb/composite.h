@@ -256,20 +256,41 @@ struct usb_configuration {
 	struct usb_function	*interface[MAX_CONFIG_INTERFACES];
 };
 
+#if !defined(CONFIG_ICS)
 int usb_add_config(struct usb_composite_dev *,
 		struct usb_configuration *);
+#else
+int usb_add_config(struct usb_composite_dev *,
+                struct usb_configuration *,
+                int (*)(struct usb_configuration *));
+
+int usb_remove_config(struct usb_composite_dev *,
+                struct usb_configuration *);
+#endif
 
 /**
  * struct usb_composite_driver - groups configurations into a gadget
  * @name: For diagnostics, identifies the driver.
+#if defined(CONFIG_ICS)
+ * @iProduct: Used as iProduct override if @dev->iProduct is not set.
+ *      If NULL value of @name is taken.
+ * @iManufacturer: Used as iManufacturer override if @dev->iManufacturer is
+ *      not set. If NULL a default "<system> <release> with <udc>" value
+ *      will be used
+#endif
  * @dev: Template descriptor for the device, including default device
  *	identifiers.
  * @strings: tables of strings, keyed by identifiers assigned during bind()
  *	and language IDs provided in control requests
+#if !defined(CONFIG_ICS)
  * @bind: (REQUIRED) Used to allocate resources that are shared across the
  *	whole device, such as string IDs, and add its configurations using
  *	@usb_add_config().  This may fail by returning a negative errno
  *	value; it should return zero on successful initialization.
+#else
+ * @needs_serial: set to 1 if the gadget needs userspace to provide
+ *      a serial number.  If one is not provided, warning will be printed.
+#endif
  * @unbind: Reverses @bind(); called as a side effect of unregistering
  *	this driver.
  * @disconnect: optional driver disconnect method
@@ -291,9 +312,14 @@ int usb_add_config(struct usb_composite_dev *,
  */
 struct usb_composite_driver {
 	const char				*name;
+#if defined(CONFIG_ICS)
+        const char                              *iProduct;
+        const char                              *iManufacturer;
+#endif
 	const struct usb_device_descriptor	*dev;
 	struct usb_gadget_strings		**strings;
 
+#if !defined(CONFIG_ICS)
 	struct class		*class;
 	atomic_t		function_count;
 
@@ -303,6 +329,9 @@ struct usb_composite_driver {
 	 */
 
 	int			(*bind)(struct usb_composite_dev *);
+#else
+	unsigned                needs_serial:1;
+#endif
 	int			(*unbind)(struct usb_composite_dev *);
 
 	void			(*disconnect)(struct usb_composite_dev *);
@@ -311,7 +340,9 @@ struct usb_composite_driver {
 	void			(*suspend)(struct usb_composite_dev *);
 	void			(*resume)(struct usb_composite_dev *);
 
+#if !defined(CONFIG_ICS)
 	void			(*enable_function)(struct usb_function *f, int enable);
+#endif
 };
 
 extern int usb_composite_register(struct usb_composite_driver *);
@@ -367,22 +398,21 @@ struct usb_composite_dev {
 	struct list_head		configs;
 	struct usb_composite_driver	*driver;
 	u8				next_string_id;
+#if defined(CONFIG_ICS)
+        u8                              manufacturer_override;
+        u8                              product_override;
+	u8                              serial_override;
+#endif
 
 	/* the gadget driver won't enable the data pullup
 	 * while the deactivation count is nonzero.
 	 */
 	unsigned			deactivations;
 
-#if defined(CONFIG_ICS)
-	/* the composite driver won't complete the setup transfer's
-	* data/status phase till delayed_status is zero.
-	*/
-	int                             delayed_status;
-#endif
-
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
 
+#if !defined(CONFIG_ICS)
 	/* switch indicating connected/disconnected state */
 	struct switch_dev		sw_connected;
 	/* switch indicating current configuration */
@@ -407,6 +437,7 @@ struct usb_composite_dev {
 #endif
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
 	unsigned char	accessory_mode;		/* usb accessory mode */
+#endif
 #endif
 };
 

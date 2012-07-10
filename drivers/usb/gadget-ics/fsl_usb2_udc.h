@@ -15,7 +15,7 @@ struct usb_dr_device {
 	u8 res1[256];
 	u16 caplength;		/* Capability Register Length */
 	u16 hciversion;		/* Host Controller Interface Version */
-	u32 hcsparams;		/* Host Controller Structual Parameters */
+	u32 hcsparams;		/* Host Controller Structural Parameters */
 	u32 hccparams;		/* Host Controller Capability Parameters */
 	u8 res2[20];
 	u32 dciversion;		/* Device Controller Interface Version */
@@ -52,7 +52,7 @@ struct usb_dr_host {
 	u8 res1[256];
 	u16 caplength;		/* Capability Register Length */
 	u16 hciversion;		/* Host Controller Interface Version */
-	u32 hcsparams;		/* Host Controller Structual Parameters */
+	u32 hcsparams;		/* Host Controller Structural Parameters */
 	u32 hccparams;		/* Host Controller Capability Parameters */
 	u8 res2[20];
 	u32 dciversion;		/* Device Controller Interface Version */
@@ -446,7 +446,7 @@ struct ep_td_struct {
 #define USB_SYS_VBUS_WAKEUP_INT_ENABLE		0x100
 #define USB_SYS_VBUS_WAKEUP_INT_STATUS		0x200
 #define USB_SYS_VBUS_STATUS			0x400
-#define USB_SYS_ID_PIN_STATUS       (0x4)
+
 /*-------------------------------------------------------------------------*/
 
 /* ### driver private data
@@ -520,9 +520,6 @@ struct fsl_udc {
 #define DBG(fmt, args...) 	printk(KERN_DEBUG "[%s]  " fmt "\n", \
 				__func__, ## args)
 #else
-#ifdef DBG
-#undef DBG
-#endif
 #define DBG(fmt, args...)	do{}while(0)
 #endif
 
@@ -557,20 +554,11 @@ static void dump_msg(const char *label, const u8 * buf, unsigned int length)
 #ifdef VERBOSE
 #define VDBG		DBG
 #else
-#ifdef VDBG
-#undef VDBG
-#endif
 #define VDBG(stuff...)	do{}while(0)
 #endif
 
 #define ERR(stuff...)		pr_err("udc: " stuff)
-#ifdef WARNING
-#undef WARNING
-#endif
 #define WARNING(stuff...)		pr_warning("udc: " stuff)
-#ifdef INFO
-#undef INFO
-#endif
 #define INFO(stuff...)		pr_info("udc: " stuff)
 
 /*-------------------------------------------------------------------------*/
@@ -605,9 +593,6 @@ void fsl_udc_clk_finalize(struct platform_device *pdev);
 void fsl_udc_clk_release(void);
 void fsl_udc_clk_suspend(void);
 void fsl_udc_clk_resume(void);
-void fsl_udc_dtd_prepare(void);
-void fsl_udc_ep_barrier(void);
-
 #else
 static inline int fsl_udc_clk_init(struct platform_device *pdev)
 {
