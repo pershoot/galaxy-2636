@@ -4603,7 +4603,7 @@ void dhd_bus_country_set(struct net_device *dev, wl_country_t *cspec)
 	if (dhd && dhd->pub.up) {
 		memcpy(&dhd->pub.dhd_cspec, cspec, sizeof(wl_country_t));
 #ifdef WL_CFG80211
-		wl_update_wiphybands(NULL, cspec->ccode);
+		wl_update_wiphybands(NULL);
 #endif
 	}
 }
@@ -4614,7 +4614,7 @@ void dhd_bus_band_set(struct net_device *dev, uint band)
 
 	if (dhd && dhd->pub.up) {
 #ifdef WL_CFG80211
-		wl_update_wiphybands(NULL, NULL);
+		wl_update_wiphybands(NULL);
 #endif
 	}
 }
