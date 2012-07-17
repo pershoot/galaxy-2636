@@ -153,9 +153,6 @@ static void scale3d_clocks_handler(struct work_struct *work)
 
 void nvhost_scale3d_suspend(struct nvhost_device *dev)
 {
-	if (!scale3d.enable)
-		return;
-
 	cancel_work_sync(&scale3d.work);
 	cancel_delayed_work(&scale3d.idle_timer);
 }
@@ -176,9 +173,6 @@ static void reset_3d_clocks(void)
 static int scale3d_is_enabled(void)
 {
 	int enable;
-
-	if (!scale3d.enable)
-		return 0;
 
 	mutex_lock(&scale3d.lock);
 	enable = scale3d.enable;
@@ -379,10 +373,10 @@ void nvhost_scale3d_notify_idle(struct nvhost_device *dev)
 	ktime_t t;
 	unsigned long dt;
 
-	if (!scale3d.enable)
-		return;
-
 	mutex_lock(&scale3d.lock);
+
+	if (!scale3d.enable)
+		goto done;
 
 	t = ktime_get();
 
@@ -404,6 +398,7 @@ void nvhost_scale3d_notify_idle(struct nvhost_device *dev)
 		msecs_to_jiffies((scale3d.idle_max * scale3d.fast_response)
 			/ 50000));
 
+done:
 	mutex_unlock(&scale3d.lock);
 }
 
@@ -413,10 +408,10 @@ void nvhost_scale3d_notify_busy(struct nvhost_device *dev)
 	unsigned long short_term_idle;
 	ktime_t t;
 
-	if (!scale3d.enable)
-		return;
-
 	mutex_lock(&scale3d.lock);
+
+	if (!scale3d.enable)
+		goto done;
 
 	cancel_delayed_work(&scale3d.idle_timer);
 
@@ -434,6 +429,7 @@ void nvhost_scale3d_notify_busy(struct nvhost_device *dev)
 
 	scaling_state_check(t);
 
+done:
 	mutex_unlock(&scale3d.lock);
 }
 
@@ -441,12 +437,10 @@ static void scale3d_idle_handler(struct work_struct *work)
 {
 	int notify_idle = 0;
 
-	if (!scale3d.enable)
-		return;
-
 	mutex_lock(&scale3d.lock);
 
-	if (scale3d.is_idle && tegra_is_clk_enabled(scale3d.clk_3d)) {
+	if (scale3d.enable && scale3d.is_idle &&
+		tegra_is_clk_enabled(scale3d.clk_3d)) {
 		unsigned long curr = clk_get_rate(scale3d.clk_3d);
 		if (curr > scale3d.min_rate_3d)
 			notify_idle = 1;
@@ -460,12 +454,7 @@ static void scale3d_idle_handler(struct work_struct *work)
 
 void nvhost_scale3d_reset()
 {
-	ktime_t t;
-
-	if (!scale3d.enable)
-		return;
-
-	t = ktime_get();
+	ktime_t t = ktime_get();
 	mutex_lock(&scale3d.lock);
 	reset_scaling_counters(t);
 	mutex_unlock(&scale3d.lock);
