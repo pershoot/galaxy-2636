@@ -229,12 +229,6 @@ int __init harmony_panel_init(void)
 	gpio_direction_output(harmony_lvds_shutdown, 1);
 	tegra_gpio_enable(harmony_lvds_shutdown);
 
-#ifdef CONFIG_TEGRA_GRHOST
-	err = nvhost_device_register(&tegra_grhost_device);
- 	if (err)
- 		return err;
-#endif
-
 	err = platform_add_devices(harmony_gfx_devices,
 				   ARRAY_SIZE(harmony_gfx_devices));
 

@@ -365,12 +365,6 @@ int __init p3_panel_init(void)
 	p3_carveouts[1].base = tegra_carveout_start;
 	p3_carveouts[1].size = tegra_carveout_size;
 
-#ifdef CONFIG_TEGRA_GRHOST
-	err = nvhost_device_register(&tegra_grhost_device);
-	if (err)
-		return err;
-#endif
-
 	err = platform_add_devices(p3_gfx_devices,
 				   ARRAY_SIZE(p3_gfx_devices));
 
