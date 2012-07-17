@@ -51,7 +51,7 @@ int nvhost_channel_init(struct nvhost_channel *ch,
 	/* Map IO memory related to nvhost_device */
 	if (ndev->moduleid != NVHOST_MODULE_NONE) {
 		/* First one is host1x - skip that */
-		r = nvhost_get_resource(dev->dev,
+		r = platform_get_resource(dev->pdev,
 				IORESOURCE_MEM, ndev->moduleid + 1);
 		if (!r)
 			goto fail;

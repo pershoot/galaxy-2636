@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Driver Entrypoint
  *
- * Copyright (c) 2010-2012, NVIDIA Corporation.
+ * Copyright (c) 2010-2011, NVIDIA Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -34,6 +34,7 @@ struct nvhost_master {
 	void __iomem *aperture;
 	void __iomem *sync_aperture;
 	struct resource *reg_mem;
+	struct platform_device *pdev;
 	struct class *nvhost_class;
 	struct cdev cdev;
 	struct device *ctrl;
