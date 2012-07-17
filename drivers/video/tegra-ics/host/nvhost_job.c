@@ -180,8 +180,6 @@ struct nvhost_job *nvhost_job_alloc(struct nvhost_channel *ch,
 	kref_init(&job->ref);
 	job->ch = ch;
 	job->hwctx = hwctx;
-	if (hwctx)
-		hwctx->h->get(hwctx);
 	job->nvmap = nvmap ? nvmap_client_get(nvmap) : NULL;
 
 	err = alloc_gathers(job, num_cmdbufs);
@@ -200,7 +198,6 @@ error:
 
 struct nvhost_job *nvhost_job_realloc(
 		struct nvhost_job *oldjob,
-		struct nvhost_hwctx *hwctx,
 		struct nvhost_submit_hdr_ext *hdr,
 		struct nvmap_client *nvmap,
 		int priority, int clientid)
@@ -214,9 +211,7 @@ struct nvhost_job *nvhost_job_realloc(
 		goto error;
 	kref_init(&newjob->ref);
 	newjob->ch = oldjob->ch;
-	newjob->hwctx = hwctx;
-	if (hwctx)
-		newjob->hwctx->h->get(newjob->hwctx);
+	newjob->hwctx = oldjob->hwctx;
 	newjob->timeout = oldjob->timeout;
 	newjob->nvmap = nvmap ? nvmap_client_get(nvmap) : NULL;
 
@@ -247,10 +242,6 @@ static void job_free(struct kref *ref)
 {
 	struct nvhost_job *job = container_of(ref, struct nvhost_job, ref);
 
-	if (job->hwctxref)
-		job->hwctxref->h->put(job->hwctxref);
-	if (job->hwctx)
-		job->hwctx->h->put(job->hwctx);
 	if (job->gathers)
 		nvmap_munmap(job->gather_mem, job->gathers);
 	if (job->gather_mem)
@@ -258,16 +249,6 @@ static void job_free(struct kref *ref)
 	if (job->nvmap)
 		nvmap_client_put(job->nvmap);
 	kfree(job);
-}
-
-/* Acquire reference to a hardware context. Used for keeping saved contexts in
- * memory. */
-void nvhost_job_get_hwctx(struct nvhost_job *job, struct nvhost_hwctx *hwctx)
-{
-	BUG_ON(job->hwctxref);
-
-	job->hwctxref = hwctx;
-	hwctx->h->get(hwctx);
 }
 
 void nvhost_job_put(struct nvhost_job *job)
