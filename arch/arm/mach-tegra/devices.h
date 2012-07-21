@@ -57,11 +57,13 @@ extern struct platform_device tegra_uartc_device;
 extern struct platform_device tegra_uartd_device;
 extern struct platform_device tegra_uarte_device;
 extern struct platform_device tegra_spdif_device;
-#if !defined(CONFIG_ICS)
-extern struct platform_device tegra_grhost_device;
-#endif
 extern struct platform_device tegra_spdif_device;
 extern struct platform_device tegra_avp_device;
+#if !defined(CONFIG_ICS)
+extern struct platform_device tegra_grhost_device;
+#else
+extern struct nvhost_device tegra_grhost_device;
+#endif
 extern struct platform_device tegra_aes_device;
 extern struct platform_device tegra_das_device;
 
