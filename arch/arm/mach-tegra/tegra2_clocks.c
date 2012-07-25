@@ -2264,7 +2264,11 @@ struct clk tegra_list_shared_clks[] = {
 	SHARED_CLK("avp.sclk",	"tegra-avp",		"sclk",	&tegra_clk_virtual_sclk),
 	SHARED_CLK("mon.sclk",	"tegra-stat-mon",	"sclk",	&tegra_clk_virtual_sclk),
 	SHARED_CLK("bsea.sclk",	"tegra-aes",		"sclk",	&tegra_clk_virtual_sclk),
+#if !defined(CONFIG_ICS)
 	SHARED_CLK("usbd.sclk",	"fsl-tegra-udc",	"sclk",	&tegra_clk_virtual_sclk),
+#else
+	SHARED_CLK("usbd.sclk",	"tegra-udc.0",		"sclk",	&tegra_clk_virtual_sclk),
+#endif
 	SHARED_CLK("usb1.sclk",	"tegra-ehci.0",		"sclk",	&tegra_clk_virtual_sclk),
 	SHARED_CLK("usb2.sclk",	"tegra-ehci.1",		"sclk",	&tegra_clk_virtual_sclk),
 	SHARED_CLK("usb3.sclk",	"tegra-ehci.2",		"sclk",	&tegra_clk_virtual_sclk),
