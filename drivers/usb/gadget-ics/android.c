@@ -213,6 +213,9 @@ static void android_disable(struct android_dev *dev)
 
 	if (dev->disable_depth++ == 0) {
 		usb_gadget_disconnect(cdev->gadget);
+#if defined(CONFIG_MACH_SAMSUNG_VARIATION_TEGRA)
+		msleep(50);
+#endif
 		/* Cancel pending control requests */
 		usb_ep_dequeue(cdev->gadget->ep0, cdev->req);
 		usb_remove_config(cdev, &android_config_driver);
