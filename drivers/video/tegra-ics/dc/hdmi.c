@@ -969,16 +969,12 @@ static const struct tegra_hdmi_audio_config
 unsigned long tegra_hdmi_readl(struct tegra_dc_hdmi_data *hdmi,
 					     unsigned long reg)
 {
-	unsigned long ret;
-	ret = readl(hdmi->base + reg * 4);
-	trace_printk("readl %p=%#08lx\n", hdmi->base + reg * 4, ret);
-	return ret;
+	return readl(hdmi->base + reg * 4);
 }
 
 void tegra_hdmi_writel(struct tegra_dc_hdmi_data *hdmi,
 				     unsigned long val, unsigned long reg)
 {
-	trace_printk("writel %p=%#08lx\n", hdmi->base + reg * 4, val);
 	writel(val, hdmi->base + reg * 4);
 }
 
